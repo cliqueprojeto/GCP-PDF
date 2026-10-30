@@ -725,7 +725,7 @@ function desktopOptions():DesktopOptions{
  const home=testing?join(app.getPath('userData'),'desktop-profile'):app.getPath('home');
  const xdg=(name:string,fallback:string)=>!testing&&process.env[name]&&isAbsolute(process.env[name]!)?process.env[name]!:join(home,fallback);
  const launcher=process.platform==='linux'&&process.env.APPIMAGE?process.env.APPIMAGE:process.execPath;
- return {platform:process.platform as 'linux'|'darwin',home,data:xdg('XDG_DATA_HOME','.local/share'),config:xdg('XDG_CONFIG_HOME','.config'),launcher,appBundle:process.platform==='darwin'?resolve(process.execPath,'../../..'):undefined,appImage:!!process.env.APPIMAGE,icon:join(assets(),'icon.png')};
+ return {platform:process.platform as 'linux'|'darwin',home,data:xdg('XDG_DATA_HOME','.local/share'),config:xdg('XDG_CONFIG_HOME','.config'),launcher,profile:process.env.GCP_PDF_DATA_DIR?app.getPath('userData'):undefined,icon:join(assets(),'icon.png')};
 }
 const installQuickActions=(enabled:boolean)=>process.platform==='win32'?registerWindowsContextMenu(enabled,app.isPackaged?`"${process.execPath}"`:`"${process.execPath}" "${app.getAppPath()}"`,join(unpacked(),'assets','context')):installUnixIntegration(desktopOptions(),enabled);
 function makeMenu(){

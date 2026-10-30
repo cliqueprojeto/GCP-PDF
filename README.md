@@ -22,9 +22,9 @@ Baixe a versão mais recente na página de [versões publicadas](https://github.
 
 - **GCP-PDF-Instalador-x.y.z-x64.exe** — instala no Windows 10 e 11 (64 bits), cria atalhos e adiciona as ações no menu do botão direito do Explorador de Arquivos.
 - **GCP-PDF-Portatil-x.y.z-x64.exe** — roda sem instalar, por exemplo a partir de um pendrive.
-- **GCP-PDF-x.y.z-linux-x64.deb** — Ubuntu/Debian de 64 bits: instale pelo gerenciador de aplicativos ou com `sudo apt install ./GCP-PDF-x.y.z-linux-x64.deb`.
-- **GCP-PDF-x.y.z-linux-x64.rpm** — Fedora e distribuições compatíveis: `sudo dnf install ./GCP-PDF-x.y.z-linux-x64.rpm`.
-- **GCP-PDF-x.y.z-linux-x64.AppImage** — versão portátil Linux: marque o arquivo como executável (`chmod +x arquivo.AppImage`) e abra. Requer FUSE 2; sem FUSE, extraia com `./arquivo.AppImage --appimage-extract` e execute `squashfs-root/AppRun`.
+- **GCP-PDF-x.y.z-linux-amd64.deb** — Ubuntu/Debian de 64 bits: instale pelo gerenciador de aplicativos ou com `sudo apt install ./GCP-PDF-x.y.z-linux-amd64.deb`.
+- **GCP-PDF-x.y.z-linux-x86_64.rpm** — Fedora e distribuições compatíveis: `sudo dnf install ./GCP-PDF-x.y.z-linux-x86_64.rpm`.
+- **GCP-PDF-x.y.z-linux-x86_64.AppImage** — versão portátil Linux: marque o arquivo como executável (`chmod +x arquivo.AppImage`) e abra. Requer FUSE 2; sem FUSE, extraia com `./arquivo.AppImage --appimage-extract` e execute `squashfs-root/AppRun`.
 - **GCP-PDF-x.y.z-macOS-arm64.dmg** — Macs Apple Silicon (M1, M2 e posteriores).
 - **GCP-PDF-x.y.z-macOS-x64.dmg** — Macs Intel. Abra o DMG e arraste o GCP-PDF para Aplicativos. Os arquivos `.zip` contêm o mesmo aplicativo.
 

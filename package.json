@@ -8,6 +8,7 @@
   "homepage": "https://github.com/cliqueprojeto/GCP-PDF",
   "packageManager": "npm@11.9.0",
   "main": "dist/main/index.cjs",
+  "desktopName": "gcp-pdf.desktop",
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "node scripts/build.mjs",
@@ -117,6 +118,7 @@
       "artifactName": "GCP-PDF-Portatil-${version}-${arch}.${ext}"
     },
     "linux": {
+      "syncDesktopName": true,
       "files": ["!assets/pdfcraft/*.exe"],
       "target": [
         "deb", "AppImage", "rpm"

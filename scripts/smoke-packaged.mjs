@@ -106,6 +106,10 @@ try{
  await page.screenshot({path:`evidence/packaged/${process.platform}-${process.arch}-${label}.png`});
  check('nenhum erro JavaScript no renderer',errors.length===0);
  await writeFile(`evidence/packaged/${process.platform}-${process.arch}-${label}.json`,JSON.stringify({executable:resolve(executable),...packaged,checks,errors,certificateScope:'Certificado temporário autoassinado RSA2048 em PKCS#12; sem certificado ICP-Brasil real ou token A3.'},null,2));
+}catch(error){
+ await mkdir('evidence/packaged',{recursive:true});
+ await writeFile(`evidence/packaged/${process.platform}-${process.arch}-${label}-failure.json`,JSON.stringify({checks,errors,error:String(error),stderr:error?.stderr},null,2));
+ throw error;
 }finally{
  if(app){await app.evaluate(async()=>{for(const view of globalThis.__gcpTest.views.values())view.allowClose=true;await globalThis.__gcpTest.engine.dispose();}).catch(()=>{});await app.close();}
  await rm(root,{recursive:true,force:true});

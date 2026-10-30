@@ -25,17 +25,18 @@ test('Unix quick-action script passes selected paths literally, including spaces
  const root=await mkdtemp(join(tmpdir(),'gcp-action-'));
  try{
   const record=join(root,'arguments'),launcher=join(root,"GCP d'água $app");
-  await writeFile(launcher,`#!/bin/sh\nprintf '%s\\0' "$@" > ${shellQuote(record)}\n`,{mode:0o755});
-  const options:DesktopOptions={platform:'linux',home:root,data:join(root,'data'),config:join(root,'config'),launcher,icon:resolve('assets/icon.png')};
+  await writeFile(launcher,`#!/bin/sh\nprintf '%s\\0' "$GCP_PDF_DATA_DIR" "$@" > ${shellQuote(record)}\n`,{mode:0o755});
+  const profile=join(root,"Perfil d'água $app");
+  const options:DesktopOptions={platform:'linux',home:root,data:join(root,'data'),config:join(root,'config'),launcher,profile,icon:resolve('assets/icon.png')};
   await installUnixIntegration(options,true);
   const selected=[join(root,"Orçamento d'água.pdf"),join(root,'$(never-run); space.pdf')];
   execFileSync(join(root,'data/nautilus/scripts/GCP-PDF/Combinar em um PDF'),selected);
-  assert.deepEqual((await readFile(record,'utf8')).split('\0').filter(Boolean),['--quick-combine',...selected]);
+  assert.deepEqual((await readFile(record,'utf8')).split('\0').filter(Boolean),[profile,'--quick-combine',...selected]);
   assert.equal(desktopFiles(options).filter(file=>file.path.endsWith('.nemo_action')).length,2);
  }finally{await rm(root,{recursive:true,force:true});}
 });
 test('macOS Quick Actions are valid property lists scoped to Finder and invoke the installed app',()=>{
- const files=desktopFiles({platform:'darwin',home:'/Users/test',data:'/Users/test/data',config:'/Users/test/config',launcher:'/Applications/GCP-PDF.app/Contents/MacOS/GCP-PDF',appBundle:"/Applications/GCP d'água.app",icon:'icon.png'});
+ const files=desktopFiles({platform:'darwin',home:'/Users/test',data:'/Users/test/data',config:'/Users/test/config',launcher:"/Applications/GCP d'água.app/Contents/MacOS/GCP-PDF",profile:"/Users/test/Perfil d'água",icon:'icon.png'});
  assert.equal(files.length,4);
  for(const file of files){const errors:string[]=[];const parsed=new DOMParser({onError:(level:string,text:string)=>{if(level!=='warning')errors.push(text);}} as never).parseFromString(file.content,'text/xml');assert.deepEqual(errors,[]);assert.equal(parsed.documentElement?.tagName,'plist');assert.match(file.content,/com.apple.finder/);}
 });

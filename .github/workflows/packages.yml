@@ -57,7 +57,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo dpkg -i release/*.deb
+          sudo apt-get install -y ./release/*.deb
           xvfb-run -a npm run test:packaged -- /opt/GCP-PDF/gcp-pdf deb
           mkdir -p .cache/appimage .cache/rpm
           APPIMAGE=$(realpath release/*.AppImage)
@@ -121,7 +121,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION=${RELEASE_TAG#v}
-          for NAME in "GCP-PDF-$VERSION-linux-x64.deb" "GCP-PDF-$VERSION-linux-x64.rpm" "GCP-PDF-$VERSION-linux-x64.AppImage" "GCP-PDF-$VERSION-macOS-arm64.dmg" "GCP-PDF-$VERSION-macOS-arm64.zip" "GCP-PDF-$VERSION-macOS-x64.dmg" "GCP-PDF-$VERSION-macOS-x64.zip"; do
+          for NAME in "GCP-PDF-$VERSION-linux-amd64.deb" "GCP-PDF-$VERSION-linux-x86_64.rpm" "GCP-PDF-$VERSION-linux-x86_64.AppImage" "GCP-PDF-$VERSION-macOS-arm64.dmg" "GCP-PDF-$VERSION-macOS-arm64.zip" "GCP-PDF-$VERSION-macOS-x64.dmg" "GCP-PDF-$VERSION-macOS-x64.zip"; do
             test -s "installers/$NAME"
           done
           gh release view "$RELEASE_TAG"

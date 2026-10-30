@@ -18,15 +18,16 @@ function plistValue(value:unknown):string{
  return `<string>${xml(String(value))}</string>`;
 }
 const plist=(value:unknown)=>`<?xml version="1.0" encoding="UTF-8"?>\n<!-- ${OWNER} -->\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">${plistValue(value)}</plist>\n`;
-export interface DesktopOptions {platform:'linux'|'darwin';home:string;data:string;config:string;launcher:string;appBundle?:string;appImage?:boolean;icon:string}
+export interface DesktopOptions {platform:'linux'|'darwin';home:string;data:string;config:string;launcher:string;profile?:string;icon:string}
+function shellLaunch(options:DesktopOptions){return `${options.profile?`/usr/bin/env ${shellQuote('GCP_PDF_DATA_DIR='+options.profile)} `:''}${shellQuote(options.launcher)}`;}
 export interface DesktopFile {path:string;content:string;mode:number;launcher?:boolean}
 export function desktopFiles(options:DesktopOptions):DesktopFile[]{
  const {home,data,launcher}=options,files:DesktopFile[]=[];
  if(options.platform==='linux'){
-  const command=desktopQuote(launcher);
+  const command=`${options.profile?`/usr/bin/env ${desktopQuote('GCP_PDF_DATA_DIR='+options.profile)} `:''}${desktopQuote(launcher)}`;
   files.push({path:join(data,'applications','gcp-pdf.desktop'),mode:0o755,launcher:true,content:`[Desktop Entry]\n# ${OWNER}\nType=Application\nName=GCP-PDF\nComment=Leitor e editor de PDF\nExec=${command} %F\nIcon=${join(data,'icons/hicolor/512x512/apps/gcp-pdf.png')}\nTerminal=false\nCategories=Office;\nMimeType=application/pdf;\nActions=combine;convert;\n${ACTIONS.map(a=>`\n[Desktop Action ${a.id}]\nName=${a.name}\nExec=${command} --quick-${a.id} %F\n`).join('')}`});
   for(const action of ACTIONS){
-   const script=`#!/bin/sh\n# ${OWNER}\nexec ${shellQuote(launcher)} --quick-${action.id} "$@"\n`;
+   const script=`#!/bin/sh\n# ${OWNER}\nexec ${shellLaunch(options)} --quick-${action.id} "$@"\n`;
    for(const folder of [join(data,'nautilus/scripts/GCP-PDF'),join(options.config,'caja/scripts/GCP-PDF')])files.push({path:join(folder,action.name),content:script,mode:0o755});
    const wrapper=join(data,'gcp-pdf/actions',action.id);
    files.push({path:wrapper,content:script,mode:0o755});
@@ -34,10 +35,9 @@ export function desktopFiles(options:DesktopOptions):DesktopFile[]{
   }
   files.push({path:join(data,'kio/servicemenus/gcp-pdf.desktop'),mode:0o755,content:`[Desktop Entry]\n# ${OWNER}\nType=Service\nMimeType=application/octet-stream;\nX-KDE-ServiceTypes=KonqPopupMenu/Plugin\nX-KDE-Submenu=GCP-PDF\nActions=combine;convert;\n${ACTIONS.map(a=>`\n[Desktop Action ${a.id}]\nName=${a.name}\nIcon=gcp-pdf\nExec=${command} --quick-${a.id} %F\n`).join('')}`});
  }else{
-  if(!options.appBundle)throw new Error('O aplicativo macOS não está em um bundle .app.');
   for(const action of ACTIONS){
    const name=`GCP-PDF — ${action.name}`,root=join(home,'Library/Services',`${name}.workflow`,'Contents');
-   const command=`${shellQuote(launcher)} --quick-${action.id} "$@" </dev/null >/dev/null 2>&1 &`;
+   const command=`${shellLaunch(options)} --quick-${action.id} "$@" </dev/null >/dev/null 2>&1 &`;
    const accepts={Container:'List',Optional:true,Types:['com.apple.cocoa.string']};
    files.push({path:join(root,'Info.plist'),mode:0o644,content:plist({CFBundleIdentifier:`br.com.gestaoculturalpro.pdf.quick-${action.id}`,CFBundleName:name,NSServices:[{NSMenuItem:{default:name},NSMessage:'runWorkflowAsService',NSRequiredContext:{NSApplicationIdentifier:'com.apple.finder'},NSSendFileTypes:['public.item']}]})});
    files.push({path:join(root,'document.wflow'),mode:0o644,content:plist({AMDocumentVersion:'2',actions:[{action:{AMAccepts:accepts,AMActionVersion:'2.0.3',AMApplication:['Automator'],AMParameterProperties:{COMMAND_STRING:{},inputMethod:{},shell:{}},AMProvides:accepts,ActionBundlePath:'/System/Library/Automator/Run Shell Script.action',ActionName:'Run Shell Script',ActionParameters:{COMMAND_STRING:command,inputMethod:1,shell:'/bin/bash'},BundleIdentifier:'com.apple.RunShellScript',UUID:`A46353B0-0040-4000-8000-${action.id==='combine'?'000000000001':'000000000002'}`},isViewVisible:1}],workflowMetaData:{applicationBundleID:'com.apple.finder',applicationBundleIDsByPath:{'/System/Library/CoreServices/Finder.app':'com.apple.finder'},inputTypeIdentifier:'com.apple.Automator.fileSystemObject',outputTypeIdentifier:'com.apple.Automator.nothing',processesInput:0,serviceInputTypeIdentifier:'com.apple.Automator.fileSystemObject',serviceOutputTypeIdentifier:'com.apple.Automator.nothing',serviceProcessesInput:0,serviceApplicationBundleID:'com.apple.finder',workflowTypeIdentifier:'com.apple.Automator.servicesMenu'}})});
@@ -75,7 +75,7 @@ export async function thunarActions(options:DesktopOptions,enabled:boolean){
  for(const action of Array.from(root.getElementsByTagName('action'))){const id=action.getElementsByTagName('unique-id')[0]?.textContent;if(id==='1730000000000001-1'||id==='1730000000000001-2'){if(action.getElementsByTagName('description')[0]?.textContent!==OWNER)throw new Error('Uma ação do Thunar usa o mesmo identificador; o arquivo foi preservado.');root.removeChild(action);}}
  if(enabled)for(const [i,action] of ACTIONS.entries()){
   const node=document.createElement('action');
-  for(const [key,value] of Object.entries({name:`GCP-PDF — ${action.name}`,'unique-id':`1730000000000001-${i+1}`,command:`${shellQuote(options.launcher)} --quick-${action.id} %F`,description:OWNER,icon:'gcp-pdf',patterns:'*'})){const field=document.createElement(key);field.appendChild(document.createTextNode(value));node.appendChild(field);}
+  for(const [key,value] of Object.entries({name:`GCP-PDF — ${action.name}`,'unique-id':`1730000000000001-${i+1}`,command:`${shellLaunch(options)} --quick-${action.id} %F`,description:OWNER,icon:'gcp-pdf',patterns:'*'})){const field=document.createElement(key);field.appendChild(document.createTextNode(value));node.appendChild(field);}
   for(const type of ['other-files','text-files','image-files','audio-files','video-files'])node.appendChild(document.createElement(type));
   root.appendChild(node);
  }

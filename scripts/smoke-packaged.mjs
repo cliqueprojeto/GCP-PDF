@@ -42,9 +42,10 @@ try{
  check('texto editado persiste ao reabrir arquivo salvo',edited.includes('Documento cultural editado'));
  await page.evaluate(id=>window.gcp.runOcr(id,[0]),id);
  check('OCR local com worker, WASM e modelo português empacotados',true);
- const converted=await page.evaluate(async id=>{
-  const result=await window.gcp.getBase(id);return !!result;
- },state.documents[0].pages[0].base);
+ const converted=await page.evaluate(async()=>{
+  const current=await window.gcp.getWorkspace();
+  const result=await window.gcp.getBase(current.documents[0].pages[0].base);return !!result;
+ });
  check('leitura dos bytes pelo preload empacotado',converted);
  await mkdir('evidence/packaged',{recursive:true});
  await page.screenshot({path:`evidence/packaged/${process.platform}-${process.arch}.png`});

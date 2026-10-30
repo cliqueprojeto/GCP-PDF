@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import {join,resolve,sep,basename} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
 
 const publication=import(pathToFileURL(resolve('scripts/publicar.mjs')).href);
 async function cleanupTemporary(cwd:string) {
@@ -122,4 +123,13 @@ test('CLI real detecta --ensaio absorvido mesmo quando --sim chegou ao script',a
 
 test('opções absorvidas são diagnosticadas antes de um valor avulso deixado pelo shim',async()=>{
  const f=await fixture();try{const result=await f.run(['correcao','x.md'],{environment:{npm_config_novidades:'x.md'}});assert.equal(result.ok,false);assert.match(result.error,/npm absorveu/);assert.equal(f.calls.length,0);await f.assertRestored();}finally{await f.cleanup();}
+});
+test('a release leva atualizacao.json com versão, instalador, tamanho e SHA-256 para o atualizador',async()=>{
+ const f=await fixture();try{const result=await f.run();assert.equal(result.ok,true);
+  const gh=f.calls.find(c=>c.command==='gh'&&c.args[0]==='release')!;assert.ok(gh.args.includes('release/atualizacao.json'));
+  const manifest=JSON.parse(await readFile(join(f.cwd,'release','atualizacao.json'),'utf8'));
+  const installer=await readFile(join(f.cwd,`release/${manifest.assetName}`));
+  assert.equal(manifest.version,result.version);assert.match(manifest.assetName,/^GCP-PDF-Instalador-[\d.]+-x64\.exe$/);assert.equal(manifest.size,installer.byteLength);
+  assert.equal(manifest.sha256,createHash('sha256').update(installer).digest('hex'));assert.ok(manifest.notes.startsWith('- '));
+ }finally{await f.cleanup();}
 });

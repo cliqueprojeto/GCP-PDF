@@ -161,6 +161,9 @@ export async function runPublication({cwd=process.cwd(),argv=process.argv.slice(
   const sha=createHash('sha256').update(installerBytes).digest('hex');
   const notes=`## Novidades da versão ${version}\n\n${news.map(item=>`- ${item}`).join('\n')}\n\nSHA-256 GCP-PDF-Instalador-${version}-x64.exe: \`${sha}\`\n`;
   await mkdir(join(cwd,'release'),{recursive:true});await writeFile(join(cwd,'release','novidades.md'),notes);
+  // Read by the app's updater through the release links (no GitHub API limit); see src/main/updates.ts.
+  const manifest={version,notes:news.map(item=>`- ${item}`).join('\n'),published:now.toISOString(),assetName:`GCP-PDF-Instalador-${version}-x64.exe`,size:installerBytes.byteLength,sha256:sha};
+  await writeFile(join(cwd,'release','atualizacao.json'),JSON.stringify(manifest,null,1));
   if(options.ensaio){await restoreFiles(cwd,snapshots);snapshots=undefined;log(`Ensaio concluído. Arquivos de versão restaurados byte a byte; nenhum commit, tag, envio ou publicação foi feito.\n\n${notes}`);return {ok:true,ensaio:true,version};}
   phase='commit';
   // Commit the empty next-version template, avoiding a dirty worktree after publication.
@@ -177,7 +180,7 @@ export async function runPublication({cwd=process.cwd(),argv=process.argv.slice(
   committed=true;
   phase='etiqueta da versão';git(['tag','-a',`v${version}`,'-m',`GCP-PDF ${version}`],'Não consegui criar a etiqueta da versão.');
   phase='envio ao GitHub';checked('git',['push','--atomic','origin','main',`v${version}`],'O envio ao GitHub falhou.',false);
-  phase='publicação da release';checked('gh',['release','create',`v${version}`,installer,portable,'--repo',REPOSITORY,'--verify-tag','--title',`GCP-PDF ${version}`,'--notes-file','release/novidades.md'],'A publicação da release no GitHub falhou.',false);
+  phase='publicação da release';checked('gh',['release','create',`v${version}`,installer,portable,'release/atualizacao.json','--repo',REPOSITORY,'--verify-tag','--title',`GCP-PDF ${version}`,'--notes-file','release/novidades.md'],'A publicação da release no GitHub falhou.',false);
   log(`Versão ${version} publicada: https://github.com/${REPOSITORY}/releases/tag/v${version}`);
   return {ok:true,version,committed:true};
  }catch(error){
@@ -188,7 +191,7 @@ export async function runPublication({cwd=process.cwd(),argv=process.argv.slice(
    if(phase==='etiqueta da versão')recovery.push(`Confira git tag --list v${version}; se ausente, crie: git tag -a v${version} -m "GCP-PDF ${version}".`);
    if(phase==='etiqueta da versão'||phase==='envio ao GitHub')recovery.push(`Depois confira/envie somente este lançamento: git push --atomic origin main v${version}`);
    recovery.push(`Confira se a release já existe: gh release view v${version} --repo ${REPOSITORY}`);
-   recovery.push(`Se ela não existir, publique os arquivos já gerados: gh release create v${version} release/GCP-PDF-Instalador-${version}-x64.exe release/GCP-PDF-Portatil-${version}-x64.exe --repo ${REPOSITORY} --verify-tag --title "GCP-PDF ${version}" --notes-file release/novidades.md`);
+   recovery.push(`Se ela não existir, publique os arquivos já gerados: gh release create v${version} release/GCP-PDF-Instalador-${version}-x64.exe release/GCP-PDF-Portatil-${version}-x64.exe release/atualizacao.json --repo ${REPOSITORY} --verify-tag --title "GCP-PDF ${version}" --notes-file release/novidades.md`);
   }else if(snapshots){
    try{await restoreFiles(cwd,snapshots);if(staged.length){const unstaged=run('git',['restore','--staged','--',...staged]);if(!unstaged.ok)recovery.push('Os arquivos de versão foram restaurados, mas confira a área de preparação com git status antes de continuar.');}}
    catch(restoreError){recovery.push(`Não consegui concluir a restauração dos arquivos: ${restoreError.message}. Confira git status antes de continuar.`);}

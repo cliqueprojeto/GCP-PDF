@@ -6,10 +6,15 @@ import {tmpdir} from 'node:os';
 import {spawn} from 'node:child_process';
 import type {UpdateInfo,UpdatePreferences} from '../shared/types';
 
-/** Updates from the public GitHub releases of the project: the release with the highest version carries the
- * installer and its SHA-256 in the notes. No account or token is needed to check or download. */
+/** Updates from the public GitHub releases of the project. No account or token is needed to check or download.
+ * Each release carries the installer and MANIFEST (version, notes, installer name, size and SHA-256), read through
+ * the github.com release links. The REST API is only the fallback for releases without a manifest (up to 0.3.6): its
+ * anonymous limit (60 requests an hour) is per IP address, and Brazilian providers often share one IP among many
+ * customers (CGNAT), so it can be exhausted by others. */
 export const UPDATE_REPOSITORY='cliqueprojeto/GCP-PDF';
-const API='https://api.github.com';
+export const MANIFEST='atualizacao.json';
+const API='https://api.github.com',WEB=`https://github.com/${UPDATE_REPOSITORY}`;
+const INSTALLER=/^GCP-PDF-Instalador-[\w.-]+-x64\.exe$/i;
 const INTERVAL:Record<UpdatePreferences['frequency'],number>={never:Infinity,startup:0,daily:86_400_000,weekly:7*86_400_000,biweekly:14*86_400_000,monthly:30*86_400_000};
 
 export function due(prefs:UpdatePreferences){return prefs.frequency!=='never'&&Date.now()-(prefs.lastCheck??0)>=INTERVAL[prefs.frequency];}
@@ -22,8 +27,24 @@ function explain(status:number){
  if(status===403||status===429)return 'O GitHub limitou as consultas por enquanto. Tente novamente mais tarde.';
  return `O GitHub respondeu com erro (${status}). Tente novamente mais tarde.`;
 }
+/** The latest release through github.com links: null when already up to date, undefined when the release has
+ * no manifest (or the site could not be read), so the API is asked instead. */
+async function fromManifest():Promise<UpdateInfo|null|undefined>{
+ const options={headers:{'User-Agent':`GCP-PDF/${app.getVersion()}`},redirect:'follow' as const,signal:AbortSignal.timeout(20_000)};
+ const latest=await fetch(`${WEB}/releases/latest`,{...options,method:'HEAD'});
+ const tag=/\/releases\/tag\/([^/?#]+)$/.exec(new URL(latest.url).pathname)?.[1];
+ if(!latest.ok||!tag)return undefined;
+ if(!newer(decodeURIComponent(tag),app.getVersion()))return null;
+ const response=await fetch(`${WEB}/releases/download/${tag}/${MANIFEST}`,options);
+ if(!response.ok)return undefined;
+ const m=await response.json() as Record<string,unknown>;
+ if(typeof m.version!=='string'||typeof m.assetName!=='string'||!INSTALLER.test(m.assetName)||typeof m.sha256!=='string'||!/^[0-9a-f]{64}$/i.test(m.sha256)||!Number.isSafeInteger(m.size))throw new Error('As informações da nova versão publicadas no GitHub estão incompletas. Tente novamente mais tarde.');
+ return {version:m.version.replace(/^v/i,''),current:app.getVersion(),notes:typeof m.notes==='string'?m.notes:'',published:typeof m.published==='string'?m.published:'',size:m.size as number,assetUrl:`${WEB}/releases/download/${tag}/${encodeURIComponent(m.assetName)}`,assetName:m.assetName,sha256:m.sha256.toLowerCase()};
+}
 /** Latest release, or null when the installed version is already the newest. */
 export async function checkForUpdate():Promise<UpdateInfo|null>{
+ const viaSite=await fromManifest().catch((error:unknown)=>{if(error instanceof Error&&error.message.startsWith('As informações'))throw error;return undefined;});
+ if(viaSite!==undefined)return viaSite;
  let response:Response;
  try{response=await fetch(`${API}/repos/${UPDATE_REPOSITORY}/releases?per_page=20`,{headers:headers(),redirect:'follow',signal:AbortSignal.timeout(20_000)});}
  catch{throw new Error('Sem conexão com o GitHub para verificar atualizações. Verifique a internet.');}

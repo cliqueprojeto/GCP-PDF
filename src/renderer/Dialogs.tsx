@@ -658,11 +658,11 @@ export function SettingsDialog({
                 setConfig({
                   ...config,
                   provider: e.target.value as AiConfig["provider"],
-                  model: "",
+                  model: e.target.value === "gemini" ? "gemini-3.5-flash-lite" : "",
                   hasKey: false,
                   baseUrl:
                     e.target.value === "gemini"
-                      ? "https://generativelanguage.googleapis.com"
+                      ? "https://generativelanguage.googleapis.com/v1beta"
                       : e.target.value === "openai"
                         ? "https://api.openai.com/v1"
                         : "",
@@ -689,11 +689,11 @@ export function SettingsDialog({
           <div className="button-row ai-model-tools">
             <button className="button secondary" disabled={busy} onClick={() => void aiTool(async (input) => { const list = await window.gcp.listAiModels(input); setModels(list); setMessage(list.length ? `${list.length} modelos encontrados. Escolha um na lista do campo Modelo.` : "A chave não tem modelos de texto disponíveis."); })}>Ver modelos</button>
             <button className="button secondary" disabled={busy || !config.model.trim()} onClick={() => void aiTool(async (input) => { const r = await window.gcp.probeAiModel({ ...input, model: config.model }); if (r.ok) setMessage(`O modelo ${config.model} respondeu: está funcionando com a sua chave.`); else setError(r.message ?? "O modelo não respondeu."); })}>Testar modelo</button>
-            <button className="button primary" disabled={busy} title="Testa os modelos da sua chave, do mais leve ao mais completo, e escolhe o primeiro que responder" onClick={() => void aiTool(async (input) => {
+            <button className="button primary" disabled={busy} title="Chave com faturamento: escolhe o modelo mais completo. Chave gratuita: testa do mais leve ao mais completo e escolhe o primeiro que responder" onClick={() => void aiTool(async (input) => {
               const r = await window.gcp.findFreeAiModel(input);
-              if (r.model) { const saved = await window.gcp.saveAiConfig({ ...config, model: r.model, key: key || undefined }); setConfig(saved); setKey(""); setMessage(`Pronto: o modelo ${r.model} funciona com a sua chave e já foi salvo.`); }
+              if (r.model) { const saved = await window.gcp.saveAiConfig({ ...config, model: r.model, key: key || undefined }); setConfig(saved); setKey(""); setMessage(r.paid ? `Sua chave tem faturamento ativo: escolhemos o modelo mais completo, ${r.model}, e ele já foi salvo.` : `Pronto: o modelo ${r.model} funciona com a sua chave gratuita e já foi salvo.`); }
               else setError(`Nenhum modelo respondeu com esta chave agora. ${r.tried[0]?.message ?? ""} Se a cota diária gratuita acabou, tente amanhã; ou ative o faturamento no Google AI Studio.`);
-            })}>Encontrar modelo gratuito</button>
+            })}>Encontrar melhor modelo</button>
           </div>
           <label className="field">
             Chave de API

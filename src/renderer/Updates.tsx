@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { RefreshCw, Download, KeyRound, LoaderCircle, CheckCircle2, ExternalLink, Sparkles } from "lucide-react";
+import { RefreshCw, Download, LoaderCircle, CheckCircle2, Sparkles } from "lucide-react";
 import type { UpdateInfo, UpdateStatus } from "../shared/types";
 import { Modal } from "./Dialogs";
 import { Markdown } from "./Markdown";
@@ -7,9 +7,9 @@ import { Markdown } from "./Markdown";
 const FREQUENCIES: [UpdateStatus["frequency"], string][] = [["daily", "Todos os dias"], ["weekly", "A cada semana"], ["biweekly", "A cada duas semanas"], ["monthly", "A cada mês"], ["startup", "Sempre que abrir o programa"], ["never", "Nunca"]];
 const when = (t?: number) => (t ? new Date(t).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "nunca");
 
-/** Configurações › Atualizações (like PDFelement's "Atualizar"): how often, check now, token for the private repository. */
+/** Configurações › Atualizações (like PDFelement's "Atualizar"): how often, and check now. */
 export function UpdateSettings({ onFound }: { onFound: (info: UpdateInfo) => void }) {
-  const [status, setStatus] = useState<UpdateStatus | null>(null), [token, setToken] = useState(""), [busy, setBusy] = useState(false), [message, setMessage] = useState(""), [error, setError] = useState("");
+  const [status, setStatus] = useState<UpdateStatus | null>(null), [busy, setBusy] = useState(false), [message, setMessage] = useState(""), [error, setError] = useState("");
   useEffect(() => { void window.gcp.getUpdateStatus().then(setStatus).catch((e) => setError(String(e))); }, []);
   const save = async (input: Parameters<typeof window.gcp.saveUpdateSettings>[0], done?: string) => { setError(""); try { setStatus(await window.gcp.saveUpdateSettings(input)); if (done) setMessage(done); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } };
   const check = async () => {
@@ -30,14 +30,6 @@ export function UpdateSettings({ onFound }: { onFound: (info: UpdateInfo) => voi
       <div className="button-row">
         <button className="button secondary" disabled={busy} onClick={() => void check()}>{busy ? <LoaderCircle size={15} className="spin" /> : <RefreshCw size={15} />} Verificar agora</button>
       </div>
-      <label className="field"><span><KeyRound size={13} /> Token de acesso do GitHub {status.hasToken ? <em className="ok-tag">salvo</em> : <em className="warn-tag">necessário para repositório privado</em>}</span>
-        <div className="field-row">
-          <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder={status.hasToken ? "•••••••• (salvo com segurança)" : "github_pat_…"} autoComplete="off" />
-          <button className="button secondary" disabled={!token.trim()} onClick={() => void save({ token }, "Token salvo no cofre do Windows.").then(() => setToken(""))}>Salvar</button>
-          {status.hasToken && <button className="text-button" onClick={() => void save({ clearToken: true }, "Token removido.")}>Remover</button>}
-        </div>
-      </label>
-      <p className="compress-note">Crie no GitHub um token “fine-grained” só de leitura (Contents: Read-only) para o repositório {status.repository}. Ele fica criptografado neste computador e só é enviado ao GitHub. <button className="text-button" onClick={() => void window.gcp.openExternal("https://github.com/settings/personal-access-tokens/new")}>Criar token <ExternalLink size={12} /></button></p>
       {message && <p className="success-note"><CheckCircle2 size={14} /> {message}</p>}
       {error && <p className="quick-error">{error}</p>}
     </section>

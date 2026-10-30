@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { listModels, probeModel, freeCandidates, requestAnswer, FREE_TIER_BLOCKED } from '../src/main/ai';
+import { listModels, probeModel, freeCandidates, paidCandidate, requestAnswer, FREE_TIER_BLOCKED } from '../src/main/ai';
 
 const gemini = { provider: 'gemini' as const, baseUrl: 'https://generativelanguage.googleapis.com/v1beta' };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -29,4 +29,10 @@ test('a model with zero free quota is reported as such, not as "daily requests e
 test('free-key search tries light, stable models first', () => {
   const order = freeCandidates(['modelo-pro', 'modelo-flash-preview', 'modelo-flash', 'modelo-flash-lite'].map((id) => ({ id, label: id }))).map((m) => m.id);
   assert.deepEqual(order, ['modelo-flash-lite', 'modelo-flash', 'modelo-pro', 'modelo-flash-preview']);
+});
+
+test('the billing check uses the most complete stable model, never a preview or a light one', () => {
+  const pick = paidCandidate(['modelo-2.5-pro', 'modelo-3.0-pro-preview', 'modelo-3.0-pro', 'modelo-3.0-flash-lite', 'modelo-3.0-flash'].map((id) => ({ id, label: id })));
+  assert.equal(pick?.id, 'modelo-3.0-pro');
+  assert.equal(paidCandidate([{ id: 'modelo-flash', label: 'x' }]), undefined);
 });

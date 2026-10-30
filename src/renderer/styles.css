@@ -98,17 +98,26 @@ button {
     box-shadow 0.13s,
     transform 0.13s;
 }
+/* Wide, easy-to-grab scroll bars everywhere (the style of the page thumbnails). */
 ::-webkit-scrollbar {
-  width: 7px;
-  height: 7px;
-}
-::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--muted) 33%, transparent);
-  border: 2px solid transparent;
-  border-radius: 8px;
-  background-clip: padding-box;
+  width: 14px;
+  height: 14px;
 }
 ::-webkit-scrollbar-track {
+  background: var(--purple-soft);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #a78bfa;
+  border: 3px solid var(--purple-soft);
+  border-radius: 8px;
+  min-height: 48px;
+  min-width: 48px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #7c3aed;
+}
+::-webkit-scrollbar-corner {
   background: transparent;
 }
 .application {

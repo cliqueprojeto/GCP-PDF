@@ -566,11 +566,6 @@
 /* Apoie o projeto: coração preenchido em vermelho para destacar. */
 .heart-filled { color: #e11d48; fill: #e11d48; }
 /* Miniaturas: barra de rolagem larga e visível, fácil de pegar. */
-.thumbnails-scroll { scrollbar-width: auto; scrollbar-color: #a78bfa var(--purple-soft); }
-.thumbnails-scroll::-webkit-scrollbar { width: 14px; }
-.thumbnails-scroll::-webkit-scrollbar-track { background: var(--purple-soft); border-radius: 8px; }
-.thumbnails-scroll::-webkit-scrollbar-thumb { background: #a78bfa; border-radius: 8px; border: 3px solid var(--purple-soft); min-height: 48px; }
-.thumbnails-scroll::-webkit-scrollbar-thumb:hover { background: #7c3aed; }
 .note-bubble .note-menu-list { position: fixed; transform: none; }
 .page-sheet > .button-layer { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
 .button-layer .form-button { position: absolute; pointer-events: auto; background: transparent; border: 0; border-radius: 3px; cursor: pointer; transition: background-color .1s, box-shadow .1s, transform .05s; }

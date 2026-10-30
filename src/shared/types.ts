@@ -42,9 +42,9 @@ export type FieldFormat={kind:'mask'|'date';mask:string}|{kind:'number';decimals
 /** A bookmark (outline item): `path` is its 1-based position in the tree; `page` the document page index (0-based) or -1 when it points elsewhere. */
 export interface Bookmark {path:number[];title:string;page:number;top:number|null;open:boolean;bold?:boolean;children:Bookmark[]}
 export type BookmarkEdit={type:'add';title:string;page:number;top?:number;parent?:number[];position?:number}|{type:'rename';path:number[];title:string}|{type:'delete';path:number[]}|{type:'move';path:number[];parent?:number[];position?:number}|{type:'set-page';path:number[];page:number;top?:number}|{type:'auto'}|{type:'style';path:number[];bold:boolean};
-/** How often to look for a new version on GitHub, and the user's (encrypted) access token for the private repository. */
-export interface UpdatePreferences {frequency:'never'|'startup'|'daily'|'weekly'|'biweekly'|'monthly';lastCheck?:number;token?:string}
-export interface UpdateStatus {frequency:UpdatePreferences['frequency'];lastCheck?:number;hasToken:boolean;repository:string;version:string}
+/** How often to look for a new version on GitHub. */
+export interface UpdatePreferences {frequency:'never'|'startup'|'daily'|'weekly'|'biweekly'|'monthly';lastCheck?:number}
+export interface UpdateStatus {frequency:UpdatePreferences['frequency'];lastCheck?:number;repository:string;version:string}
 export interface UpdateInfo {version:string;current:string;notes:string;published:string;size:number;assetUrl:string;assetName:string;sha256?:string}
 export interface WorkspaceState {windowId:number;documents:DocumentInfo[];activeDocumentId?:string;theme:'light'|'dark';quickActions:boolean}
 /** An existing paragraph or image of a page, in the page's unrotated top-left space. */
@@ -74,10 +74,10 @@ export interface GcpBridge {
  /** Models the key can use; `probe` tests one; `findFreeModel` tries light models until one answers. */
  listAiModels(input:{provider:AiConfig['provider'];baseUrl:string;key?:string}):Promise<{id:string;label:string}[]>;
  probeAiModel(input:{provider:AiConfig['provider'];baseUrl:string;model:string;key?:string}):Promise<{ok:boolean;message?:string;freeTierBlocked?:boolean}>;
- findFreeAiModel(input:{provider:AiConfig['provider'];baseUrl:string;key?:string}):Promise<{model:string|null;tried:{id:string;message:string}[]}>;
+ findFreeAiModel(input:{provider:AiConfig['provider'];baseUrl:string;key?:string}):Promise<{model:string|null;paid:boolean;tried:{id:string;message:string}[]}>;
  /** Novidades of the installed version, once after it changes (null otherwise or on a first install). */
  whatsNew():Promise<{versao:string;data:string;itens:string[]}|null>;
- saveUpdateSettings(input:{frequency?:UpdatePreferences['frequency'];token?:string;clearToken?:boolean}):Promise<UpdateStatus>;
+ saveUpdateSettings(input:{frequency?:UpdatePreferences['frequency']}):Promise<UpdateStatus>;
  checkUpdates():Promise<UpdateInfo|null>;
  pendingUpdate():Promise<UpdateInfo|null>;
  installUpdate():Promise<void>;

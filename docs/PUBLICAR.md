@@ -1,6 +1,6 @@
 # Publicar uma versão do GCP-PDF
 
-A publicação atualiza o código e os instaladores no repositório privado `cliqueprojeto/GCP-PDF`. Quem usa o aplicativo recebe o número da versão e as novidades pelo atualizador.
+A publicação atualiza o código e os instaladores no repositório público `cliqueprojeto/GCP-PDF`. Quem usa o aplicativo recebe o número da versão e as novidades pelo atualizador.
 
 ## Caminho mais simples
 

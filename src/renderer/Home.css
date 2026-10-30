@@ -20,11 +20,11 @@
   );
   padding: 35px max(28px, calc((100% - 1240px)/2)) 20px;
 }
-/* Same columns as .home-main-grid, so the side card lines up with the column below it. */
+/* The side card sits in the middle of the space beside the title, not pushed to the window's edge. */
 .home-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 250px;
-  gap: 28px;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 40px;
   align-items: center;
   padding: 8px 0 30px;
 }
@@ -76,7 +76,9 @@
   margin-left: 8px;
 }
 .home-side-card {
-  min-width: 0;
+  width: 300px;
+  max-width: 100%;
+  justify-self: center;
   padding: 18px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -524,9 +526,8 @@
   .home-hero h1 {
     font-size: 40px;
   }
-  .home-hero {
-    grid-template-columns: minmax(0, 1fr) 275px;
-    gap: 34px;
+  .home-side-card {
+    width: 325px;
   }
   .home-main-grid {
     grid-template-columns: minmax(0, 1fr) 275px;
@@ -541,13 +542,13 @@
     padding: 25px;
   }
   .home-hero {
-    grid-template-columns: minmax(0, 1fr) 220px;
-    gap: 17px;
+    gap: 20px;
   }
   .home-hero h1 {
     font-size: 29px;
   }
   .home-side-card {
+    width: 260px;
     padding: 15px;
   }
   .home-main-grid {

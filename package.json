@@ -4,7 +4,7 @@
   "description": "Editor e leitor de PDFs local em português brasileiro",
   "author": "Bruno Albertini | Gestão Cultural Pro",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "GPL-3.0-or-later",
   "main": "dist/main/index.cjs",
   "scripts": {
     "dev": "node scripts/dev.mjs",

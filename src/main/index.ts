@@ -11,9 +11,9 @@ import {convertPdf,extractDocumentText,renderPdfPage,renderPdfPages} from './con
 import {readMetadata,documentStats} from './review';
 import {fieldFormats,imageFields} from './field-formats';
 import {headings} from './review';
-import {UPDATE_REPOSITORY,checkForUpdate,due,encryptToken,installUpdate} from './updates';
+import {UPDATE_REPOSITORY,checkForUpdate,due,installUpdate} from './updates';
 import {addOcrTextLayer,combineSelections} from './pdf-engine';
-import {requestAnswer,listModels,probeModel,freeCandidates} from './ai';
+import {requestAnswer,listModels,probeModel,freeCandidates,paidCandidate} from './ai';
 import {PdfCraftSession} from './pdfcraft-session';
 import {privateDirectory} from './pdfcraft-sidecar';
 import {signatureList,signatureSummary,validateNewSignature,sameFilePath,refusesSignedOverwrite} from './signatures';
@@ -200,21 +200,19 @@ function registerIpc(){
    if(!seen)return null; // first install: nothing "new" to announce
    try{const list=JSON.parse(await readFile(join(assets(),'novidades.json'),'utf8')) as {versao:string;data:string;itens:string[]}[];return list.find(v=>v.versao===version)??null;}catch{return null;}
   },
-  saveUpdateSettings:async(_view,input:{frequency?:string;token?:string;clearToken?:boolean})=>{
+  saveUpdateSettings:async(_view,input:{frequency?:string})=>{
    const frequencies=['never','startup','daily','weekly','biweekly','monthly'];
    if(input?.frequency!==undefined&&!frequencies.includes(input.frequency))throw new Error('Frequência de verificação inválida.');
    const patch:Partial<UpdatePreferences>={};if(input.frequency)patch.frequency=input.frequency as UpdatePreferences['frequency'];
-   if(typeof input.token==='string'&&input.token.trim()){if(!/^(gh[pousr]_|github_pat_)[A-Za-z0-9_]{20,}$/.test(input.token.trim()))throw new Error('Isso não parece um token do GitHub (começa com github_pat_ ou ghp_).');patch.token=await encryptToken(input.token);}
-   if(input.clearToken)patch.token=undefined;
    await settings.setUpdates(patch);return updateStatus();
   },
-  checkUpdates:async view=>{action(view,'progress:Verificando atualizações no GitHub…');try{pendingUpdate=await checkForUpdate(settings.updates);await settings.setUpdates({lastCheck:Date.now()});return pendingUpdate;}finally{action(view,'progress:');}},
+  checkUpdates:async view=>{action(view,'progress:Verificando atualizações no GitHub…');try{pendingUpdate=await checkForUpdate();await settings.setUpdates({lastCheck:Date.now()});return pendingUpdate;}finally{action(view,'progress:');}},
   pendingUpdate:()=>pendingUpdate,
   installUpdate:async view=>{
    if(!pendingUpdate)throw new Error('Nenhuma atualização pendente. Verifique novamente.');
    if(!app.isPackaged)throw new Error('A atualização automática só funciona no aplicativo instalado.');
    for(const v of views.values())for(const id of v.ids){const d=store.get(id);if(d.revision!==d.savedRevision)throw new Error('Salve ou feche os documentos com alterações antes de atualizar.');}
-   try{await installUpdate(pendingUpdate,settings.updates,(done,total)=>action(view,`progress:Baixando a versão ${pendingUpdate!.version}: ${Math.round(done/1048576)} de ${Math.max(1,Math.round(total/1048576))} MB…`));}
+   try{await installUpdate(pendingUpdate,(done,total)=>action(view,`progress:Baixando a versão ${pendingUpdate!.version}: ${Math.round(done/1048576)} de ${Math.max(1,Math.round(total/1048576))} MB…`));}
    finally{action(view,'progress:');}
    for(const v of views.values())v.allowClose=true;
   },
@@ -550,16 +548,23 @@ function registerIpc(){
   probeAiModel:async(_view,input)=>{const {config,key}=await aiTarget(input);if(typeof input?.model!=='string'||!input.model.trim())throw new Error('Informe o modelo.');return probeModel({...config,model:input.model.trim()},key);},
   findFreeAiModel:async(view,input)=>{
    const {config,key}=await aiTarget(input),tried:{id:string;message:string}[]=[];
-   const candidates=freeCandidates(await listModels(config,key)).slice(0,10);
+   const models=await listModels(config,key),best=paidCandidate(models),candidates=freeCandidates(models.filter(m=>m!==best)).slice(0,10);
    try{
+    // A key with billing gets the most complete model; a free key gets the lightest one that answers.
+    if(best){
+     action(view,`progress:Verificando se a chave tem faturamento: ${best.id}…`);
+     const result=await probeModel({...config,model:best.id},key);
+     if(result.ok)return {model:best.id,paid:true,tried};
+     tried.push({id:best.id,message:result.message});
+    }
     for(const [n,m] of candidates.entries()){
      action(view,`progress:Testando modelos de IA ${n+1} de ${candidates.length}: ${m.id}…`);
      const result=await probeModel({...config,model:m.id},key);
-     if(result.ok)return {model:m.id,tried};
+     if(result.ok)return {model:m.id,paid:false,tried};
      tried.push({id:m.id,message:result.message});
     }
    }finally{action(view,'progress:');}
-   return {model:null,tried};
+   return {model:null,paid:false,tried};
   },
   getAiConfig:()=>settings.config(),saveAiConfig:(_view,input)=>settings.saveAi(input),
   getAiUsage:()=>settings.aiUsage(),
@@ -687,11 +692,11 @@ async function trustWindowsRoots(){
  await engine.trustBundle(bundle);
 }
 let pendingUpdate:import('../shared/types').UpdateInfo|null=null;
-function updateStatus():UpdateStatus{const u=settings.updates;return {frequency:u.frequency,lastCheck:u.lastCheck,hasToken:!!u.token,repository:UPDATE_REPOSITORY,version:app.getVersion()};}
+function updateStatus():UpdateStatus{const u=settings.updates;return {frequency:u.frequency,lastCheck:u.lastCheck,repository:UPDATE_REPOSITORY,version:app.getVersion()};}
 /** Background check on start when due; a found version is offered in the open window. */
 async function backgroundUpdateCheck(){
  if(!app.isPackaged||!due(settings.updates))return;
- try{pendingUpdate=await checkForUpdate(settings.updates);await settings.setUpdates({lastCheck:Date.now()});if(pendingUpdate){const view=mainView();action(view,'update-available');}}catch{/* silent: a manual check reports the reason */}
+ try{pendingUpdate=await checkForUpdate();await settings.setUpdates({lastCheck:Date.now()});if(pendingUpdate){const view=mainView();action(view,'update-available');}}catch{/* silent: a manual check reports the reason */}
 }
 /** Provider, endpoint and key for model listing/testing: the typed key, or the one saved for that endpoint. */
 async function aiTarget(input:{provider?:string;baseUrl?:string;key?:string}){

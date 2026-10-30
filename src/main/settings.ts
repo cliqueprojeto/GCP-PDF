@@ -4,10 +4,12 @@ import {join,dirname} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import type {Signature,AiConfig,UpdatePreferences} from '../shared/types';
 import {usageToday,recordUsage,type AiUsage} from '../shared/ai-usage';
+/** Works on a free Google AI Studio key; "Encontrar melhor modelo" upgrades it when the key has billing. */
+export const DEFAULT_GEMINI_MODEL='gemini-3.5-flash-lite';
 export async function atomicWrite(path:string,bytes:Uint8Array|string){const temp=path+'.gcp-'+randomUUID()+'.tmp';try{await writeFile(temp,bytes,{flag:'wx',mode:0o600});await rename(temp,path);}catch(error){await unlink(temp).catch(()=>{});throw error;}}
 type Preferences={theme:'light'|'dark';signatures:Signature[];ai:Omit<AiConfig,'hasKey'>;keys:Record<string,string>;quickActions?:boolean;updates?:UpdatePreferences;seenVersion?:string;aiUsage?:AiUsage};
 export class Settings {
- private value:Preferences={theme:'light',signatures:[],ai:{provider:'gemini',model:'gemini-3.8-flash',baseUrl:'https://generativelanguage.googleapis.com/v1beta'},keys:{}};
+ private value:Preferences={theme:'light',signatures:[],ai:{provider:'gemini',model:DEFAULT_GEMINI_MODEL,baseUrl:'https://generativelanguage.googleapis.com/v1beta'},keys:{}};
  private queue:Promise<unknown>=Promise.resolve();
  private file='';
  async init(){this.file=join(app.getPath('userData'),'preferences.json');await mkdir(dirname(this.file),{recursive:true});try{const parsed=JSON.parse(await readFile(this.file,'utf8'));if(parsed&&Array.isArray(parsed.signatures)&&parsed.ai&&parsed.keys)this.value={...this.value,...parsed};}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT'){await rename(this.file,this.file+'.invalid-'+Date.now()).catch(()=>{});}}}
@@ -17,8 +19,9 @@ export class Settings {
  async recordAiUsage(status:number){this.value.aiUsage=recordUsage(this.value.aiUsage,status);await this.persist();}
  get seenVersion(){return this.value.seenVersion;}
  async setSeenVersion(version:string){this.value.seenVersion=version;await this.persist();}
- get updates():UpdatePreferences{return {frequency:'weekly',...this.value.updates};}
- async setUpdates(patch:Partial<UpdatePreferences>){const next={...this.updates,...patch};if(patch.token===undefined&&'token' in patch)delete next.token;this.value.updates=next;await this.persist();}
+ // A token saved by versions up to 0.3.6 (private repository) is no longer used and is dropped on the next save.
+ get updates():UpdatePreferences{const {frequency='weekly',lastCheck}=(this.value.updates??{}) as UpdatePreferences;return lastCheck===undefined?{frequency}:{frequency,lastCheck};}
+ async setUpdates(patch:Partial<UpdatePreferences>){this.value.updates={...this.updates,...patch};await this.persist();}
  /** Explorer quick actions are on unless the user removed them. */
  get quickActions(){return this.value.quickActions!==false;}
  async setQuickActions(enabled:boolean){this.value.quickActions=enabled;await this.persist();}

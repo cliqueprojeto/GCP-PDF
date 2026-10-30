@@ -59,6 +59,11 @@ export async function probeModel(config:Omit<AiConfig,'hasKey'>,key:string,fetch
  if(response.status===401||response.status===403)return {ok:false,message:'A chave não tem permissão para este modelo.',freeTierBlocked:false};
  return {ok:false,message:`O provedor recusou o teste (código ${response.status}).`,freeTierBlocked:false};
 }
+/** The most complete stable model in the list: if it answers, the key has billing (free keys get no quota for it). */
+export function paidCandidate(models:AiModel[]):AiModel|undefined{
+ const stable=models.filter(m=>/pro/i.test(m.id)&&!/lite|preview|exp|experimental|tts|image|audio|live/i.test(m.id));
+ return stable.sort((a,b)=>b.id.localeCompare(a.id,undefined,{numeric:true}))[0];
+}
 /** Order to try when looking for a model that works on a free key: light and fast models first, previews last. */
 export function freeCandidates(models:AiModel[]){
  const score=(id:string)=>(/flash-lite|lite/i.test(id)?0:/flash/i.test(id)?1:/gemma/i.test(id)?3:/pro/i.test(id)?4:2)+(/preview|exp|experimental/i.test(id)?5:0)+(/latest/i.test(id)?-0.5:0);

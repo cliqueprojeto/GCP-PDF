@@ -6,6 +6,16 @@ O GCP-PDF reúne num só programa o que normalmente exige vários: ler, comentar
 
 Desenvolvido por **Bruno Albertini | [Gestão Cultural Pro](https://gestaoculturalpro.com.br/)**.
 
+![Página inicial do GCP-PDF](docs/screenshots/01-inicio.png)
+
+## Telas
+
+| | |
+|---|---|
+| ![Edição do texto e das imagens originais](docs/screenshots/02-editar.png)<br>**Editar** — texto e imagens originais da página | ![Comentários](docs/screenshots/03-comentarios.png)<br>**Comentário** — notas, destaques, carimbos, formas e medidas |
+| ![Organizar páginas](docs/screenshots/04-organizar.png)<br>**Organizar** — páginas em grade, girar, inserir, extrair e dividir | ![Formulários](docs/screenshots/05-formularios.png)<br>**Formulário** — criação de campos, reconhecimento e exportação |
+| ![Converter](docs/screenshots/06-converter.png)<br>**Converter** — Word, Excel, PowerPoint, imagens e OCR | ![Assinar](docs/screenshots/07-assinar.png)<br>**Assinar** — assinaturas, certificado digital ICP-Brasil e verificação |
+
 ## Baixar
 
 Baixe a versão mais recente na página de [versões publicadas](https://github.com/cliqueprojeto/GCP-PDF/releases/latest):

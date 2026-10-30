@@ -54,7 +54,7 @@ jobs:
         shell: bash
         run: |
           if [ "$RUNNER_OS" = Linux ]; then
-            xvfb-run -a node scripts/smoke-form-lifecycle.mjs
+            dbus-run-session -- xvfb-run -a node scripts/smoke-form-lifecycle.mjs
           else
             node scripts/smoke-form-lifecycle.mjs
           fi
@@ -66,15 +66,29 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get install -y ./release/*.deb
-          xvfb-run -a npm run test:packaged -- /opt/GCP-PDF/gcp-pdf deb
+          dbus-run-session -- xvfb-run -a npm run test:packaged -- /opt/GCP-PDF/gcp-pdf deb
           mkdir -p .cache/appimage .cache/rpm
           APPIMAGE=$(realpath release/*.AppImage)
           cd .cache/appimage
           "$APPIMAGE" --appimage-extract > /dev/null
           cd ../..
-          xvfb-run -a npm run test:packaged -- .cache/appimage/squashfs-root/gcp-pdf AppImage
+          dbus-run-session -- xvfb-run -a npm run test:packaged -- .cache/appimage/squashfs-root/gcp-pdf AppImage
           bsdtar -xf release/*.rpm -C .cache/rpm
-          xvfb-run -a npm run test:packaged -- .cache/rpm/opt/GCP-PDF/gcp-pdf rpm
+          dbus-run-session -- xvfb-run -a npm run test:packaged -- .cache/rpm/opt/GCP-PDF/gcp-pdf rpm
+      - name: Diagnóstico de falha de inicialização Linux
+        if: failure() && runner.os == 'Linux'
+        shell: bash
+        run: |
+          mkdir -p evidence/packaged
+          if ! command -v gdb >/dev/null; then sudo apt-get install -y gdb; fi
+          export GCP_PDF_TEST_MODE=1
+          export GCP_PDF_DATA_DIR="$PWD/.cache/linux-diagnostic-profile"
+          export ELECTRON_ENABLE_LOGGING=1
+          if [ -x /opt/GCP-PDF/gcp-pdf ]; then
+            timeout -k 5s 25s dbus-run-session -- xvfb-run -a gdb --batch -ex run -ex 'thread apply all bt' --args /opt/GCP-PDF/gcp-pdf --no-sandbox > evidence/packaged/linux-native-backtrace.log 2>&1 || true
+          else
+            timeout -k 5s 25s dbus-run-session -- xvfb-run -a gdb --batch -ex run -ex 'thread apply all bt' --args "$(node -p "require('electron')")" --no-sandbox . > evidence/packaged/linux-native-backtrace.log 2>&1 || true
+          fi
       - name: Montar DMG, copiar aplicativo e testar
         if: runner.os == 'macOS'
         shell: bash

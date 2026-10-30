@@ -1,5 +1,17 @@
 # Histórico de versões do GCP-PDF
 
+## 0.5.0 — 30/10/2026
+
+- Comentários não cobrem mais o texto: o ícone de um comentário fica na margem, ao lado do trecho comentado, inclusive nos comentários vindos de outros leitores.
+- Os ícones de comentário podem ser arrastados para qualquer lugar da página; clicar sem arrastar abre o balão.
+- O balão de um comentário aberto também pode ser movido pela faixa do topo, para não atrapalhar a leitura.
+- Novo painel Propriedades encaixado à direita, no lugar da barra de formatação: aparece sozinho ao escolher uma ferramenta ou selecionar um objeto e pode ser recolhido no botão da barra direita.
+- A leitura ficou estável: escolher ferramentas não empurra mais o documento para baixo.
+- Localizar ferramentas, o link Gestão Cultural Pro, a situação do arquivo (Salvo/Não salvo) e a navegação de páginas foram para a barra do logo, liberando mais espaço para o documento.
+- Arraste uma aba para baixo, sobre o documento, para abri-la em uma nova janela; na barra de abas o arraste continua apenas reorganizando.
+- Trocar de guia na faixa de opções volta para a ferramenta Selecionar, evitando ferramentas ativas por engano.
+
+
 ## 0.4.1 — 30/10/2026
 
 - Destaques, sublinhados, tachados, desenhos e formas padrão são salvos como anotações nativas do PDF, preservadas ao reabrir e reconhecidas por outros leitores.

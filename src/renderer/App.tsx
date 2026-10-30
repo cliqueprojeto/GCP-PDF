@@ -5,7 +5,7 @@ import {
   FileText, FolderOpen, Plus, X, Settings, Sun, Moon, ChevronLeft, ChevronRight, RotateCw, RotateCcw, Trash2, PanelLeftClose,
   Search, Check, Sparkles, Send, Heart, Layers3, Files, LoaderCircle, GripVertical, MoveUpRight, Signature as SignatureIcon,
   MessageSquare, ShieldCheck, SplitSquareHorizontal, PenLine, ArrowUpRight, Copy, Maximize2, Minimize2, FilePlus2, HelpCircle, ZoomIn, ZoomOut, Scissors, ClipboardPaste, FileOutput, Replace,
-  ArrowDownRight, Lightbulb, Bookmark as BookmarkIcon, Pin, ChevronsUp, ChevronsDown, EyeOff } from "lucide-react";
+  ArrowDownRight, Lightbulb, Bookmark as BookmarkIcon, Pin, ChevronsUp, ChevronsDown, EyeOff, SlidersHorizontal, PanelRightClose } from "lucide-react";
 import type { AppPrompt, PageObject, PdfOperation, Signature, WorkspaceState, ExportFormat, ExportOptions } from "../shared/types";
 import { ExportDialog, Modal, PromptDialog, SettingsDialog, SignatureDialog, SupportDialog, SITE } from "./Dialogs";
 import { Viewer, PageThumb, type ViewerHandle } from "./Viewer";
@@ -19,7 +19,7 @@ import { BookmarksPanel } from "./Bookmarks";
 import { UpdateDialog, WhatsNewDialog } from "./Updates";
 import { CommentsPanel, commentAuthor } from "./Comments";
 import { CompareView, PropertiesDialog, StatsDialog } from "./Review";
-import { Ribbon, TABS, ZoomBox, type Tab, type RibbonActions, type PageLayout, type ReadingFilter } from "./Ribbon";
+import { Ribbon, TABS, ZoomBox, PropertyBar, propertiesContext, type Tab, type RibbonActions, type PageLayout, type ReadingFilter } from "./Ribbon";
 import {resolveShortcut,readShortcuts,SHORTCUT_COMMANDS} from "../shared/shortcuts";
 import { AiUsagePanel } from "./AiUsage";
 import { Markdown } from "./Markdown";
@@ -229,6 +229,15 @@ export default function App() {
   }, [active?.id, active?.revision, perform]);
   const selectedPages = [...selection].sort((a, b) => a - b), docDirty = !!active && active.revision !== active.savedRevision;
   const selectionObjects = useMemo(() => (active ? active.objects.filter((o) => selectedObjects.has(o.id)) : []), [active, selectedObjects]);
+  // Dismissal belongs only to the current resource, never to other tools or documents.
+  const propertiesResource = propertiesContext({ tool, selection: selectionObjects, source: sourceSelection });
+  const propertiesKey = active && propertiesResource ? JSON.stringify([active.id, tab, propertiesResource]) : null;
+  const propertiesAvailable = !showHome && !!active && !reading && !modal && !imageEdit && !fieldProps && tab !== "Organizar" && propertiesKey !== null;
+  const [closedPropertiesKey, setClosedPropertiesKey] = useState<string | null>(null);
+  const propertiesClosed = propertiesKey !== null && closedPropertiesKey === propertiesKey;
+  useEffect(() => { setClosedPropertiesKey(null); }, [propertiesKey]);
+  // A tab dragged from this window below the tab row opens in its own window.
+  const draggingTab = useRef<string | null>(null), [tabDetachHint, setTabDetachHint] = useState(false);
   useEffect(() => {
     const o = selectionObjects.length === 1 ? selectionObjects[0]! : null;
     if (o?.kind === "text") setStyle((s) => ({ ...s, font: o.font, size: o.size, textColor: o.color, bold: o.bold, italic: o.italic, align: o.align }));
@@ -392,8 +401,8 @@ export default function App() {
     if (label !== "Editar" && !(await commitPendingParagraph())) return;
     if (active) setHome(false);
     setTab(label);
-    if (label === "Editar" && active && tool.kind === "select") setTool({ kind: "edit" });
-    else if (label !== "Editar" && tool.kind === "edit") { setTool({ kind: "select" }); setSourceSelection(null); }
+    if (label !== tab) setTool(label === "Editar" && active ? { kind: "edit" } : { kind: "select" });
+    else if (label === "Editar" && active && tool.kind === "select") setTool({ kind: "edit" });
   };
   const commands: Command[] = [
     { id: "open", label: "Abrir arquivos", group: "Arquivo", shortcut: "Ctrl+O", keywords: "carregar documento", run: actions.open },
@@ -581,9 +590,18 @@ export default function App() {
       className={`application ${resizing ? "resizing" : ""} ${reading ? "reading" : ""} ribbon-${ribbonMode}`}
       onDragEnter={(e) => { if (isFileDrag(e)) { fileDragDepth.current++; setFileDrag(true); } }}
       onDragLeave={(e) => { if (isFileDrag(e) && --fileDragDepth.current <= 0) { fileDragDepth.current = 0; setFileDrag(false); } }}
-      onDragOver={(e) => { if (isFileDrag(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
-      onDrop={(e) => { if (isFileDrag(e)) dropFiles(e, "open"); }}
+      onDragOver={(e) => {
+        if (isFileDrag(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; return; }
+        if (draggingTab.current && e.dataTransfer.types.includes(TAB_MIME) && !(e.target as HTMLElement).closest(".titlebar")) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setTabDetachHint(true); }
+        else if (tabDetachHint) setTabDetachHint(false);
+      }}
+      onDrop={(e) => {
+        if (isFileDrag(e)) { dropFiles(e, "open"); return; }
+        const id = draggingTab.current;
+        if (id && e.dataTransfer.types.includes(TAB_MIME) && !(e.target as HTMLElement).closest(".titlebar")) { e.preventDefault(); dragEndInside.current = true; setTabDetachHint(false); void perform(() => window.gcp.detachDocument(id)); }
+      }}
     >
+      {tabDetachHint && <div className="tab-detach-hint"><MoveUpRight size={26} /><strong>{translateUi("Solte para abrir em uma nova janela")}</strong><span>{translateUi("Volte para a barra de abas para apenas reorganizar")}</span></div>}
       {busy && <ProgressCard text={busy} />}
       {reading && active && (
         <div className="reading-bar" role="toolbar" aria-label={translateUi("Modo leitura")}>
@@ -626,12 +644,12 @@ export default function App() {
               draggable
               onDragOver={e=>{if(e.dataTransfer.types.includes(TAB_MIME)){e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect="move";}}}
               onDrop={e=>{if(!e.dataTransfer.types.includes(TAB_MIME))return;const r=e.currentTarget.getBoundingClientRect(),index=workspace.documents.findIndex(d=>d.id===doc.id),before=e.clientX<r.left+r.width/2?doc.id:workspace.documents[index+1]?.id;void tabDropEvent(e,before);}}
-              onDragStart={(e) => { dragEndInside.current = false; const payload = JSON.stringify({ documentId: doc.id, sourceWindowId: workspace.windowId }); e.dataTransfer.setData(TAB_MIME, payload); e.dataTransfer.setData("text/plain", payload); e.dataTransfer.effectAllowed = "move"; }}
-              onDragEnd={(e) => { if (e.dataTransfer.dropEffect === "none" && !dragEndInside.current) void perform(() => window.gcp.detachDocument(doc.id)); }}
+              onDragStart={(e) => { dragEndInside.current = false; draggingTab.current = doc.id; const payload = JSON.stringify({ documentId: doc.id, sourceWindowId: workspace.windowId }); e.dataTransfer.setData(TAB_MIME, payload); e.dataTransfer.setData("text/plain", payload); e.dataTransfer.effectAllowed = "move"; }}
+              onDragEnd={(e) => { draggingTab.current = null; setTabDetachHint(false); if (e.dataTransfer.dropEffect === "none" && !dragEndInside.current) void perform(() => window.gcp.detachDocument(doc.id)); }}
               onClick={() => resumeDocument(doc.id)}
               onDragEnter={(e) => { if (e.dataTransfer.types.includes(PAGE_MIME) && active?.id !== doc.id) { clearTimeout(tabHover.current); tabHover.current = setTimeout(() => resumeDocument(doc.id), 550); } }}
               onDragLeave={() => clearTimeout(tabHover.current)}
-              title={`${doc.name}${doc.path?"\n"+doc.path:""}\n${translateUi("Arraste para reorganizar as abas ou para outra janela.")}`}
+              title={`${doc.name}${doc.path?"\n"+doc.path:""}\n${translateUi("Arraste para reorganizar as abas, para baixo para abrir em nova janela ou para outra janela.")}`}
             >
               <FileText size={15} />
               <span>{doc.name}</span>
@@ -642,8 +660,23 @@ export default function App() {
           ))}
           <button className="new-tab" aria-label={translateUi("Abrir documento")} title={translateUi("Abrir documento · Ctrl+O")} onClick={actions.open}><Plus size={18} /></button>
         </div>
+        {!showHome && active && (
+          <div className="title-document" title={active.path || active.name}>
+            {docDirty ? <span className="unsaved-label">{translateUi("Não salvo")}</span> : <span className="saved-label"><Check size={12} />{" "}{translateUi("Salvo")}</span>}
+            <div className="viewer-controls">
+              <IconButton title={translateUi("Página anterior")} disabled={page <= 0} onClick={() => choosePage(page - 1)}><ChevronLeft size={16} /></IconButton>
+              <label className="page-input">
+                <input aria-label={translateUi("Número da página")} key={page} defaultValue={page + 1} onKeyDown={(e) => { if (e.key === "Enter") { const n = Number((e.target as HTMLInputElement).value); if (n >= 1 && n <= active.pageCount) choosePage(n - 1); } }} />
+                <span>/ {active.pageCount}</span>
+              </label>
+              <IconButton title={translateUi("Próxima página")} disabled={page >= active.pageCount - 1} onClick={() => choosePage(page + 1)}><ChevronRight size={16} /></IconButton>
+            </div>
+          </div>
+        )}
+        <button className="tool-finder" onClick={() => setModal("palette")}><Search size={14} />{" "}{translateUi("Localizar ferramentas")}{" "}<kbd>{translateUi("Ctrl+K")}</kbd></button>
+        <button className="publisher-link" onClick={() => void window.gcp.openExternal(SITE)}>{translateUi("Gestão Cultural Pro")}{" "}<ArrowUpRight size={12} /></button>
         <div className="window-actions">
-          
+
           <IconButton title={workspace.theme === "light" ? translateUi("Ativar tema escuro") : translateUi("Ativar tema claro")} onClick={() => void perform(() => window.gcp.setTheme(workspace.theme === "light" ? "dark" : "light"))}>{workspace.theme === "light" ? <Moon size={17} /> : <Sun size={17} />}</IconButton>
           <IconButton title={translateUi("Central de ajuda · F1")} onClick={() => { setHelpTopic(undefined); setModal("help"); }}><HelpCircle size={17} /></IconButton>
           <IconButton title={translateUi("Configurações")} onClick={() => setModal("settings")}><Settings size={17} /></IconButton>
@@ -657,9 +690,7 @@ export default function App() {
             </button>
           ))}
         </div>
-        <button className="tool-finder" onClick={() => setModal("palette")}><Search size={14} />{" "}{translateUi("Localizar ferramentas")}{" "}<kbd>{translateUi("Ctrl+K")}</kbd></button>
-        
-        <button className="publisher-link" onClick={() => void window.gcp.openExternal(SITE)}>{translateUi("Gestão Cultural Pro")}{" "}<ArrowUpRight size={12} /></button>
+        <div className="toolbar-spacer" />
         <RibbonModeMenu mode={ribbonMode} onMode={setRibbon} />
       </div>
       <div className="ribbon-panel" onClick={(e) => { if (ribbonMode === "collapsed" && (e.target as HTMLElement).closest(".tool-button")) setPeek(false); }}>
@@ -850,33 +881,12 @@ export default function App() {
           </aside>
         )}
         <main className={`document-area ${showHome ? "empty" : ""}`}>
-          <div className="document-controlbar">
-            {!showHome && active ? (
-              <>
-                <div className="document-location">
-                  <FileText size={14} />
-                  <span>{active.name}</span>
-                  {docDirty ? <span className="unsaved-label">{translateUi("Não salvo")}</span> : <span className="saved-label"><Check size={12} />{" "}{translateUi("Salvo")}</span>}
-                </div>
-                <div className="viewer-controls">
-                  <IconButton title={translateUi("Página anterior")} disabled={page <= 0} onClick={() => choosePage(page - 1)}><ChevronLeft size={16} /></IconButton>
-                  <label className="page-input">
-                    <input aria-label={translateUi("Número da página")} key={page} defaultValue={page + 1} onKeyDown={(e) => { if (e.key === "Enter") { const n = Number((e.target as HTMLInputElement).value); if (n >= 1 && n <= active.pageCount) choosePage(n - 1); } }} />
-                    <span>/ {active.pageCount}</span>
-                  </label>
-                  <IconButton title={translateUi("Próxima página")} disabled={page >= active.pageCount - 1} onClick={() => choosePage(page + 1)}><ChevronRight size={16} /></IconButton>
-                </div>
-              </>
-            ) : (
-              <><span className="welcome-breadcrumb">{translateUi("Seu espaço de documentos")}</span><span className="version-tag">{translateUi("PT-BR · Local")}</span></>
-            )}
-          </div>
           {showHome && <Home files={recent.items} documents={workspace.documents} activeId={active?.id} currentPage={page} ready={ready} onOpen={openFilesFromHome} onNew={() => void perform(() => window.gcp.newDocument())} onActivate={resumeDocument} onRemove={recent.remove} onClear={recent.clear} onCombine={() => actions.quick("combine")} onConvert={() => actions.quick("convert")} onSupport={() => setModal("support")} />}
           <div className="home-document-view" hidden={showHome}>
           {active && tab === "Organizar" ? (
             <OrganizeView doc={active} selection={selection} setSelection={setSelection} actions={organize} onContextMenu={(e, index) => setPageMenu({ x: e.clientX, y: e.clientY, index })} />
           ) : active ? (
-            <div className="viewer-host" onScrollCapture={(event) => { if ((event.target as HTMLElement).classList.contains("canvas-scroll")) scheduleReadingSave(); }} onDragOver={(e) => { if (e.dataTransfer.types.includes(TAB_MIME)) e.preventDefault(); }} onDrop={(e) => { if (dragData(e)?.documentId) void tabDropEvent(e); }}>
+            <div className="viewer-host" onScrollCapture={(event) => { if ((event.target as HTMLElement).classList.contains("canvas-scroll")) scheduleReadingSave(); }} onDragOver={(e) => { if (e.dataTransfer.types.includes(TAB_MIME)) e.preventDefault(); }} onDrop={(e) => { if (dragData(e)?.documentId && !draggingTab.current) void tabDropEvent(e); }}>
               <Viewer
                 layout={layout}
                 filter={readingFilter}
@@ -930,6 +940,20 @@ export default function App() {
           ) : null}
           </div>
         </main>
+        {propertiesAvailable && !propertiesClosed && (
+          <aside className="properties-panel" aria-label={translateUi("Propriedades")}>
+            <div className="sidebar-heading">
+              <h2>{translateUi("Propriedades")}</h2>
+              <IconButton title={translateUi("Recolher painel")} onClick={() => setClosedPropertiesKey(propertiesKey)}><PanelRightClose size={16} /></IconButton>
+            </div>
+            <PropertyBar tool={tool} style={style} selection={selectionObjects} source={sourceSelection} actions={actions} fonts={fonts} />
+          </aside>
+        )}
+        {!showHome && active && !reading && (
+          <nav className="rail rail-right" aria-label={translateUi("Painéis de propriedades")}>
+            <IconButton title={propertiesAvailable ? translateUi("Propriedades") : translateUi("Propriedades (selecione um objeto ou ferramenta)")} disabled={!propertiesAvailable} active={propertiesAvailable && !propertiesClosed} onClick={() => setClosedPropertiesKey(propertiesClosed ? null : propertiesKey)}><SlidersHorizontal size={19} /></IconButton>
+          </nav>
+        )}
       </div>
       <footer className="statusbar">
         <div>

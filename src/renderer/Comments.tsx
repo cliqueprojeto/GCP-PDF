@@ -72,12 +72,26 @@ export function NoteThread({ note, onChange, onDelete, compact = false }: { note
     </div>
   );
 }
-/** The bubble next to a note icon on the page (rendered at screen scale, whatever the zoom). */
+/** Lets the user drag an open bubble by its top strip when it covers what they are reading; a new comment starts in place. */
+export function useBubbleDrag(id: string) {
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  useEffect(() => setOffset({ x: 0, y: 0 }), [id]);
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const start = { x: e.clientX - offset.x, y: e.clientY - offset.y };
+    const move = (ev: PointerEvent) => setOffset({ x: ev.clientX - start.x, y: ev.clientY - start.y });
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  };
+  return { offset, grip: <div className="note-bubble-grip" title={translateUi("Arraste para mover o comentário")} onPointerDown={onPointerDown} /> };
+}
 /** The bubble next to a note icon, drawn above the whole interface (a portal at screen position), so zoom,
  * neighbouring pages and panels never cover it. Clicking outside or Esc closes it. */
 export function NoteBubble({ note, onChange, onDelete, onClose }: { note: PdfNote; onChange: (note: PdfNote) => void; onDelete: () => void; onClose: () => void }) {
   const box = useRef<HTMLDivElement>(null), [at, setAt] = useState<{ left: number; top: number } | null>(null);
   const close = useRef(onClose); close.current = onClose;
+  const { offset, grip } = useBubbleDrag(note.id);
   useLayoutEffect(() => {
     let frame = 0;
     const place = () => {
@@ -103,7 +117,8 @@ export function NoteBubble({ note, onChange, onDelete, onClose }: { note: PdfNot
     return () => { window.removeEventListener("pointerdown", outside, true); window.removeEventListener("keydown", key); };
   }, [note.id]);
   return createPortal(
-    <div ref={box} className="note-bubble" style={{ left: at?.left ?? -9999, top: at?.top ?? -9999 }} onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+    <div ref={box} className="note-bubble" style={{ left: at ? at.left + offset.x : -9999, top: at ? at.top + offset.y : -9999 }} onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+      {grip}
       <button className="icon-button note-bubble-close" title={translateUi("Fechar (Esc)")} onClick={onClose}><X size={13} /></button>
       <NoteThread note={note} onChange={onChange} onDelete={onDelete} compact />
     </div>,

@@ -1,6 +1,6 @@
 {
   "name": "gcp-pdf",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Editor e leitor de PDFs local em português brasileiro",
   "author": "Bruno Albertini | Gestão Cultural Pro",
   "private": true,

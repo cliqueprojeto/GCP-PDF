@@ -1620,9 +1620,29 @@ export const translations:Record<string,readonly [string,string]> = {
     "Drag to move · double-click to edit · right-click for more options",
     "Arrastre para mover · doble clic para editar · clic derecho para más opciones"
   ],
-  "Arraste para reorganizar as abas ou para outra janela.": [
-    "Drag to reorder tabs or move to another window.",
-    "Arrastre para reorganizar las pestañas o moverlas a otra ventana."
+  "Arraste para reorganizar as abas, para baixo para abrir em nova janela ou para outra janela.": [
+    "Drag to reorder tabs, down to open in a new window, or to another window.",
+    "Arrastre para reorganizar las pestañas, hacia abajo para abrir en una ventana nueva o a otra ventana."
+  ],
+  "Solte para abrir em uma nova janela": [
+    "Drop to open in a new window",
+    "Suelte para abrir en una ventana nueva"
+  ],
+  "Volte para a barra de abas para apenas reorganizar": [
+    "Go back to the tab bar to just reorder",
+    "Vuelva a la barra de pestañas para solo reorganizar"
+  ],
+  "Painéis de propriedades": [
+    "Property panels",
+    "Paneles de propiedades"
+  ],
+  "Propriedades (selecione um objeto ou ferramenta)": [
+    "Properties (select an object or tool)",
+    "Propiedades (seleccione un objeto o herramienta)"
+  ],
+  "Arraste para mover o comentário": [
+    "Drag to move the comment",
+    "Arrastre para mover el comentario"
   ],
   "As alterações entram no PDF ao salvar.": [
     "Changes are written to the PDF when saved.",

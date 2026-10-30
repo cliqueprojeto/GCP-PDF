@@ -549,8 +549,19 @@ function Swatches({
     </div>
   );
 }
-/** Properties of the active tool or of the selected objects. */
-function PropertyBar({
+/** Identity of the resource whose options PropertyBar renders; formatting changes keep the same context. */
+export function propertiesContext({ tool, selection, source }: Pick<Props, "tool" | "selection" | "source">): string | null {
+  if (source) return JSON.stringify(["source", source.page, source.paragraph.index]);
+  if (selection.length) return JSON.stringify(["selection", selection.map(o => [o.id, o.kind]).sort((a,b) => a[0]!.localeCompare(b[0]!))]);
+  switch (tool.kind) {
+    case "text": case "ink": return tool.kind;
+    case "shape": return JSON.stringify([tool.kind, tool.shape, tool.measure ?? null]);
+    case "markup": return JSON.stringify([tool.kind, tool.style]);
+    default: return null;
+  }
+}
+/** Options of the selection or the active tool, shown in the Propriedades panel at the right of the document. */
+export function PropertyBar({
   tool,
   style,
   selection,
@@ -1681,14 +1692,6 @@ export function Ribbon(props: Props) {
         {groups[tab]}
         <div className="toolbar-spacer" />
       </ScrollRow>
-      <PropertyBar
-        tool={tool}
-        style={props.style}
-        selection={props.selection}
-        source={props.source}
-        actions={actions}
-        fonts={props.fonts}
-      />
     </>
   );
 }

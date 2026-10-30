@@ -601,3 +601,42 @@
 .whats-new { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .whats-new li { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; line-height: 1.5; padding: 10px 12px; border-radius: 10px; background: var(--purple-soft); }
 .whats-new li svg { color: var(--purple); flex-shrink: 0; margin-top: 3px; }
+
+/* Barra do logo: abas, situação do documento, páginas, localizador e link na mesma linha. */
+.titlebar { gap: 14px; }
+.title-document { display: flex; align-items: center; gap: 8px; flex-shrink: 0; -webkit-app-region: no-drag; }
+.title-document .viewer-controls { margin-left: 0; }
+.titlebar .tool-finder { margin-left: 0; min-width: 190px; flex-shrink: 1; -webkit-app-region: no-drag; }
+.titlebar .publisher-link { flex-shrink: 0; }
+@media (max-width: 1250px) { .titlebar .tool-finder { min-width: 0; } .titlebar .tool-finder kbd { display: none; } }
+@media (max-width: 1080px) { .titlebar .publisher-link { display: none; } }
+
+/* Propriedades: painel encaixado à direita (o PDF se ajusta ao lado, nada cobre a leitura), com botão fixo na barra direita. */
+.rail.rail-right { width: 46px; min-width: 46px; border-right: 0; border-left: 1px solid var(--border); padding-top: 14px; }
+.properties-panel { width: 286px; min-width: 286px; display: flex; flex-direction: column; min-height: 0; background: var(--surface-2); border-left: 1px solid var(--border); }
+.properties-panel .property-bar { flex-wrap: wrap; align-content: flex-start; gap: 10px 6px; padding: 14px 16px; min-height: 0; overflow: auto; white-space: normal; background: none; border: 0; flex: 1; }
+.properties-panel .property-title { flex-basis: 100%; margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--border); }
+.properties-panel .property-title:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.properties-panel .property-bar select { flex-basis: 100%; min-width: 0; }
+.properties-panel .property-label { flex-basis: 100%; }
+.properties-panel .slider-row { flex-basis: 100%; }
+.properties-panel .slider-row input[type="range"] { flex: 1; width: auto; }
+.properties-panel .swatches { flex-wrap: wrap; flex-basis: 100%; }
+.properties-panel .property-hint { flex-basis: 100%; margin: 4px 0 0; line-height: 1.45; }
+.properties-panel .text-button { flex-basis: 100%; justify-content: flex-start; }
+.application.reading .properties-panel, .application.reading .rail-right { display: none !important; }
+
+/* Arrastar uma aba para baixo abre o documento em outra janela. */
+.tab-detach-hint { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 900; pointer-events: none; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 22px 30px; border: 2px dashed var(--purple); border-radius: 14px; background: var(--surface); color: var(--purple); box-shadow: 0 18px 48px #1c123040; text-align: center; }
+.tab-detach-hint span { color: var(--muted); font-size: 11.5px; }
+
+/* Ícones de comentário: arrastáveis, ficam na margem ao lado do texto. */
+.native-annotation-icon { cursor: grab; touch-action: none; }
+.native-annotation-icon.dragging, .page-sheet .overlay-note:active { cursor: grabbing; }
+.native-annotation-icon.dragging { box-shadow: 0 6px 16px #0004; opacity: 0.92; }
+.overlay-note { cursor: grab; touch-action: none; }
+.note-bubble { padding-top: 16px; }
+.note-bubble-grip { position: absolute; left: 0; right: 30px; top: 0; height: 14px; cursor: grab; border-radius: 10px 0 0 0; }
+.note-bubble-grip::after { content: ""; position: absolute; left: 50%; top: 5px; width: 34px; height: 4px; margin-left: -2px; border-radius: 2px; background: var(--border); }
+.note-bubble-grip:hover::after { background: var(--purple); }
+.note-bubble-grip:active { cursor: grabbing; }

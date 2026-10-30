@@ -101,6 +101,7 @@ export const Viewer = forwardRef<ViewerHandle, Props>(function Viewer(props, han
               annotations={doc.annotations.filter(a=>a.page===ref.id)}
               onDeleteAnnotation={props.onDeleteAnnotation}
               docId={doc.id}
+              docKey={`${doc.path ?? doc.name}#${index}`}
               pageRef={ref}
               index={index}
               geometry={g}

@@ -19,6 +19,8 @@ interface Props {
   annotations:import("../shared/types").PdfAnnotation[];
   onDeleteAnnotation:(a:import("../shared/types").PdfAnnotation)=>void;
   docId: string;
+  /** Identifies this page of this file across sessions (positions of comment icons the user moved). */
+  docKey: string;
   pageRef: PageRef;
   index: number;
   geometry: PageGeometry;
@@ -51,7 +53,7 @@ interface Props {
   onError: (error: unknown) => void;
 }
 type Drag =
-  | { kind: "move"; start: Point; ids: string[]; dx: number; dy: number }
+  | { kind: "move"; start: Point; ids: string[]; dx: number; dy: number; note?: string }
   | { kind: "resize"; start: Point; id: string; handle: string; from: Rect; to: Rect }
   | { kind: "create"; start: Point; current: Point; points: Point[] }
   | { kind: "area"; start: Point; current: Point }
@@ -284,7 +286,8 @@ export function PageView(props: Props) {
     if (tool.kind === "note") {
       // Acrobat-style sticky note: the icon goes where the user clicked and its bubble opens for typing.
       const id = uid();
-      props.onAdd({ id, page: pageRef.id, kind: "note", x: Math.max(0, d.start.x - 11), y: Math.max(0, d.start.y - 11), width: 22, height: 22, text: "", author: commentAuthor(), createdAt: new Date().toISOString(), color: "#ffd43b", replies: [] });
+      const at = besideText(d.start);
+      props.onAdd({ id, page: pageRef.id, kind: "note", x: at.x, y: at.y, width: 22, height: 22, text: "", author: commentAuthor(), createdAt: new Date().toISOString(), color: "#ffd43b", replies: [] });
       props.onToolDone(id); props.onOpenNote?.(id);
       return;
     }
@@ -347,11 +350,30 @@ export function PageView(props: Props) {
     props.onAdd({ id: uid(), page: pageRef.id, kind: "markup", style: tool.style, rects: lines, color: tool.style === "highlight" ? style.highlight : style.stroke, opacity: tool.style === "highlight" ? style.highlightOpacity : 1 });
     return true;
   }
+  /** Where a comment icon goes so it does not cover the text: in the margin next to the text column, at the same height. */
+  function besideText(p: Point, span?: Rect): Point {
+    const icon = 22, gap = 6, spans = [...(textLayer.current?.querySelectorAll<HTMLElement>("span") ?? [])].map((el) => el.getBoundingClientRect()).filter((r) => r.width > 1 && r.height > 1).map((r) => normalize(pagePoint({ clientX: r.left, clientY: r.top }), pagePoint({ clientX: r.right, clientY: r.bottom })));
+    const target = span ?? { x: p.x, y: p.y, width: 0, height: 0 }, centre = target.x + target.width / 2;
+    const near = spans.filter((r) => r.y < target.y + target.height + 60 && r.y + r.height > target.y - 60);
+    const over = span || spans.some((r) => p.x >= r.x - 2 && p.x <= r.x + r.width + 2 && p.y >= r.y - 2 && p.y <= r.y + r.height + 2);
+    const top = Math.max(0, Math.min(size.height - icon, target.y - (span ? 0 : icon / 2)));
+    if (!over) return { x: Math.max(0, Math.min(size.width - icon, p.x - icon / 2)), y: top };
+    const left = Math.min(...near.map((r) => r.x), target.x), right = Math.max(...near.map((r) => r.x + r.width), target.x + target.width);
+    const fitsLeft = left - gap - icon >= 0, fitsRight = right + gap + icon <= size.width;
+    const toLeft = centre < size.width / 2 ? fitsLeft || !fitsRight : fitsLeft && !fitsRight;
+    return { x: Math.max(0, Math.min(size.width - icon, toLeft ? left - gap - icon : right + gap)), y: top };
+  }
   const creating = tool.kind === "text" || tool.kind === "shape" || tool.kind === "ink" || tool.kind === "stamp" || tool.kind === "field" || tool.kind === "sign-area" || tool.kind === "note";
   function onPointerDown(e: React.PointerEvent) {
     if (e.button !== 0) return;
     if (tool.kind === "sign-place") { e.preventDefault(); const p = pagePoint(e); props.onArea(pageRef.id, { x: Math.max(0, Math.min(size.width - tool.width, p.x - tool.width / 2)), y: Math.max(0, Math.min(size.height - tool.height, p.y - tool.height / 2)), width: tool.width, height: tool.height }); return; }
     const target = e.target as HTMLElement, point = pagePoint(e);
+    const noteId = target.closest<HTMLElement>(".overlay-note[data-object-id]")?.dataset.objectId;
+    if (noteId && tool.kind !== "select" && tool.kind !== "edit") {
+      e.preventDefault(); outer.current!.setPointerCapture(e.pointerId);
+      setDrag({ kind: "move", start: point, ids: [noteId], dx: 0, dy: 0, note: noteId });
+      return;
+    }
     if (creating) {
       e.preventDefault();
       outer.current!.setPointerCapture(e.pointerId);
@@ -414,12 +436,11 @@ export function PageView(props: Props) {
     if (objectId) {
       e.preventDefault();
       const note = own.find((o) => o.id === objectId && o.kind === "note");
-      if (note) props.onOpenNote?.(props.openNote === note.id ? null : note.id);
       const additive = e.shiftKey || e.ctrlKey;
       const ids = props.selected.has(objectId) && !additive ? [...props.selected] : additive ? [...props.selected, objectId] : [objectId];
       props.onSelect(ids, false);
       outer.current!.setPointerCapture(e.pointerId);
-      setDrag({ kind: "move", start: point, ids: ids.filter((id) => own.some((o) => o.id === id)), dx: 0, dy: 0 });
+      setDrag({ kind: "move", start: point, ids: ids.filter((id) => own.some((o) => o.id === id)), dx: 0, dy: 0, ...(note && !additive ? { note: note.id } : {}) });
       return;
     }
     if (props.selected.size && !e.shiftKey) props.onSelect([], false);
@@ -461,7 +482,9 @@ export function PageView(props: Props) {
     setDrag(null);
     if (d.kind === "create") void finishCreate(d).catch(props.onError);
     else if (d.kind === "area") { const r = normalize(d.start, d.current); if (r.width > 3 && r.height > 3 && tool.kind === "markup") props.onAdd({ id: uid(), page: pageRef.id, kind: "markup", style: tool.style, rects: [r], color: tool.style === "highlight" ? style.highlight : style.stroke, opacity: tool.style === "highlight" ? style.highlightOpacity : 1 }); }
-    else if (d.kind === "move" && (Math.abs(d.dx) > 0.5 || Math.abs(d.dy) > 0.5)) props.onUpdate(own.filter((o) => d.ids.includes(o.id)).map((o) => translateObject(o, d.dx, d.dy)));
+    else if (d.kind === "move" && (Math.abs(d.dx) * scale > 3 || Math.abs(d.dy) * scale > 3)) props.onUpdate(own.filter((o) => d.ids.includes(o.id)).map((o) => translateObject(o, d.dx, d.dy)));
+    // A click on a comment icon (without dragging it) opens or closes its bubble.
+    else if (d.kind === "move" && d.note) props.onOpenNote?.(props.openNote === d.note ? null : d.note);
     else if (d.kind === "resize") { const o = own.find((item) => item.id === d.id); if (o) props.onUpdate([resizeObject(o, d.from, d.to)]); }
     else if (d.kind === "source-resize" && (Math.abs(d.to.width - d.from.width) > 1 || Math.abs(d.to.height - d.from.height) > 1)) {
       setEngineBusy(true);
@@ -514,7 +537,7 @@ export function PageView(props: Props) {
       <div ref={textLayer} className="textLayer" />
       {near && <FormLayer pageRef={pageRef} rotation={rotation} scale={scale} values={props.fields} interactive={tool.kind === "select"} onChange={props.onFields} onFieldMenu={(name, type) => props.onFieldMenu?.(pageRef.id, name, type)} onButton={(action) => props.onFormButton?.(pageRef.id, action)} onError={props.onError} />}
       <div className="page-overlay" style={{ width: size.width, height: size.height, transform: pageTransform(size, rotation, scale) }}>
-        <NativeAnnotations annotations={props.annotations} open={props.openNote} onOpen={(id)=>props.onOpenNote?.(id)} onDelete={props.onDeleteAnnotation} interactive={tool.kind === "select"} />
+        <NativeAnnotations storageKey={props.docKey} pageWidth={size.width} pageHeight={size.height} scale={scale} besideText={besideText} annotations={props.annotations} open={props.openNote} onOpen={(id)=>props.onOpenNote?.(id)} onDelete={props.onDeleteAnnotation} interactive={tool.kind === "select"} />
         <svg className="overlay-vectors" width={size.width} height={size.height} viewBox={`0 0 ${size.width} ${size.height}`}>
           {preview.map((o) => <VectorView key={o.id} o={o} />)}
           {draft && <VectorView o={draft} />}

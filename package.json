@@ -5,6 +5,8 @@
   "author": "Bruno Albertini | Gestão Cultural Pro",
   "private": true,
   "license": "GPL-3.0-or-later",
+  "homepage": "https://github.com/cliqueprojeto/GCP-PDF",
+  "packageManager": "npm@11.9.0",
   "main": "dist/main/index.cjs",
   "scripts": {
     "dev": "node scripts/dev.mjs",
@@ -15,8 +17,10 @@
     "pack:win": "npm run build && electron-builder --win --x64",
     "publicar": "node scripts/publicar.mjs",
     "pack:dir": "npm run build && electron-builder --win --x64 --dir",
-    "pack:linux": "npm run build && electron-builder --linux deb --x64",
-    "pack:mac": "npm run build && electron-builder --mac --x64 --arm64",
+    "prepare:native": "node scripts/prepare-native.mjs",
+    "test:packaged": "node scripts/smoke-packaged.mjs",
+    "pack:linux": "npm run prepare:native && npm run build && electron-builder --linux --x64 --publish never",
+    "pack:mac": "npm run prepare:native && npm run build && electron-builder --mac --publish never",
     "postinstall": "node node_modules/electron/install.js"
   },
   "dependencies": {
@@ -113,21 +117,30 @@
       "artifactName": "GCP-PDF-Portatil-${version}-${arch}.${ext}"
     },
     "linux": {
+      "files": ["!assets/pdfcraft/*.exe"],
       "target": [
-        "deb"
+        "deb", "AppImage", "rpm"
       ],
+      "executableName": "gcp-pdf",
+      "artifactName": "GCP-PDF-${version}-linux-${arch}.${ext}",
       "category": "Office",
       "icon": "assets/icon.png",
-      "maintainer": "Bruno Albertini"
+      "maintainer": "Bruno Albertini <cliqueprojeto@users.noreply.github.com>"
     },
     "mac": {
+      "files": ["!assets/pdfcraft/*.exe"],
       "target": [
         "dmg",
         "zip"
       ],
       "category": "public.app-category.productivity",
       "icon": "assets/icon.png",
-      "hardenedRuntime": true
+      "artifactName": "GCP-PDF-${version}-macOS-${arch}.${ext}",
+      "identity": "-",
+      "notarize": false,
+      "hardenedRuntime": true,
+      "entitlements": "assets/entitlements.mac.plist",
+      "entitlementsInherit": "assets/entitlements.mac.plist"
     },
     "fileAssociations": [
       {

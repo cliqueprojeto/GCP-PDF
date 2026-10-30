@@ -8,7 +8,7 @@ import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, degrees } from 'pdf-lib';
 import { listTextParagraphs, replaceParagraph } from '../src/main/pdfcraft-sidecar';
 
-const executable = process.platform === 'win32' ? 'C:\\Program Files\\PdfCraft\\pdfcraft-cli.exe' : path.resolve('assets/pdfcraft/pdfcraft-cli');
+const executable = path.resolve('assets/pdfcraft',process.platform === 'win32' ? 'pdfcraft-cli.exe' : 'pdfcraft-cli');
 const available = existsSync(executable);
 async function fixture(rotation = 0): Promise<Uint8Array> {
   const doc = await PDFDocument.create(); doc.registerFontkit(fontkit);

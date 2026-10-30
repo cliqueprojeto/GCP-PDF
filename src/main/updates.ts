@@ -1,4 +1,5 @@
-import {app} from 'electron';
+import {app,shell} from 'electron';
+import {installerPattern} from './update-target';
 import {createHash} from 'node:crypto';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {join} from 'node:path';
@@ -30,6 +31,7 @@ function explain(status:number){
 /** The latest release through github.com links: null when already up to date, undefined when the release has
  * no manifest (or the site could not be read), so the API is asked instead. */
 async function fromManifest():Promise<UpdateInfo|null|undefined>{
+ if(process.platform!=='win32')return undefined;
  const options={headers:{'User-Agent':`GCP-PDF/${app.getVersion()}`},redirect:'follow' as const,signal:AbortSignal.timeout(20_000)};
  const latest=await fetch(`${WEB}/releases/latest`,{...options,method:'HEAD'});
  const tag=/\/releases\/tag\/([^/?#]+)$/.exec(new URL(latest.url).pathname)?.[1];
@@ -52,13 +54,19 @@ export async function checkForUpdate():Promise<UpdateInfo|null>{
  const releases=(await response.json()) as any[];
  const best=releases.filter(r=>!r.draft&&!r.prerelease&&typeof r.tag_name==='string').sort((a,b)=>newer(a.tag_name,b.tag_name)?-1:newer(b.tag_name,a.tag_name)?1:0)[0];
  if(!best||!newer(best.tag_name,app.getVersion()))return null;
- const asset=(best.assets??[]).find((a:any)=>/Instalador.*x64\.exe$/i.test(a.name));
- if(!asset)throw new Error(`A versão ${best.tag_name} foi publicada sem o instalador do Windows.`);
+ const pattern=installerPattern(process.platform,process.arch);
+ const asset=(best.assets??[]).find((a:any)=>typeof a.name==='string'&&pattern.test(a.name));
+ if(!asset)throw new Error(`A versão ${best.tag_name} ainda não tem instalador para ${process.platform}/${process.arch}.`);
+ if(process.platform!=='win32')return {version:best.tag_name.replace(/^v/i,''),current:app.getVersion(),notes:String(best.body??''),published:best.published_at??'',size:Number(asset.size)||0,assetUrl:`${WEB}/releases/tag/${encodeURIComponent(best.tag_name)}`,assetName:asset.name,manual:true};
  const notes=String(best.body??''),sha=new RegExp(`${asset.name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\s*[:=]?\\s*\`?([0-9a-f]{64})`,'i').exec(notes)?.[1]??/sha-?256\s*[:=]\s*`?([0-9a-f]{64})/i.exec(notes)?.[1];
  return {version:best.tag_name.replace(/^v/i,''),current:app.getVersion(),notes:notes.replace(/\n?SHA-?256[^\n]*/gi,'').trim(),published:best.published_at??'',size:Number(asset.size)||0,assetUrl:String(asset.url),assetName:String(asset.name),sha256:sha?.toLowerCase()};
 }
 /** Downloads the installer (checking its size and SHA-256), runs it silently and closes the app for it. */
 export async function installUpdate(info:UpdateInfo,progress:(done:number,total:number)=>void){
+ if(process.platform!=='win32'){
+  if(!info.manual||!info.assetUrl.startsWith(`${WEB}/releases/tag/`))throw new Error('Endereço de atualização inválido.');
+  await shell.openExternal(info.assetUrl);return;
+ }
  if(!info.sha256)throw new Error('Esta versão não informa a assinatura de integridade (SHA-256) do instalador; por segurança, baixe-a manualmente do GitHub.');
  const response=await fetch(info.assetUrl,{headers:headers('application/octet-stream'),redirect:'follow',signal:AbortSignal.timeout(30*60_000)}).catch(()=>{throw new Error('Não foi possível baixar a atualização. Verifique a internet.');});
  if(!response.ok||!response.body)throw new Error(explain(response.status));

@@ -2,6 +2,7 @@
 node_modules/
 dist/
 release/
+assets/pdfcraft/pdfcraft-cli
 *.log
 
 # Arquivos reais do usuário usados em testes e capturas de tela (dados pessoais)

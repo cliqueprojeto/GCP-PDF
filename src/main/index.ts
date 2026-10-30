@@ -214,7 +214,7 @@ function registerIpc(){
    for(const v of views.values())for(const id of v.ids){const d=store.get(id);if(d.revision!==d.savedRevision)throw new Error('Salve ou feche os documentos com alterações antes de atualizar.');}
    try{await installUpdate(pendingUpdate,(done,total)=>action(view,`progress:Baixando a versão ${pendingUpdate!.version}: ${Math.round(done/1048576)} de ${Math.max(1,Math.round(total/1048576))} MB…`));}
    finally{action(view,'progress:');}
-   for(const v of views.values())v.allowClose=true;
+   if(process.platform==='win32')for(const v of views.values())v.allowClose=true;
   },
   listBookmarks:async(view,id)=>{
    const doc=own(view,id),bases=new Set(doc.model.pages.map(p=>p.base));if(bases.size!==1)return [];
@@ -723,6 +723,9 @@ function makeMenu(){
  * files arriving within a short window are gathered into a single quick-action window. */
 const batch:{action?:'combine'|'convert';paths:string[];timer?:NodeJS.Timeout}={paths:[]};
 let ready=false;const early:string[][]=[];
+// Finder sends open-file events, including before whenReady; retain those paths
+// until settings, IPC and the first window have been initialized.
+app.on('open-file',(event,path)=>{event.preventDefault();if(ready)handleLaunch([process.execPath,path]);else early.push([process.execPath,path]);});
 function quickTarget(action:'combine'|'convert'){return [...quicks.values()].find(quick=>quick.state.action===action&&!quick.window.isDestroyed());}
 function flushBatch(){const {action,paths}=batch;batch.action=undefined;batch.paths=[];batch.timer=undefined;if(!action)return;const target=quickTarget(action);if(target){addQuickFiles(target,paths);target.window.focus();}else createQuickWindow(action,paths);}
 function handleLaunch(args:string[]){

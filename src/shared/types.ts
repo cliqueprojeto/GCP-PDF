@@ -45,7 +45,7 @@ export type BookmarkEdit={type:'add';title:string;page:number;top?:number;parent
 /** How often to look for a new version on GitHub. */
 export interface UpdatePreferences {frequency:'never'|'startup'|'daily'|'weekly'|'biweekly'|'monthly';lastCheck?:number}
 export interface UpdateStatus {frequency:UpdatePreferences['frequency'];lastCheck?:number;repository:string;version:string}
-export interface UpdateInfo {version:string;current:string;notes:string;published:string;size:number;assetUrl:string;assetName:string;sha256?:string}
+export interface UpdateInfo {version:string;current:string;notes:string;published:string;size:number;assetUrl:string;assetName:string;sha256?:string;manual?:boolean}
 export interface WorkspaceState {windowId:number;documents:DocumentInfo[];activeDocumentId?:string;theme:'light'|'dark';quickActions:boolean}
 /** An existing paragraph or image of a page, in the page's unrotated top-left space. */
 export interface SourceParagraph {index:number;text:string;rect:Rect;size:number;font:string;family?:string;bold:boolean;italic:boolean;color:string}

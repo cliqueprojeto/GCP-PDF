@@ -22,10 +22,21 @@ Baixe a versão mais recente na página de [versões publicadas](https://github.
 
 - **GCP-PDF-Instalador-x.y.z-x64.exe** — instala no Windows 10 e 11 (64 bits), cria atalhos e adiciona as ações no menu do botão direito do Explorador de Arquivos.
 - **GCP-PDF-Portatil-x.y.z-x64.exe** — roda sem instalar, por exemplo a partir de um pendrive.
+- **GCP-PDF-x.y.z-linux-x64.deb** — Ubuntu/Debian de 64 bits: instale pelo gerenciador de aplicativos ou com `sudo apt install ./GCP-PDF-x.y.z-linux-x64.deb`.
+- **GCP-PDF-x.y.z-linux-x64.rpm** — Fedora e distribuições compatíveis: `sudo dnf install ./GCP-PDF-x.y.z-linux-x64.rpm`.
+- **GCP-PDF-x.y.z-linux-x64.AppImage** — versão portátil Linux: marque o arquivo como executável (`chmod +x arquivo.AppImage`) e abra. Requer FUSE 2; sem FUSE, extraia com `./arquivo.AppImage --appimage-extract` e execute `squashfs-root/AppRun`.
+- **GCP-PDF-x.y.z-macOS-arm64.dmg** — Macs Apple Silicon (M1, M2 e posteriores).
+- **GCP-PDF-x.y.z-macOS-x64.dmg** — Macs Intel. Abra o DMG e arraste o GCP-PDF para Aplicativos. Os arquivos `.zip` contêm o mesmo aplicativo.
+
+**macOS:** os pacotes têm assinatura local (ad hoc), sem notarização Apple. Na primeira abertura, o sistema pode bloquear o aplicativo: tente abrir, vá a **Ajustes do Sistema › Privacidade e Segurança › Abrir Mesmo Assim** e confirme. Políticas de Macs gerenciados podem impedir essa autorização. Requisitos mínimos seguem os runtimes Electron e PdfCraft incluídos; os testes de distribuição são executados em macOS 15 para Intel e Apple Silicon e Ubuntu 22.04 x64.
+
+Os hashes SHA-256 dos pacotes Linux/macOS ficam no arquivo `SHA256SUMS-linux-macOS.txt` da release. O motor PdfCraft 0.15.0 nativo está incluído em cada pacote.
 
 Como o instalador ainda não tem assinatura digital de código, o Windows pode mostrar "O Windows protegeu o computador". Clique em **Mais informações** e depois em **Executar assim mesmo**.
 
-O programa avisa quando houver uma versão nova e se atualiza sozinho, com a frequência que você escolher em **Configurações › Atualizações** (ou nunca). Cada instalador baixado é conferido pela assinatura SHA-256 publicada junto com a versão.
+O programa avisa quando houver uma versão nova, com a frequência que você escolher em **Configurações › Atualizações** (ou nunca). No Windows, o instalador é conferido pelo SHA-256 e executado automaticamente. No Linux e macOS, o aviso abre os downloads do GitHub para instalar o pacote correspondente.
+
+**Recursos específicos do Windows:** a integração com o Explorador, os certificados A1/A3 do repositório de certificados do Windows e a confiança automática na cadeia do Windows dependem desse sistema. Esses recursos não são oferecidos como compatíveis com Linux/macOS. Os demais formatos Office além de `.docx`, `.xlsx` e `.txt` podem exigir LibreOffice instalado separadamente.
 
 ## O que ele faz
 
@@ -75,7 +86,7 @@ Os documentos são abertos, editados e salvos localmente. O GCP-PDF não exige c
 
 O GCP-PDF é feito com Electron, React, TypeScript, PDF.js e pdf-lib. O motor de edição do conteúdo original das páginas é baseado no [PdfCraft](assets/pdfcraft/NOTICE).
 
-Requisitos: Windows 10/11, Node.js 24 e npm.
+Requisitos de desenvolvimento: Node.js da `.nvmrc` e npm indicado em `package.json`. Compile Linux no Linux e macOS no Mac da arquitetura correspondente.
 
 ```powershell
 npm.cmd ci           # instala as dependências travadas
@@ -83,6 +94,8 @@ npm.cmd run dev      # abre o programa em modo de desenvolvimento
 npm.cmd test         # roda os testes automatizados
 npm.cmd run pack:win # gera o instalador e a versão portátil em release/
 ```
+
+Em Linux/macOS, use `npm ci`, `npm run prepare:native`, `npm test` e `npm run pack:linux` ou `npm run pack:mac`. O download do motor oficial é fixado na versão 0.15.0 e conferido por SHA-256. O workflow **Instaladores Linux e macOS** compila em cada arquitetura, executa os testes, instala/extrai os pacotes e testa abertura, renderização e edição de PDF no aplicativo empacotado. A publicação só começa quando os três jobs passam; a release indicada deve existir e ter a mesma versão do `package.json`. Assets já existentes não são sobrescritos. As evidências ficam nos artefatos do workflow. RPM é extraído e executado no Ubuntu; uma instalação em Fedora não está coberta por esse teste.
 
 Como publicar uma versão nova está explicado em [docs/PUBLICAR.md](docs/PUBLICAR.md). O histórico de mudanças fica em [HISTORICO.md](HISTORICO.md).
 

@@ -51,11 +51,11 @@ export function UpdateDialog({ info, onClose, onError }: { info: UpdateInfo; onC
   return (
     <Modal title={`Nova versão disponível: ${info.version}`} description={`Você está com a ${info.current}${info.published ? ` · publicada em ${new Date(info.published).toLocaleDateString("pt-BR")}` : ""} · ${Math.max(1, Math.round(info.size / 1048576))} MB`} onClose={onClose} wide>
       <div className="update-notes">{info.notes ? <Markdown text={info.notes} /> : <p className="muted">Sem notas de versão.</p>}</div>
-      {!info.sha256 && <p className="quick-error">Esta versão não informa o SHA-256 do instalador; por segurança ela não será instalada automaticamente.</p>}
-      <p className="compress-note">O instalador é conferido (SHA-256) antes de rodar. O GCP-PDF fecha, atualiza e abre de novo; seus arquivos e configurações são mantidos.</p>
+      {!info.manual && !info.sha256 && <p className="quick-error">Esta versão não informa o SHA-256 do instalador; por segurança ela não será instalada automaticamente.</p>}
+      <p className="compress-note">{info.manual ? 'Abra os downloads no GitHub, escolha o pacote do seu sistema e instale a nova versão. Seus documentos continuam abertos até você fechar o programa.' : 'O instalador é conferido (SHA-256) antes de rodar. O GCP-PDF fecha, atualiza e abre de novo; seus arquivos e configurações são mantidos.'}</p>
       <div className="modal-footer">
         <button className="button secondary" onClick={onClose}>Depois</button>
-        <button className="button primary" disabled={busy || !info.sha256} onClick={() => { setBusy(true); void window.gcp.installUpdate().catch((e) => { setBusy(false); onError(e); }); }}>{busy ? <LoaderCircle size={15} className="spin" /> : <Download size={15} />} Baixar e instalar</button>
+        <button className="button primary" disabled={busy || (!info.manual && !info.sha256)} onClick={() => { setBusy(true); void window.gcp.installUpdate().then(() => {if(info.manual)onClose();}).catch((e) => { setBusy(false); onError(e); }); }}>{busy ? <LoaderCircle size={15} className="spin" /> : <Download size={15} />} {info.manual ? 'Abrir downloads' : 'Baixar e instalar'}</button>
       </div>
     </Modal>
   );

@@ -37,7 +37,7 @@ jobs:
           cache: npm
       - name: Dependências de empacotamento Linux
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y rpm libarchive-tools xvfb libgbm1 libnss3 libasound2 libgtk-3-0
+        run: sudo apt-get update && sudo apt-get install -y rpm libarchive-tools xvfb desktop-file-utils libgbm1 libnss3 libasound2 libgtk-3-0
       - run: npm ci
       - run: npm run prepare:native
       - name: Versão e arquitetura
@@ -58,15 +58,15 @@ jobs:
         run: |
           set -euo pipefail
           sudo dpkg -i release/*.deb
-          xvfb-run -a npm run test:packaged -- /opt/GCP-PDF/gcp-pdf
+          xvfb-run -a npm run test:packaged -- /opt/GCP-PDF/gcp-pdf deb
           mkdir -p .cache/appimage .cache/rpm
           APPIMAGE=$(realpath release/*.AppImage)
           cd .cache/appimage
           "$APPIMAGE" --appimage-extract > /dev/null
           cd ../..
-          xvfb-run -a npm run test:packaged -- .cache/appimage/squashfs-root/gcp-pdf
+          xvfb-run -a npm run test:packaged -- .cache/appimage/squashfs-root/gcp-pdf AppImage
           bsdtar -xf release/*.rpm -C .cache/rpm
-          xvfb-run -a npm run test:packaged -- .cache/rpm/opt/GCP-PDF/gcp-pdf
+          xvfb-run -a npm run test:packaged -- .cache/rpm/opt/GCP-PDF/gcp-pdf rpm
       - name: Montar DMG, copiar aplicativo e testar
         if: runner.os == 'macOS'
         shell: bash
@@ -78,10 +78,10 @@ jobs:
           ditto ".cache/dmg/GCP-PDF.app" ".cache/installed/GCP-PDF.app"
           hdiutil detach "$PWD/.cache/dmg"
           codesign --verify --deep --strict --verbose=2 ".cache/installed/GCP-PDF.app"
-          npm run test:packaged -- ".cache/installed/GCP-PDF.app/Contents/MacOS/GCP-PDF"
+          npm run test:packaged -- ".cache/installed/GCP-PDF.app/Contents/MacOS/GCP-PDF" dmg
           ditto -x -k release/*.zip .cache/zip
           codesign --verify --deep --strict --verbose=2 ".cache/zip/GCP-PDF.app"
-          npm run test:packaged -- ".cache/zip/GCP-PDF.app/Contents/MacOS/GCP-PDF"
+          npm run test:packaged -- ".cache/zip/GCP-PDF.app/Contents/MacOS/GCP-PDF" zip
       - name: Guardar instaladores validados
         uses: actions/upload-artifact@v4
         with:

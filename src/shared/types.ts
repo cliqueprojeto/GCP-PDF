@@ -62,7 +62,7 @@ export interface CompressOptions {level:CompressLevel;metadata:boolean;bookmarks
 export type FieldType='text'|'date'|'checkbox'|'radio'|'combo'|'list'|'button'|'image'|'signature';
 export interface Certificate {id:string;name:string;issuer:string;validTo:string;icp:boolean;kind:string}
 export interface ProtectOptions {openPassword?:string;permissionsPassword?:string;printing:'none'|'low'|'high';changes:'none'|'pages'|'fill-sign'|'comment-fill-sign'|'any-except-extract';copy:boolean;encryption:'aes-256'|'aes-128'|'rc4-128'}
-export interface SignOptions {certificate:string;page:string|null;rect:Rect|null;reason:string;location:string;showName:boolean;signatureImage?:string}
+export interface SignOptions {certificate:string;password?:string;page:string|null;rect:Rect|null;reason:string;location:string;showName:boolean;signatureImage?:string}
 export interface QuickFile {path:string;name:string;pages?:number;error?:string}
 export interface QuickState {action:'combine'|'convert';files:QuickFile[];theme:'light'|'dark'}
 export interface GcpBridge {
@@ -124,6 +124,7 @@ export interface GcpBridge {
  protectDocument(id:string,options:ProtectOptions):Promise<string|null>;
  removeHiddenData(id:string,categories:string[]):Promise<void>;
  listCertificates():Promise<Certificate[]>;
+ chooseCertificate():Promise<Certificate|null>;
  signDocument(id:string,options:SignOptions):Promise<string|null>;
  checkSignatures(id:string):Promise<{name:string;status:string;signer:string;date:string;explanation:string}[]>;
  compressPreview(id:string,options:CompressOptions):Promise<{original:number;size:number}>;

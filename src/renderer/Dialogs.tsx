@@ -604,11 +604,12 @@ export function SettingsDialog({
             </section>
           )}
           <section className="form-section">
-            <h3>Ações rápidas no Windows</h3>
+            <h3>Ações rápidas nos arquivos</h3>
             <p className="muted">
               “Converter para PDF” e “Combinar em um PDF” (PDF, imagens, Word,
-              Excel, PowerPoint…) no menu de contexto do Explorador. No Windows
-              11, use “Mostrar mais opções”.
+              Excel, PowerPoint…) no menu de contexto. Windows 11: “Mostrar mais opções”.
+              Linux: menu GCP-PDF ou “Scripts › GCP-PDF”, conforme o gerenciador de arquivos.
+              macOS: Finder › Ações Rápidas ou Serviços. Pode ser necessário reabrir o gerenciador de arquivos.
             </p>
             <label className="switch-row">
               <input
@@ -622,8 +623,8 @@ export function SettingsDialog({
                     await window.gcp.installContextMenu(enabled);
                     setMessage(
                       enabled
-                        ? "Ações rápidas ativas no menu do Explorador."
-                        : "Ações rápidas removidas do Explorador.",
+                        ? "Ações rápidas configuradas no sistema."
+                        : "Ações rápidas removidas do sistema.",
                     );
                   } catch (error) {
                     setError(String(error));

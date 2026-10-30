@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
-import {chmod,copyFile,mkdir,mkdtemp,readdir,rm,writeFile} from 'node:fs/promises';
+import {chmod,copyFile,cp,mkdir,mkdtemp,readdir,rm,writeFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 
@@ -33,7 +33,7 @@ if(process.platform==='win32'){
     execFileSync(destination,['--version'],{stdio:'inherit'});
     // Preserve the release's legal notices alongside the native binary.
     const folder=join(executable,'..');
-    for(const name of await readdir(folder))if(/^(LICENSE|NOTICE|OFL|ATTRIBUTION)/.test(name))await copyFile(join(folder,name),resolve('assets/pdfcraft',name));
+    for(const name of await readdir(folder))if(/^(LICENSE|NOTICE|OFL|ATTRIBUTION)/.test(name))await cp(join(folder,name),resolve('assets/pdfcraft',name),{recursive:true});
     console.log(`Motor nativo conferido: ${target.name} (${target.sha256})`);
   }finally{await rm(root,{recursive:true,force:true});}
 }

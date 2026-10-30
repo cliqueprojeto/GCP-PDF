@@ -1,5 +1,5 @@
 import {app,BrowserWindow,ipcMain,dialog,Menu,shell,clipboard,nativeTheme,screen,session} from 'electron';
-import {join,basename,extname,resolve,dirname} from 'node:path';
+import {join,basename,extname,resolve,dirname,isAbsolute} from 'node:path';
 import {readFile,mkdir,stat,mkdtemp,rm,writeFile} from 'node:fs/promises';
 import {existsSync} from 'node:fs';
 import {execFile} from 'node:child_process';
@@ -15,6 +15,8 @@ import {UPDATE_REPOSITORY,checkForUpdate,due,installUpdate} from './updates';
 import {addOcrTextLayer,combineSelections} from './pdf-engine';
 import {requestAnswer,listModels,probeModel,freeCandidates,paidCandidate} from './ai';
 import {PdfCraftSession} from './pdfcraft-session';
+import {CertificateFiles} from './certificate-files';
+import {installUnixIntegration,type DesktopOptions} from './desktop-integration';
 import {privateDirectory} from './pdfcraft-sidecar';
 import {signatureList,signatureSummary,validateNewSignature,sameFilePath,refusesSignedOverwrite} from './signatures';
 import {registerWindowsContextMenu,readInputPdf,INPUT_EXTENSIONS} from './system';
@@ -32,6 +34,7 @@ const assets=()=>join(app.getAppPath(),'assets');
 const unpacked=()=>app.isPackaged?app.getAppPath().replace(/app[.]asar$/,'app.asar.unpacked'):app.getAppPath();
 const sidecar=()=>{const path=join(unpacked(),'assets','pdfcraft',process.platform==='win32'?'pdfcraft-cli.exe':'pdfcraft-cli');if(!existsSync(path))throw new Error('O motor de edição de texto não está disponível nesta instalação.');return path;};
 const engine=new PdfCraftSession(sidecar);
+const certificateFiles=new CertificateFiles();
 const engineRoot=()=>engine.folder;
 /** Renders HTML to PDF with Chromium in a hidden, script-free window (built-in Word/Excel conversion). */
 async function htmlToPdf(html:string){
@@ -88,7 +91,7 @@ function createWindow(ids:string[]=[]){
  // A new main window opens maximized; detached tabs get their half-screen bounds from the caller.
  window.on('ready-to-show',()=>{if(!ids.length)window.maximize();window.show();notify();});
  window.on('close',event=>{if(view.allowClose||shuttingDown)return;if(view.ids.some(id=>store.get(id).revision!==store.get(id).savedRevision)){event.preventDefault();void(async()=>{for(const id of [...view.ids])if(!(await confirmClose(view,id)))return;view.allowClose=true;window.close();})().catch(error=>dialog.showErrorBox('Não foi possível fechar',String(error.message||error)));}});
- window.on('closed',()=>{settlePrompts(view);views.delete(windowId);for(const id of view.ids)if(![...views.values()].some(v=>v.ids.includes(id)))store.remove(id);});
+ window.on('closed',()=>{settlePrompts(view);certificateFiles.forget(windowId);views.delete(windowId);for(const id of view.ids)if(![...views.values()].some(v=>v.ids.includes(id)))store.remove(id);});
  secureWindow(window);return view;
 }
 function mainView(){return [...views.values()].find(view=>!view.window.isDestroyed())??createWindow();}
@@ -427,25 +430,32 @@ function registerIpc(){
    try{await store.replaceDocument(id,out.bytes,revision);}finally{notify();}
   },
   listCertificates:async():Promise<Certificate[]>=>{
-   if(process.platform!=='win32')throw new Error('A assinatura com certificados instalados está disponível no Windows.');
    const found=await engine.certificates();
    return (found?.ids??[]).map((item:any)=>{const c=item.certificate??{};return {id:String(item.id),name:String(c.name??c.subject??'Certificado'),issuer:String(c.issuer??'').replace(/^.*CN=/,''),validTo:String(c.valid_to??''),icp:/ICP-Brasil/i.test(String(c.issuer??'')+String(c.subject??'')),kind:/\bA3\b/.test(String(c.subject??''))?'A3':/\bA1\b/.test(String(c.subject??''))?'A1':''};});
   },
+  chooseCertificate:async(view):Promise<Certificate|null>=>{
+   const result=await dialog.showOpenDialog(view.window,{title:'Escolher certificado A1',properties:['openFile'],filters:[{name:'Certificado digital A1',extensions:['pfx','p12']}]});
+   if(result.canceled||!result.filePaths[0])return null;
+   return certificateFiles.select(view.window.webContents.id,result.filePaths[0]);
+  },
   signDocument:async(view,id,options:SignOptions)=>{
    const doc=own(view,id);
-   if(typeof options?.certificate!=='string'||!/^windows:[0-9a-f]{40,64}$/i.test(options.certificate))throw new Error('Escolha um certificado digital.');
+   const certificate=options?.certificate;
+   const fromFile=typeof certificate==='string'&&certificate.startsWith('file:');
+   if(typeof certificate!=='string'||!(fromFile||process.platform==='win32'&&/^windows:[0-9a-f]{40,64}$/i.test(certificate)||process.platform==='darwin'&&/^keychain:.+/.test(certificate)))throw new Error('Escolha um certificado digital deste sistema ou um arquivo A1 (.pfx/.p12).');
+   if(options.password!==undefined&&typeof options.password!=='string')throw new Error('A senha do certificado deve ser um texto.');
    const target=await dialog.showSaveDialog(view.window,{title:'Salvar PDF assinado digitalmente',defaultPath:join(doc.path?dirname(doc.path):app.getPath('documents'),`${basename(doc.name,extname(doc.name))} (assinado).pdf`),filters:[{name:'Documento PDF',extensions:['pdf']}]});
    if(target.canceled||!target.filePath)return null;
    const original=store.signedSourcePath(id),differentPath=!!(original&&doc.path&&!await sameFilePath(original,doc.path));
    await refusesSignedOverwrite(original,target.filePath,doc.revision!==doc.savedRevision||differentPath);
-   action(view,'progress:Assinando com o certificado digital… o Windows pode pedir o PIN do token.');
+   action(view,'progress:Assinando com o certificado digital… o sistema pode pedir autorização.');
    let graphic:string|undefined;
    try{
     const bytes=await store.materialize(id);
     await trustWindowsRoots();
     const out=await engine.onCopy(bytes,async({doc:copy,output,call})=>{
      const before=await call('sign_list',{doc:copy});
-     const args:Record<string,unknown>={doc:copy,id:options.certificate,out:output,reason:options.reason||undefined,location:options.location||undefined};
+     const args:Record<string,unknown>={doc:copy,id:certificate,out:output,reason:options.reason||undefined,location:options.location||undefined};
      if(options.page&&options.rect){
       args.labels={signed_by:'Assinado digitalmente por',date:'Data: ',reason:'Motivo: ',location:'Local: ',distinguished_name:'DN: '};
       args.appearance={name:options.showName!==false,date:true,labels:true,reason:!!options.reason,location:!!options.location};
@@ -455,7 +465,9 @@ function registerIpc(){
       args.page=index+1;args.rect=[Math.min(a.x,b.x),Math.min(a.y,b.y),Math.max(a.x,b.x),Math.max(a.y,b.y)];
       if(options.signatureImage&&/^data:image\/(png|jpe?g);base64,/i.test(options.signatureImage)){graphic=join(engineRoot(),`assinatura-${Date.now()}.png`);await writeFile(graphic,Buffer.from(options.signatureImage.split(',')[1]!,'base64'),{mode:0o600});args.graphic={image:basename(graphic)};}
      }
-     return {before,produced:await call('sign_document',args)};
+     const sign=async(file?:string)=>call('sign_document',{...args,...(file?{id:file,password:options.password??''}:{})});
+     const produced=fromFile?await certificateFiles.use(view.window.webContents.id,certificate,engineRoot(),sign):await sign();
+     return {before,produced};
     });
     if(!out.bytes)throw new Error('A assinatura não foi concluída.');
     const verified=await engine.onCopy(out.bytes,async({doc:copy,call})=>call('sign_list',{doc:copy}));
@@ -708,7 +720,14 @@ async function aiTarget(input:{provider?:string;baseUrl?:string;key?:string}){
  if(!key)throw new Error('Cole a chave de API primeiro (ou salve a configuração com a chave).');
  return {config,key};
 }
-const installQuickActions=(enabled:boolean)=>registerWindowsContextMenu(enabled,app.isPackaged?`"${process.execPath}"`:`"${process.execPath}" "${app.getAppPath()}"`,join(unpacked(),'assets','context'));
+function desktopOptions():DesktopOptions{
+ const testing=process.env.GCP_PDF_TEST_MODE==='1';
+ const home=testing?join(app.getPath('userData'),'desktop-profile'):app.getPath('home');
+ const xdg=(name:string,fallback:string)=>!testing&&process.env[name]&&isAbsolute(process.env[name]!)?process.env[name]!:join(home,fallback);
+ const launcher=process.platform==='linux'&&process.env.APPIMAGE?process.env.APPIMAGE:process.execPath;
+ return {platform:process.platform as 'linux'|'darwin',home,data:xdg('XDG_DATA_HOME','.local/share'),config:xdg('XDG_CONFIG_HOME','.config'),launcher,appBundle:process.platform==='darwin'?resolve(process.execPath,'../../..'):undefined,appImage:!!process.env.APPIMAGE,icon:join(assets(),'icon.png')};
+}
+const installQuickActions=(enabled:boolean)=>process.platform==='win32'?registerWindowsContextMenu(enabled,app.isPackaged?`"${process.execPath}"`:`"${process.execPath}" "${app.getAppPath()}"`,join(unpacked(),'assets','context')):installUnixIntegration(desktopOptions(),enabled);
 function makeMenu(){
  const current=()=>views.get(BrowserWindow.getFocusedWindow()?.webContents.id||-1);
  const command=(name:string)=>()=>{const view=current();if(view)action(view,name);};
@@ -743,7 +762,8 @@ else{
   session.defaultSession.setPermissionRequestHandler((_wc,_permission,callback)=>callback(false));
   if(!process.env.VITE_DEV_SERVER_URL)session.defaultSession.webRequest.onBeforeRequest((details,callback)=>{callback({cancel:!['file:','data:','blob:','devtools:'].some(protocol=>details.url.startsWith(protocol))});});
   // Quick actions are installed automatically (idempotent) so they also follow the app after an update or move.
-  if(process.platform==='win32'&&app.isPackaged&&settings.quickActions)void installQuickActions(true).catch(()=>{});
+  // Test profiles never change the real desktop or the Windows registry.
+  if(app.isPackaged&&process.env.GCP_PDF_TEST_MODE!=='1')void installQuickActions(settings.quickActions).catch(error=>action(mainView(),'notice:Não foi possível configurar as ações rápidas: '+String(error.message||error)));
   setTimeout(()=>void backgroundUpdateCheck(),8000);
   ready=true;handleLaunch(process.argv);for(const args of early.splice(0))handleLaunch(args);
   if(process.env.GCP_PDF_TEST_MODE==='1')(globalThis as any).__gcpTest={store,views,quicks,createWindow,createQuickWindow,notify,settings,engine};

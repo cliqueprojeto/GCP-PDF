@@ -71,7 +71,7 @@ export class PdfCraftSession {
  private async call(name: string, args: Record<string, unknown>): Promise<any> {
   const result = await this.rpc('tools/call', {name, arguments: args});
   const text = result?.content?.find((item: any) => item.type === 'text')?.text ?? '';
-  if (result?.isError) throw new Error(portuguese(text));
+  if (result?.isError) throw new Error(portuguese(text,name));
   try { return JSON.parse(text); } catch { return text; }
  }
  /** Opens (or reuses) the engine document holding source `base`. */
@@ -291,7 +291,7 @@ export class PdfCraftSession {
    finally { await rm(file, {force: true}).catch(() => {}); }
   });
  }
- certificates() { return this.serial(async () => { await this.start(); return this.call('sign_windows_ids', {}); }); }
+ certificates() { return this.serial(async () => { await this.start(); return process.platform==='win32'?this.call('sign_windows_ids', {}):process.platform==='darwin'?this.call('sign_keychain_ids', {}):{ids:[]}; }); }
  async dispose() {
   const child = this.child; this.fail(new Error('O motor de edição foi encerrado.'));
   if (child) { child.stdin.end(); setTimeout(() => child.kill(), 1500).unref(); }
@@ -316,8 +316,9 @@ const ENGINE_MESSAGES: [RegExp, string][] = [
  [/too large|too many|limit/i, 'o conteúdo excede o limite suportado'],
  [/invalid|malformed|corrupt|unexpected/i, 'o PDF ou o pedido tem dados inválidos'],
 ];
-function portuguese(text: string) {
+function portuguese(text: string,tool?:string) {
  if (!text) return 'O motor de edição recusou a operação.';
+ if(tool==='sign_document'&&/password|pkcs|pfx|decrypt|certificate|private key/i.test(text))return 'Não foi possível usar o certificado digital. Confira o arquivo A1 e sua senha ou a autorização do certificado no sistema.';
  if (/[ãçéêíóõú]/i.test(text) && !/\b(the|is|not|cannot)\b/i.test(text)) return text;
  console.warn('[GCP-PDF] motor:', text);
  const hit = ENGINE_MESSAGES.find(([re]) => re.test(text));

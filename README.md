@@ -36,7 +36,11 @@ Como o instalador ainda não tem assinatura digital de código, o Windows pode m
 
 O programa avisa quando houver uma versão nova, com a frequência que você escolher em **Configurações › Atualizações** (ou nunca). No Windows, o instalador é conferido pelo SHA-256 e executado automaticamente. No Linux e macOS, o aviso abre os downloads do GitHub para instalar o pacote correspondente.
 
-**Recursos específicos do Windows:** a integração com o Explorador, os certificados A1/A3 do repositório de certificados do Windows e a confiança automática na cadeia do Windows dependem desse sistema. Esses recursos não são oferecidos como compatíveis com Linux/macOS. Os demais formatos Office além de `.docx`, `.xlsx` e `.txt` podem exigir LibreOffice instalado separadamente.
+**Certificado digital A1:** Windows, Linux e macOS permitem escolher o arquivo `.pfx`/`.p12` em **Assinar › Escolher arquivo A1**, informar a senha e assinar. A senha não fica salva. O aplicativo verifica a assinatura gerada antes de gravar o PDF. O Windows também lista certificados do sistema; o macOS lista identidades do Chaves. A confiança na cadeia depende das autoridades reconhecidas localmente: uma assinatura íntegra pode aparecer com cadeia não reconhecida. Confira certificados ICP-Brasil no validador do ITI. Tokens/cartões A3 fora do Windows não estão incluídos nesta compatibilidade.
+
+**Atalhos e ações rápidas:** no Linux, o aplicativo aparece em **Escritório**. Após a primeira abertura, as ações **Combinar em um PDF** e **Converter para PDF** são configuradas por usuário: **Scripts › GCP-PDF** em Nautilus/GNOME e Caja, submenu **GCP-PDF** no Dolphin/KDE e ações com prefixo GCP-PDF no Nemo e Thunar. No macOS, arraste o aplicativo para **Aplicativos**; as ações do Finder são instaladas em `~/Library/Services` e aparecem em **Ações Rápidas** ou **Serviços**. Se necessário, habilite-as em **Ajustes do Sistema › Teclado › Atalhos de Teclado › Serviços**. Pode ser necessário reabrir o gerenciador de arquivos para atualizar o menu. Você pode desativar as ações em **Configurações › Ações rápidas nos arquivos**. As ações existentes são preservadas; backups de arquivos alterados ficam em `~/.local/share/gcp-pdf/integration-backups` (ou no diretório XDG de dados configurado).
+
+Os demais formatos Office além de `.docx`, `.xlsx` e `.txt` podem exigir LibreOffice instalado separadamente.
 
 ## O que ele faz
 
@@ -95,7 +99,7 @@ npm.cmd test         # roda os testes automatizados
 npm.cmd run pack:win # gera o instalador e a versão portátil em release/
 ```
 
-Em Linux/macOS, use `npm ci`, `npm run prepare:native`, `npm test` e `npm run pack:linux` ou `npm run pack:mac`. O download do motor oficial é fixado na versão 0.15.0 e conferido por SHA-256. O workflow **Instaladores Linux e macOS** compila em cada arquitetura, executa os testes, instala/extrai os pacotes e testa abertura, renderização e edição de PDF no aplicativo empacotado. A publicação só começa quando os três jobs passam; a release indicada deve existir e ter a mesma versão do `package.json`. Assets já existentes não são sobrescritos. As evidências ficam nos artefatos do workflow. RPM é extraído e executado no Ubuntu; uma instalação em Fedora não está coberta por esse teste.
+Em Linux/macOS, use `npm ci`, `npm run prepare:native`, `npm test` e `npm run pack:linux` ou `npm run pack:mac`. O download do motor oficial é fixado na versão 0.15.0 e conferido por SHA-256. O workflow **Instaladores Linux e macOS** compila em cada arquitetura, executa os testes, instala/extrai os pacotes e testa abertura, renderização, edição, OCR, assinatura A1 com certificado temporário e execução das ações rápidas no aplicativo empacotado. Esses testes não usam um certificado ICP-Brasil real nem token A3 e não cobrem visualmente todos os gerenciadores de arquivos. A publicação só começa quando os três jobs passam; a release indicada deve existir e ter a mesma versão do `package.json`. Assets já existentes não são sobrescritos. As evidências ficam nos artefatos do workflow. RPM é extraído e executado no Ubuntu; uma instalação em Fedora não está coberta por esse teste.
 
 Como publicar uma versão nova está explicado em [docs/PUBLICAR.md](docs/PUBLICAR.md). O histórico de mudanças fica em [HISTORICO.md](HISTORICO.md).
 

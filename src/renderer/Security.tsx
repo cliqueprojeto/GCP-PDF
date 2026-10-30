@@ -59,7 +59,7 @@ export function ProtectDialog({ docId, name, onClose, onSaved, onError }: { docI
   );
 }
 
-/** Digital signature with an installed certificate (ICP-Brasil A1/A3 included), PAdES. */
+/** PAdES signing with a system identity or a user-selected A1 PKCS#12 file. */
 export interface PlacedSignature { options: Omit<import("../shared/types").SignOptions, "page" | "rect">; width: number; height: number; lines: string[]; image?: string }
 /** Lines the visible stamp shows, in the order the engine draws them. */
 export function stampLines(name: string, reason: string, location: string) { const now = new Date(); return ["Assinado digitalmente por", name, `Data: ${now.toLocaleDateString("pt-BR")} ${now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`, ...(reason ? [`Motivo: ${reason}`] : []), ...(location ? [`Local: ${location}`] : [])]; }
@@ -67,29 +67,38 @@ const STAMP_SIZES = { small: 0.75, medium: 1, large: 1.35 } as const;
 export function CertificateDialog({ docId, area, visible = false, signatures, onClose, onSigned, onPlace, onError }: { docId: string; area: { page: string; rect: Rect } | null; visible?: boolean; signatures: Signature[]; onClose: () => void; onSigned: (path: string) => void; onPlace?: (placed: PlacedSignature) => void; onError: (e: unknown) => void }) {
   const [size, setSize] = useState<keyof typeof STAMP_SIZES>("medium");
   const [list, setList] = useState<Certificate[] | null>(null), [chosen, setChosen] = useState(""), [reason, setReason] = useState(""), [location, setLocation] = useState(""), [image, setImage] = useState(""), [busy, setBusy] = useState(false), [loadError, setLoadError] = useState("");
+  const [password,setPassword]=useState("");
+  const fromFile=chosen.startsWith('file:');
+  const signerName=fromFile?'Titular do certificado':list?.find(c=>c.id===chosen)?.name.split(':')[0]??'';
+  async function chooseFile(){
+    try{const certificate=await window.gcp.chooseCertificate();if(!certificate)return;setList(items=>[...(items??[]).filter(c=>!c.id.startsWith('file:')),certificate]);setChosen(certificate.id);setPassword('');}
+    catch(error){onError(error);}
+  }
   useEffect(() => { void window.gcp.listCertificates().then((items) => { setList(items); setChosen(items.find((c) => c.icp)?.id ?? items[0]?.id ?? ""); }).catch((e) => setLoadError(e instanceof Error ? e.message : String(e))); }, []);
   async function sign() {
     setBusy(true);
-    try { const path = await window.gcp.signDocument(docId, { certificate: chosen, page: area?.page ?? null, rect: area?.rect ?? null, reason, location, showName: true, signatureImage: image || undefined }); if (path) { onSigned(path); onClose(); } }
+    try { const path = await window.gcp.signDocument(docId, { certificate: chosen, ...(fromFile?{password}:{}), page: area?.page ?? null, rect: area?.rect ?? null, reason, location, showName: true, signatureImage: image || undefined }); if (path) { onSigned(path); onClose(); } }
     catch (e) { onError(e); } finally { setBusy(false); }
   }
   return (
     <Modal title="Assinar com certificado digital" description={visible ? "Escolha o certificado e posicione o carimbo na página antes de assinar" : area ? "Assinatura visível na área marcada" : "Assinatura invisível (sem carimbo na página)"} onClose={onClose} wide>
       {loadError ? <p className="quick-error">{loadError}</p> : !list ? (
-        <div className="cert-loading"><LoaderCircle className="spin" size={18} /> Lendo certificados instalados no Windows…</div>
+        <div className="cert-loading"><LoaderCircle className="spin" size={18} /> Lendo certificados disponíveis no sistema…</div>
       ) : !list.length ? (
-        <p className="quick-error">Nenhum certificado com chave privada foi encontrado. Instale o certificado A1 (arquivo .pfx) ou conecte o token/cartão A3 e tente de novo.</p>
+        <p className="muted">Escolha seu arquivo A1 (.pfx ou .p12) abaixo. Certificados do Windows ou do Chaves do macOS também aparecem aqui quando disponíveis.</p>
       ) : (
         <div className="cert-list">
           {list.map((c) => (
             <button key={c.id} className={`cert ${chosen === c.id ? "selected" : ""}`} onClick={() => setChosen(c.id)}>
               <BadgeCheck size={20} />
-              <span><strong>{c.name}</strong><small>{c.issuer} · válido até {c.validTo.slice(0, 10).replace(/\./g, "/")}</small></span>
+              <span><strong>{c.name}</strong><small>{c.issuer}{c.validTo?` · válido até ${c.validTo.slice(0,10).replace(/\./g,'/')}`:''}</small></span>
               {c.icp && <em>ICP-Brasil{c.kind ? ` ${c.kind}` : ""}</em>}
             </button>
           ))}
         </div>
       )}
+      <button className="button secondary" disabled={busy} onClick={()=>void chooseFile()}><FileSignature size={15}/> Escolher arquivo A1 (.pfx/.p12)…</button>
+      {fromFile&&<><Password label="Senha do certificado A1" value={password} onChange={setPassword} disabled={busy}/><p className="muted">A senha não é salva. O nome real do titular é lido do certificado ao assinar.</p></>}
       <div className="field-row">
         <label className="field">Motivo (opcional)<input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ex.: Aprovo este documento" maxLength={120} /></label>
         <label className="field">Local (opcional)<input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Ex.: Belo Horizonte - MG" maxLength={120} /></label>
@@ -106,14 +115,14 @@ export function CertificateDialog({ docId, area, visible = false, signatures, on
         <div className="stamp-size">
           <span>Tamanho do carimbo</span>
           <div className="segmented small">{(["small", "medium", "large"] as const).map((k) => <button key={k} className={size === k ? "selected" : ""} onClick={() => setSize(k)}>{{ small: "Pequeno", medium: "Médio", large: "Grande" }[k]}</button>)}</div>
-          <SignaturePreview lines={stampLines(list?.find((c) => c.id === chosen)?.name.split(":")[0] ?? "", reason, location)} image={image || undefined} scale={STAMP_SIZES[size]} />
+          <SignaturePreview lines={stampLines(signerName, reason, location)} image={image || undefined} scale={STAMP_SIZES[size]} />
         </div>
       )}
-      <p className="compress-note"><ShieldCheck size={13} /> Padrão PAdES (SHA-256). O Windows pode pedir o PIN do token A3. Depois de assinar, qualquer alteração invalida a assinatura: assine por último. Você pode conferir a validade no <button className="text-button" onClick={() => void window.gcp.openExternal(ITI)}>validador do ITI <ExternalLink size={11} /></button>.</p>
+      <p className="compress-note"><ShieldCheck size={13} /> Padrão PAdES (SHA-256). A1 em arquivo funciona no Windows, Linux e macOS. Certificados do sistema podem pedir autorização ou PIN. Depois de assinar, qualquer alteração invalida a assinatura: assine por último. Você pode conferir a validade no <button className="text-button" onClick={() => void window.gcp.openExternal(ITI)}>validador do ITI <ExternalLink size={11} /></button>.</p>
       <div className="modal-footer">
         <button className="button secondary" onClick={onClose}>Cancelar</button>
         {visible && onPlace ? (
-          <button className="button primary" disabled={!chosen} onClick={() => { const cert = list?.find((c) => c.id === chosen); const lines = stampLines(cert?.name.split(":")[0] ?? "", reason, location), k = STAMP_SIZES[size]; onPlace({ options: { certificate: chosen, reason, location, showName: true, signatureImage: image || undefined }, width: Math.round((image ? 250 : 190) * k), height: Math.round((26 + lines.length * 11) * k), lines, image: image || undefined }); }}><FileSignature size={15} /> Posicionar na página</button>
+          <button className="button primary" disabled={!chosen} onClick={() => { const lines = stampLines(signerName, reason, location), k = STAMP_SIZES[size]; onPlace({ options: { certificate: chosen, ...(fromFile?{password}:{}), reason, location, showName: true, signatureImage: image || undefined }, width: Math.round((image ? 250 : 190) * k), height: Math.round((26 + lines.length * 11) * k), lines, image: image || undefined }); }}><FileSignature size={15} /> Posicionar na página</button>
         ) : <button className="button primary" disabled={!chosen || busy} onClick={() => void sign()}>{busy ? <LoaderCircle size={15} className="spin" /> : <FileSignature size={15} />} Assinar e salvar…</button>}
       </div>
     </Modal>

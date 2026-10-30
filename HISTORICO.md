@@ -1,5 +1,14 @@
 # Histórico de versões do GCP-PDF
 
+## 0.3.7 — 30/10/2026
+
+- Ao arrastar uma imagem do PDF, a tela não pula nem pisca mais, e a própria imagem acompanha o mouse até você soltar.
+- Barras de rolagem mais largas em todo o programa, mais fáceis de clicar e arrastar.
+- Tela inicial: o cartão do documento aberto ficou mais próximo do título e mais organizado.
+- IA: o modelo padrão agora é o gemini-3.5-flash-lite, que funciona com a chave gratuita do Google. O botão "Encontrar melhor modelo" escolhe um modelo mais completo quando a sua chave tem faturamento.
+- Atualizações: o programa procura e baixa as novas versões direto do GitHub, sem precisar de token ou de cadastro.
+
+
 ## 0.3.6 — 30/10/2026
 
 - Configurações de IA: novos botões para ver os modelos da sua chave, testar o modelo e encontrar automaticamente um modelo que funcione na chave gratuita do Google AI Studio.

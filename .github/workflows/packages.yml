@@ -75,6 +75,18 @@ jobs:
           dbus-run-session -- xvfb-run -a npm run test:packaged -- .cache/appimage/squashfs-root/gcp-pdf AppImage
           bsdtar -xf release/*.rpm -C .cache/rpm
           dbus-run-session -- xvfb-run -a npm run test:packaged -- .cache/rpm/opt/GCP-PDF/gcp-pdf rpm
+      - name: Instalar RPM no Fedora e conferir integração
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          docker run --rm -v "$PWD/release:/packages:ro" fedora:44 bash -euc '
+            dnf install -y /packages/*.rpm desktop-file-utils
+            rpm -q gcp-pdf
+            test -x /usr/bin/gcp-pdf
+            desktop-file-validate /usr/share/applications/gcp-pdf.desktop
+            grep -q "Categories=Office" /usr/share/applications/gcp-pdf.desktop
+            /opt/GCP-PDF/resources/app.asar.unpacked/assets/pdfcraft/pdfcraft-cli --version
+          '
       - name: Diagnóstico de falha de inicialização Linux
         if: failure() && runner.os == 'Linux'
         shell: bash

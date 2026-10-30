@@ -1,3 +1,4 @@
+import {t as translateUi} from "./i18n";
 import React, { useEffect, useRef, useState } from "react";
 import { Bookmark as BookmarkIcon, BookmarkPlus, FolderPlus, Pencil, Trash2, Wand2, ChevronRight, ChevronDown, AArrowUp, AArrowDown, ListTree, Flag, Bold, MoreHorizontal, LoaderCircle } from "lucide-react";
 import type { Bookmark, BookmarkEdit, DocumentInfo } from "../shared/types";
@@ -36,7 +37,7 @@ export function BookmarksPanel({ doc, currentPage, readingTop, onGo, onError, no
           {same(renaming, b.path) ? (
             <input autoFocus defaultValue={b.title} onClick={(e) => e.stopPropagation()} onFocus={(e) => e.currentTarget.select()} onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") { setRenaming(null); } }}
               onBlur={(e) => { const title = e.currentTarget.value.trim(); setRenaming(null); if (title && title !== b.title) void run({ type: "rename", path: b.path, title }); }} />
-          ) : <span className="bookmark-title" style={{ fontWeight: b.bold ? 700 : undefined }} title={b.page >= 0 ? `Página ${b.page + 1}` : "Destino fora deste documento"}>{b.title}</span>}
+          ) : <span className="bookmark-title" style={{ fontWeight: b.bold ? 700 : undefined }} title={b.page >= 0 ? `Página ${b.page + 1}` : translateUi("Destino fora deste documento")}>{b.title}</span>}
           {b.page >= 0 && <small>{b.page + 1}</small>}
         </div>
         {expanded && b.children.map((c) => <Row key={c.path.join(".")} b={c} depth={depth + 1} />)}
@@ -46,37 +47,37 @@ export function BookmarksPanel({ doc, currentPage, readingTop, onGo, onError, no
   return (
     <div className="bookmarks-panel">
       <div className="bookmarks-toolbar" ref={menuRef}>
-        <button className="icon-button" title="Mais opções" onClick={() => setMenu(!menu)}><MoreHorizontal size={16} /></button>
+        <button className="icon-button" title={translateUi("Mais opções")} onClick={() => setMenu(!menu)}><MoreHorizontal size={16} /></button>
         <span className="toolbar-divider" />
-        <button className="icon-button" title="Adicionar marcador (no ponto que você está lendo)" disabled={busy} onClick={() => add(false)}><BookmarkPlus size={16} /></button>
-        <button className="icon-button" title="Renomear · F2" disabled={!selected} onClick={() => setRenaming(selected)}><Pencil size={15} /></button>
-        <button className="icon-button" title="Excluir · Delete" disabled={!selected || busy} onClick={() => selected && void run({ type: "delete", path: selected }, () => setSelected(null))}><Trash2 size={15} /></button>
-        <button className="icon-button" title="Aumentar a fonte dos marcadores" onClick={() => setSize((s) => Math.min(20, s + 1))}><AArrowUp size={16} /></button>
-        <button className="icon-button" title="Diminuir a fonte dos marcadores" onClick={() => setSize((s) => Math.max(10, s - 1))}><AArrowDown size={16} /></button>
+        <button className="icon-button" title={translateUi("Adicionar marcador (no ponto que você está lendo)")} disabled={busy} onClick={() => add(false)}><BookmarkPlus size={16} /></button>
+        <button className="icon-button" title={translateUi("Renomear · F2")} disabled={!selected} onClick={() => setRenaming(selected)}><Pencil size={15} /></button>
+        <button className="icon-button" title={translateUi("Excluir · Delete")} disabled={!selected || busy} onClick={() => selected && void run({ type: "delete", path: selected }, () => setSelected(null))}><Trash2 size={15} /></button>
+        <button className="icon-button" title={translateUi("Aumentar a fonte dos marcadores")} onClick={() => setSize((s) => Math.min(20, s + 1))}><AArrowUp size={16} /></button>
+        <button className="icon-button" title={translateUi("Diminuir a fonte dos marcadores")} onClick={() => setSize((s) => Math.max(10, s - 1))}><AArrowDown size={16} /></button>
         {busy && <LoaderCircle size={14} className="spin" />}
         {menu && (
           <div className="dropdown-menu bookmarks-menu">
-            <button disabled={!selected} onClick={() => { setMenu(false); selected && void run({ type: "delete", path: selected }, () => setSelected(null)); }}><Trash2 size={14} /> Excluir marcador</button>
-            <button disabled={!selected} onClick={() => { setMenu(false); setRenaming(selected); }}><Pencil size={14} /> Alterar nome do marcador</button>
-            <button onClick={() => { setMenu(false); add(false); }}><BookmarkPlus size={14} /> Adicionar marcador</button>
-            <button disabled={!selected} onClick={() => { setMenu(false); add(true); }}><FolderPlus size={14} /> Adicionar subgrupo</button>
-            <button disabled={!selected} onClick={() => { setMenu(false); selected && void run({ type: "set-page", path: selected, page: currentPage }, () => notify(`Destino definido para a página ${currentPage + 1}.`)); }}><Flag size={14} /> Definir destino (página atual)</button>
-            <button disabled={!selectedItem} onClick={() => { setMenu(false); selectedItem && void run({ type: "style", path: selectedItem.path, bold: !selectedItem.bold }); }}><Bold size={14} /> {selectedItem?.bold ? "Remover negrito" : "Negrito"}</button>
+            <button disabled={!selected} onClick={() => { setMenu(false); selected && void run({ type: "delete", path: selected }, () => setSelected(null)); }}><Trash2 size={14} />{" "}{translateUi("Excluir marcador")}</button>
+            <button disabled={!selected} onClick={() => { setMenu(false); setRenaming(selected); }}><Pencil size={14} />{" "}{translateUi("Alterar nome do marcador")}</button>
+            <button onClick={() => { setMenu(false); add(false); }}><BookmarkPlus size={14} />{" "}{translateUi("Adicionar marcador")}</button>
+            <button disabled={!selected} onClick={() => { setMenu(false); add(true); }}><FolderPlus size={14} />{" "}{translateUi("Adicionar subgrupo")}</button>
+            <button disabled={!selected} onClick={() => { setMenu(false); selected && void run({ type: "set-page", path: selected, page: currentPage }, () => notify(`Destino definido para a página ${currentPage + 1}.`)); }}><Flag size={14} />{" "}{translateUi("Definir destino (página atual)")}</button>
+            <button disabled={!selectedItem} onClick={() => { setMenu(false); selectedItem && void run({ type: "style", path: selectedItem.path, bold: !selectedItem.bold }); }}><Bold size={14} /> {selectedItem?.bold ? translateUi("Remover negrito") : translateUi("Negrito")}</button>
             <hr />
-            <button disabled={!items?.length} onClick={() => { setMenu(false); all(true); }}><ListTree size={14} /> Expandir todos os marcadores</button>
-            <button disabled={!items?.length} onClick={() => { setMenu(false); all(false); }}><ListTree size={14} /> Recolher todos os marcadores</button>
+            <button disabled={!items?.length} onClick={() => { setMenu(false); all(true); }}><ListTree size={14} />{" "}{translateUi("Expandir todos os marcadores")}</button>
+            <button disabled={!items?.length} onClick={() => { setMenu(false); all(false); }}><ListTree size={14} />{" "}{translateUi("Recolher todos os marcadores")}</button>
             <hr />
-            <button onClick={() => { setMenu(false); void run({ type: "auto" }, (n) => notify(`${n} marcador${n > 1 ? "es criados" : " criado"} a partir dos títulos do documento.`)); }}><Wand2 size={14} /> Marcadores automáticos</button>
+            <button onClick={() => { setMenu(false); void run({ type: "auto" }, (n) => notify(`${n} marcador${n > 1 ? "es criados" : " criado"} a partir dos títulos do documento.`)); }}><Wand2 size={14} />{" "}{translateUi("Marcadores automáticos")}</button>
           </div>
         )}
       </div>
-      {!items ? <div className="cert-loading"><LoaderCircle className="spin" size={16} /> Lendo marcadores…</div> : !items.length ? (
+      {!items ? <div className="cert-loading"><LoaderCircle className="spin" size={16} />{" "}{translateUi("Lendo marcadores…")}</div> : !items.length ? (
         <div className="bookmarks-empty">
           <BookmarkIcon size={30} />
-          <p>Sem marcadores</p>
-          <small>Marque o ponto que você está lendo para voltar a ele com um clique, ou crie a partir dos títulos do documento.</small>
-          <button className="button primary" disabled={busy} onClick={() => void run({ type: "auto" }, (n) => notify(`${n} marcador${n > 1 ? "es criados" : " criado"} a partir dos títulos do documento.`))}><Wand2 size={15} /> Marcadores automáticos</button>
-          <button className="button secondary" disabled={busy} onClick={() => add(false)}><BookmarkPlus size={15} /> Marcar esta posição</button>
+          <p>{translateUi("Sem marcadores")}</p>
+          <small>{translateUi("Marque o ponto que você está lendo para voltar a ele com um clique, ou crie a partir dos títulos do documento.")}</small>
+          <button className="button primary" disabled={busy} onClick={() => void run({ type: "auto" }, (n) => notify(`${n} marcador${n > 1 ? "es criados" : " criado"} a partir dos títulos do documento.`))}><Wand2 size={15} />{" "}{translateUi("Marcadores automáticos")}</button>
+          <button className="button secondary" disabled={busy} onClick={() => add(false)}><BookmarkPlus size={15} />{" "}{translateUi("Marcar esta posição")}</button>
         </div>
       ) : <div className="bookmarks-tree">{items.map((b) => <Row key={b.path.join(".")} b={b} depth={0} />)}</div>}
     </div>

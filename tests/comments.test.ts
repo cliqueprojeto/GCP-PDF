@@ -1,3 +1,4 @@
+import {DocumentStore} from '../src/main/store';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PDFDocument,PDFName,PDFHexString,PDFDict,PDFString} from 'pdf-lib';
@@ -9,3 +10,12 @@ async function write(base:Uint8Array,objects:PageObject[],syncNotes=false){retur
 test('comments persist as Unicode native /Text annotations and reopen with matching geometry',async()=>{const result=await write(await createBlankPdf(),[note]);const doc=await PDFDocument.load(result);const annots=doc.getPage(0).node.Annots()!;assert.equal(annots.size(),1);const annotation=doc.context.lookup(annots.get(0),PDFDict);assert.equal(annotation.get(PDFName.of('Subtype'))?.toString(),'/Text');assert.equal((annotation.get(PDFName.of('Contents')) as PDFHexString).decodeText(),note.text);const notes=await readPdfNotes(result);assert.equal(notes.length,1);assert.deepEqual(notes[0],{...note,page:0});});
 test('editing and deleting an owned comment do not duplicate or resurrect annotations',async()=>{const original=await write(await createBlankPdf(),[note]);const changed=await write(original,[{...note,text:'Comentário atualizado.'}],true);assert.equal((await readPdfNotes(changed)).length,1);assert.equal((await readPdfNotes(changed))[0]?.text,'Comentário atualizado.');const removed=await write(changed,[],true);assert.equal((await readPdfNotes(removed)).length,0);assert.equal((await PDFDocument.load(removed)).getPage(0).node.Annots()?.size(),0);});
 test('comment synchronization preserves third-party annotations',async()=>{const doc=await PDFDocument.load(await createBlankPdf());doc.getPage(0).node.addAnnot(doc.context.register(doc.context.obj({Type:'Annot',Subtype:'Text',Rect:[5,5,25,25],Contents:PDFHexString.fromText('Nota de outro editor'),NM:PDFString.of('foreign-note')})));const result=await write(await doc.save(),[note],true);const saved=await PDFDocument.load(result);assert.equal(saved.getPage(0).node.Annots()?.size(),2);});
+
+test('source notes render only through editable overlays, while saved and signed source bytes remain untouched',async()=>{
+ const bytes=await write(await createBlankPdf(),[note]),store=new DocumentStore(),id=await store.add(bytes,'comentado.pdf','comentado.pdf');
+ const base=store.info(id).pages[0]!.base,viewer=await PDFDocument.load(await store.viewerBase(base));
+ assert.equal(viewer.getPage(0).node.Annots()?.size(),0);
+ assert.deepEqual(store.base(base),bytes);assert.deepEqual(await store.materialize(id),bytes);
+ const item=store.info(id).objects[0]!;await store.apply(id,{type:'delete-objects',ids:[item.id]},store.info(id).revision);
+ assert.equal((await readPdfNotes(await store.materialize(id))).length,0);
+});

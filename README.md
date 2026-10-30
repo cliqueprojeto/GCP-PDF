@@ -1,8 +1,8 @@
 # GCP-PDF
 
-**Leitor e editor de PDF completo, em português, que funciona no seu computador.**
+**Leitor e editor de PDF com interface em português, inglês e espanhol, que funciona no seu computador.**
 
-O GCP-PDF reúne num só programa o que normalmente exige vários: ler, comentar, editar o texto e as imagens originais, organizar páginas, preencher e criar formulários, assinar com certificado digital ICP-Brasil, proteger e converter documentos. Tudo em português do Brasil, sem cadastro e com seus arquivos sempre no seu computador.
+O GCP-PDF reúne num só programa o que normalmente exige vários: ler, comentar, editar o texto e as imagens originais, organizar páginas, preencher e criar formulários, assinar com certificado digital ICP-Brasil, proteger e converter documentos. Interface em português do Brasil, inglês e espanhol, sem cadastro e com seus arquivos sempre no seu computador.
 
 Desenvolvido por **Bruno Albertini | [Gestão Cultural Pro](https://gestaoculturalpro.com.br/)**.
 
@@ -34,7 +34,7 @@ Os hashes SHA-256 dos pacotes Linux/macOS ficam no arquivo `SHA256SUMS-linux-mac
 
 Como o instalador ainda não tem assinatura digital de código, o Windows pode mostrar "O Windows protegeu o computador". Clique em **Mais informações** e depois em **Executar assim mesmo**.
 
-O programa avisa quando houver uma versão nova, com a frequência que você escolher em **Configurações › Atualizações** (ou nunca). No Windows, o instalador é conferido pelo SHA-256 e executado automaticamente. No Linux e macOS, o aviso abre os downloads do GitHub para instalar o pacote correspondente.
+Por padrão, o programa verifica atualizações ao abrir e avisa quando houver uma versão nova. Você pode escolher outra frequência em **Configurações › Atualizações** (ou nunca). No Windows, o instalador é conferido pelo SHA-256 e executado automaticamente. No Linux e macOS, o aviso abre os downloads do GitHub para instalar o pacote correspondente.
 
 **Certificado digital A1 nos novos pacotes Linux/macOS:** escolha o arquivo `.pfx`/`.p12` em **Assinar › Escolher arquivo A1**, informe a senha e assine. A senha não fica salva. O aplicativo verifica a assinatura gerada antes de gravar o PDF. O macOS também lista identidades do Chaves. No instalador Windows 0.3.7 já publicado, instale o A1 no repositório de certificados do Windows e selecione-o na lista do programa. A confiança na cadeia depende das autoridades reconhecidas localmente: uma assinatura íntegra pode aparecer com cadeia não reconhecida. Confira certificados ICP-Brasil no validador do ITI. Tokens/cartões A3 fora do Windows não estão incluídos nesta compatibilidade.
 
@@ -79,7 +79,7 @@ Os demais formatos Office além de `.docx`, `.xlsx` e `.txt` podem exigir LibreO
 ### Converter
 - Exportar para Word, Excel, PowerPoint e PDF de imagens.
 - Converter arquivos para PDF e criar um PDF novo em branco.
-- Reconhecimento de texto (OCR) em português, feito no próprio computador.
+- Reconhecimento de texto (OCR) em português, inglês e espanhol, feito no próprio computador e sem baixar modelos durante o uso. O idioma do sistema é detectado; em **Configurações › Idioma**, a interface e o OCR podem ser escolhidos separadamente. Idiomas não reconhecidos usam PT-BR.
 - Compressão de PDF em vários níveis, com prévia do tamanho final.
 
 ## Privacidade

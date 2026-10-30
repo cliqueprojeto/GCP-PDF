@@ -9,7 +9,7 @@ A identidade visual, o ícone e a interface do GCP-PDF são próprios. Nenhum í
 
 - **Motor de edição de PDF** — baseado no PdfCraft CLI (ArtCraft Team e colaboradores do PdfCraft), sob MIT OU Apache-2.0. As licenças e o NOTICE originais estão em `assets/pdfcraft`. Este crédito não substitui os créditos dos autores do motor.
 - **Fonte Inter** — SIL Open Font License 1.1 (`assets/OFL-Inter.txt`); a interface também usa o pacote `@fontsource/inter`, sob OFL.
-- **Modelo de OCR em português** (`por.traineddata`) — repositório oficial tesseract-ocr/tessdata_fast, tag 4.1.0, sob Apache-2.0 (`assets/tessdata/LICENSE`). O reconhecimento de texto roda no computador; nenhuma página é enviada para OCR remoto.
+- **Modelos de OCR em português, inglês e espanhol** (`por.traineddata`, `eng.traineddata`, `spa.traineddata`) — repositório oficial tesseract-ocr/tessdata_fast, tag 4.1.0, sob Apache-2.0 (`assets/tessdata/LICENSE`). O reconhecimento de texto roda no computador; nenhuma página é enviada para OCR remoto.
 - **Bibliotecas** — Electron/Chromium, React, PDF.js, pdf-lib, fontkit, Lucide, docx, ExcelJS, PptxGenJS, Tesseract.js, @napi-rs/canvas e QRCode, cada uma com sua licença no respectivo pacote. O `package-lock.json` fixa as versões e a integridade de cada dependência.
 
 ## Apoio ao projeto

@@ -1,3 +1,4 @@
+import {t as translateUi} from "./i18n";
 import React, { useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Check, FileText, FolderOpen, Image as ImageIcon, Layers3, LoaderCircle, Plus, Trash2, X, FileInput, ExternalLink } from "lucide-react";
 import type { QuickState } from "../shared/types";
@@ -35,50 +36,49 @@ export default function Quick() {
       <header className="quick-header">
         <div className="quick-icon">{combine ? <Layers3 size={20} /> : <FileInput size={20} />}</div>
         <div>
-          <h1>{combine ? "Combinar em um PDF" : "Converter para PDF"}</h1>
-          <p>{combine ? "Arraste a ordem com as setas e escolha intervalos de páginas, se quiser." : "Cada arquivo vira um PDF com o mesmo nome."}</p>
+          <h1>{combine ? translateUi("Combinar em um PDF") : translateUi("Converter para PDF")}</h1>
+          <p>{combine ? translateUi("Arraste a ordem com as setas e escolha intervalos de páginas, se quiser.") : translateUi("Cada arquivo vira um PDF com o mesmo nome.")}</p>
         </div>
-        <button className="button secondary" onClick={() => void window.gcp.quickAddFiles()}><Plus size={16} /> Adicionar arquivos</button>
+        <button className="button secondary" onClick={() => void window.gcp.quickAddFiles()}><Plus size={16} />{" "}{translateUi("Adicionar arquivos")}</button>
       </header>
       <div className="quick-body">
         <div className={`quick-table ${combine ? "combine" : ""}`}>
-          <div className="quick-row head"><span>Nº</span><span>Nome</span><span>Páginas</span>{combine && <span>Intervalo</span>}<span>Ação</span></div>
+          <div className="quick-row head"><span>{translateUi("Nº")}</span><span>{translateUi("Nome")}</span><span>{translateUi("Páginas")}</span>{combine && <span>{translateUi("Intervalo")}</span>}<span>{translateUi("Ação")}</span></div>
           {files.map((file, index) => (
             <div className={`quick-row ${file.error ? "error" : ""}`} key={file.path} title={file.path}>
               <span>{index + 1}</span>
               <span className="quick-name">{/\.(png|jpe?g|webp|bmp)$/i.test(file.name) ? <ImageIcon size={15} /> : <FileText size={15} />}{file.name}{file.error && <small>{file.error}</small>}</span>
               <span>{file.pages ?? <LoaderCircle size={13} className="spin" />}</span>
-              {combine && <input placeholder="Tudo" value={ranges[file.path] ?? ""} onChange={(e) => setRanges((r) => ({ ...r, [file.path]: e.target.value }))} title="Ex.: 1-3, 5" disabled={!!file.error} />}
+              {combine && <input placeholder={translateUi("Tudo")} value={ranges[file.path] ?? ""} onChange={(e) => setRanges((r) => ({ ...r, [file.path]: e.target.value }))} title={translateUi("Ex.: 1-3, 5")} disabled={!!file.error} />}
               <span className="quick-actions">
-                {combine && <><button title="Mover para cima" disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp size={14} /></button><button title="Mover para baixo" disabled={index === files.length - 1} onClick={() => move(index, 1)}><ArrowDown size={14} /></button></>}
-                <button title="Remover da lista" onClick={() => setOrder((o) => o.filter((p) => p !== file.path))}><Trash2 size={14} /></button>
+                {combine && <><button title={translateUi("Mover para cima")} disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp size={14} /></button><button title={translateUi("Mover para baixo")} disabled={index === files.length - 1} onClick={() => move(index, 1)}><ArrowDown size={14} /></button></>}
+                <button title={translateUi("Remover da lista")} onClick={() => setOrder((o) => o.filter((p) => p !== file.path))}><Trash2 size={14} /></button>
               </span>
             </div>
           ))}
-          {!files.length && <div className="quick-empty">Adicione arquivos PDF, imagens ou documentos do Office.</div>}
+          {!files.length && <div className="quick-empty">{translateUi("Adicione arquivos PDF, imagens ou documentos do Office.")}</div>}
         </div>
         <aside className="quick-side">
-          {combine && <label className="field">Nome do arquivo<input value={name} onChange={(e) => setName(e.target.value)} /></label>}
-          <label className="field">Pasta de destino
-            <div className="folder-picker">
+          {combine && <label className="field">{translateUi("Nome do arquivo")}<input value={name} onChange={(e) => setName(e.target.value)} /></label>}
+          <label className="field">{translateUi("Pasta de destino")}{" "}<div className="folder-picker">
               <span title={folder ?? undefined}>{folder ?? "Mesma pasta dos arquivos"}</span>
-              <button className="text-button" onClick={() => void window.gcp.quickChooseFolder().then((f) => f && setFolder(f))}><FolderOpen size={14} /> Escolher</button>
+              <button className="text-button" onClick={() => void window.gcp.quickChooseFolder().then((f) => f && setFolder(f))}><FolderOpen size={14} />{" "}{translateUi("Escolher")}</button>
               {folder && <button className="text-button" onClick={() => setFolder(null)}><X size={14} /></button>}
             </div>
           </label>
           {error && <div className="quick-error">{error}</div>}
           {done && (
             <div className="quick-done">
-              <strong><Check size={15} /> {done.length === 1 ? "Arquivo criado" : `${done.length} arquivos criados`}</strong>
+              <strong><Check size={15} /> {done.length === 1 ? translateUi("Arquivo criado") : `${done.length} arquivos criados`}</strong>
               {done.map((path) => <button key={path} className="text-button" onClick={() => void window.gcp.quickReveal(path)} title={path}><FolderOpen size={13} /> {path.split(/[\\/]/).pop()}</button>)}
-              <button className="button secondary" onClick={() => void window.gcp.quickOpen(done)}><ExternalLink size={14} /> Abrir no GCP-PDF</button>
+              <button className="button secondary" onClick={() => void window.gcp.quickOpen(done)}><ExternalLink size={14} />{" "}{translateUi("Abrir no GCP-PDF")}</button>
             </div>
           )}
         </aside>
       </div>
       <footer className="quick-footer">
         <span>{busy}</span>
-        <button className="button primary" disabled={!valid || !!busy} onClick={() => void run()}>{busy ? <LoaderCircle size={16} className="spin" /> : combine ? <Layers3 size={16} /> : <FileInput size={16} />} {combine ? "Combinar" : "Converter"}</button>
+        <button className="button primary" disabled={!valid || !!busy} onClick={() => void run()}>{busy ? <LoaderCircle size={16} className="spin" /> : combine ? <Layers3 size={16} /> : <FileInput size={16} />} {combine ? translateUi("Combinar") : translateUi("Converter")}</button>
       </footer>
     </div>
   );

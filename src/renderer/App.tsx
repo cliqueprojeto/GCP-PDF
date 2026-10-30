@@ -1,3 +1,4 @@
+import {t as translateUi} from "./i18n";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import appIconUrl from "../../assets/icon.svg?url";
 import {
@@ -48,7 +49,7 @@ function ProgressCard({ text }: { text: string }) {
       <div>
         <strong>{text}</strong>
         <div className={`progress-track ${percent === null ? "indeterminate" : ""}`}><span style={percent === null ? undefined : { width: `${percent}%` }} /></div>
-        <small>{percent !== null ? `${Math.round(percent)}% · ` : ""}{seconds >= 2 ? `${seconds} s` : "processamento local"}</small>
+        <small>{percent !== null ? `${Math.round(percent)}% · ` : ""}{seconds >= 2 ? `${seconds} s` : translateUi("processamento local")}</small>
       </div>
     </div>
   );
@@ -71,7 +72,7 @@ function RibbonModeMenu({ mode, onMode }: { mode: "pinned" | "collapsed" | "auto
       {open && (
         <div className="dropdown-menu ribbon-mode-menu">
           {options.map(([value, label, hint, Icon]) => (
-            <button key={value} className={mode === value ? "active" : ""} onClick={() => { onMode(value); setOpen(false); }}><Icon size={15} /><span><strong>{label}</strong><small>{hint}</small></span></button>
+            <button key={value} className={mode === value ? "active" : ""} onClick={() => { onMode(value); setOpen(false); }}><Icon size={15} /><span><strong>{translateUi(label)}</strong><small>{hint}</small></span></button>
           ))}
         </div>
       )}
@@ -81,7 +82,7 @@ function RibbonModeMenu({ mode, onMode }: { mode: "pinned" | "collapsed" | "auto
 function stored<T>(key: string, fallback: T): T { try { const raw = localStorage.getItem(key); return raw === null ? fallback : (JSON.parse(raw) as T); } catch { return fallback; } }
 function store(key: string, value: unknown) { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} }
 function IconButton({ title, children, onClick, disabled = false, active = false, className = "" }: { title: string; children: React.ReactNode; onClick?: () => void; disabled?: boolean; active?: boolean; className?: string }) {
-  return <button title={title} aria-label={title} aria-pressed={active ? true : undefined} disabled={disabled} onClick={onClick} className={`icon-button ${active ? "active" : ""} ${className}`}>{children}</button>;
+  return <button title={translateUi(title)} aria-label={translateUi(title)} aria-pressed={active ? true : undefined} disabled={disabled} onClick={onClick} className={`icon-button ${active ? "active" : ""} ${className}`}>{children}</button>;
 }
 /** Applies style changes from the property bar to an existing object. */
 function restyled(o: PageObject, s: Partial<Style>): PageObject {
@@ -134,7 +135,7 @@ export default function App() {
   const readingState = useRef({ path: active?.path, page, home: showHome });
   readingState.current = { path: active?.path, page, home: showHome };
   const notify = useCallback((message: string, error = false) => {
-    setToast({ text: message, error });
+    setToast({ text: translateUi(message), error });
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), error ? 9000 : 4500);
   }, []);
@@ -310,6 +311,7 @@ export default function App() {
   const actions: RibbonActions = {
     home: goHome,
     open: () => void perform(() => openFilesFromHome(), "Abrindo arquivos…"),
+    saveAs: () => active && void perform(() => window.gcp.saveDocument(active.id, true), "Salvando cópia…"),
     save: () => active && void perform(() => window.gcp.saveDocument(active.id), "Salvando…"),
     print: () => active && setModal("print"),
     undo: () => active && void perform(() => window.gcp.undo(active.id)),
@@ -328,7 +330,7 @@ export default function App() {
     quick: (kind) => void perform(() => window.gcp.openQuick(kind)),
     compare: () => active && void perform(() => window.gcp.detachDocument(active.id)),
     exportAs: (format) => { setExportFormat(format); setModal("export"); },
-    ocr: () => active && void perform(() => window.gcp.runOcr(active.id, selectedPages.length > 1 ? selectedPages : undefined), "Reconhecendo texto em português…"),
+    ocr: () => active && void perform(() => window.gcp.runOcr(active.id, selectedPages.length > 1 ? selectedPages : undefined), "Reconhecendo texto…"),
     // Like Acrobat: the tool waits for a click on the page to drop the note there; the panel lists the threads.
     comment: () => { showPanel("comments"); setTool(tool.kind === "note" ? { kind: "select" } : { kind: "note" }); },
     find: () => showPanel("search"),
@@ -395,6 +397,7 @@ export default function App() {
   };
   const commands: Command[] = [
     { id: "open", label: "Abrir arquivos", group: "Arquivo", shortcut: "Ctrl+O", keywords: "carregar documento", run: actions.open },
+    { id: "save-as", label: "Salvar como", group: "Arquivo", shortcut: "Ctrl+Shift+S", disabled: none, run: actions.saveAs },
     { id: "save", label: "Salvar", group: "Arquivo", shortcut: "Ctrl+S", disabled: none, run: actions.save },
     { id: "print", label: "Imprimir", group: "Arquivo", shortcut: "Ctrl+P", disabled: none, run: actions.print },
     { id: "new", label: "Novo PDF em branco", group: "Arquivo", run: () => void perform(() => window.gcp.newDocument()) },
@@ -420,7 +423,7 @@ export default function App() {
     { id: "ppt", label: "Exportar para PowerPoint", group: "Converter", keywords: "pptx slides", disabled: none, run: () => actions.exportAs("pptx") },
     { id: "image-pdf", label: "Exportar como PDF de imagens", group: "Converter", keywords: "achatar nao editavel", disabled: none, run: () => actions.exportAs("image-pdf") },
     { id: "compress", label: "Comprimir PDF (reduzir tamanho)", group: "Converter", keywords: "diminuir otimizar", disabled: none, run: actions.compress },
-    { id: "ocr", label: "Reconhecer texto (OCR em português)", group: "Converter", keywords: "digitalizado escaneado", disabled: none, run: actions.ocr },
+    { id: "ocr", label: "Reconhecer texto (OCR)", group: "Converter", keywords: "digitalizado escaneado", disabled: none, run: actions.ocr },
     { id: "signatures", label: "Minhas assinaturas", group: "Assinar", keywords: "rubrica", run: actions.signatures },
     { id: "stamps", label: "Carimbos (PAGO, CONTABILIZADO, Confere com o original…)", group: "Comentário", keywords: "carimbo selo convenio prestacao de contas aprovado recebido", disabled: none, run: actions.stamps },
     { id: "certificate", label: "Assinar com certificado digital (ICP-Brasil)", group: "Assinar", keywords: "a1 a3 token e-cpf e-cnpj", disabled: none, run: tabTool("Assinar", () => actions.certificate(true)) },
@@ -458,7 +461,7 @@ export default function App() {
       case "new": void perform(() => window.gcp.newDocument()); break;
       case "new-window": void perform(() => window.gcp.newWindow()); break;
       case "save": actions.save(); break;
-      case "save-as": if (active) void perform(() => window.gcp.saveDocument(active.id, true), "Salvando cópia…"); break;
+      case "save-as": actions.saveAs(); break;
       case "print": actions.print(); break;
       case "export": if (active) actions.exportAs(); break;
       case "settings": setModal("settings"); break;
@@ -517,10 +520,10 @@ export default function App() {
       if (data.sourceId !== active.id) notify(copied ? "Páginas copiadas." : "Páginas transferidas.");
     });
   }
-  async function tabDropEvent(event: React.DragEvent) {
-    event.preventDefault(); setTabDrop(false);
+  async function tabDropEvent(event: React.DragEvent, beforeId?:string) {
+    event.preventDefault(); event.stopPropagation(); setTabDrop(false);
     const data = dragData(event);
-    if (data?.documentId && data.sourceWindowId !== workspace.windowId) { dragEndInside.current = true; await perform(() => window.gcp.attachDocument(data.documentId, data.sourceWindowId)); }
+    if(data?.documentId){dragEndInside.current=true;await perform(async()=>{if(data.sourceWindowId!==workspace.windowId)await window.gcp.attachDocument(data.documentId,data.sourceWindowId);await window.gcp.moveDocumentTab(data.documentId,beforeId);});}
   }
   function clearSearch() { setQuery(""); setActiveSearch(""); setMatches([]); setHit(0); }
   async function findText() {
@@ -583,77 +586,80 @@ export default function App() {
     >
       {busy && <ProgressCard text={busy} />}
       {reading && active && (
-        <div className="reading-bar" role="toolbar" aria-label="Modo leitura">
-          <span>Página {page + 1} de {active.pageCount}</span>
-          <button title="Página anterior" onClick={() => choosePage(Math.max(0, page - (layout === "single" ? 1 : 2)))}><ChevronLeft size={15} /></button>
-          <button title="Próxima página" onClick={() => choosePage(Math.min(active.pageCount - 1, page + (layout === "single" ? 1 : 2)))}><ChevronRight size={15} /></button>
-          <button title="Alternar uma/duas páginas" onClick={() => actions.layout(layout === "single" ? "double" : "single")}>{layout === "single" ? "Duas páginas" : "Uma página"}</button>
-          <button title="Filtro de leitura" onClick={() => actions.filter(({ none: "sepia", sepia: "warm", warm: "night", night: "gray", gray: "contrast", contrast: "none" } as const)[readingFilter])}>Filtro: {({ none: "Normal", sepia: "Sépia", warm: "Papel", night: "Noturno", gray: "Cinza", contrast: "Contraste" } as const)[readingFilter]}</button>
-          <button className="exit" onClick={stopReading}><X size={14} /> Sair do modo leitura</button>
+        <div className="reading-bar" role="toolbar" aria-label={translateUi("Modo leitura")}>
+          <span>{translateUi("Página")}{" "}{page + 1}{" "}{translateUi("de")}{" "}{active.pageCount}</span>
+          <button title={translateUi("Página anterior")} onClick={() => choosePage(Math.max(0, page - (layout === "single" ? 1 : 2)))}><ChevronLeft size={15} /></button>
+          <button title={translateUi("Próxima página")} onClick={() => choosePage(Math.min(active.pageCount - 1, page + (layout === "single" ? 1 : 2)))}><ChevronRight size={15} /></button>
+          <button title={translateUi("Alternar uma/duas páginas")} onClick={() => actions.layout(layout === "single" ? "double" : "single")}>{layout === "single" ? translateUi("Duas páginas") : translateUi("Uma página")}</button>
+          <button title={translateUi("Filtro de leitura")} onClick={() => actions.filter(({ none: "sepia", sepia: "warm", warm: "night", night: "gray", gray: "contrast", contrast: "none" } as const)[readingFilter])}>{translateUi("Filtro:")}{" "}{({ none: "Normal", sepia: "Sépia", warm: "Papel", night: "Noturno", gray: "Cinza", contrast: "Contraste" } as const)[readingFilter]}</button>
+          <button className="exit" onClick={stopReading}><X size={14} />{" "}{translateUi("Sair do modo leitura")}</button>
         </div>
       )}
       {fileDrag && (
         <div className="file-drop">
           <div className={`file-drop-zones ${active ? "" : "single"}`}>
-            <div className="file-drop-zone" onDragOver={(e) => e.preventDefault()} onDrop={(e) => dropFiles(e, "open")}><FolderOpen size={30} /><strong>Abrir em nova aba</strong><span>Cada arquivo abre separado</span></div>
+            <div className="file-drop-zone" onDragOver={(e) => e.preventDefault()} onDrop={(e) => dropFiles(e, "open")}><FolderOpen size={30} /><strong>{translateUi("Abrir em nova aba")}</strong><span>{translateUi("Cada arquivo abre separado")}</span></div>
             {active && (
               <>
-                <div className="file-drop-zone" onDragOver={(e) => e.preventDefault()} onDrop={(e) => dropFiles(e, "before")}><FilePlus2 size={30} /><strong>Inserir antes da página {page + 1}</strong><span>em “{active.name}”</span></div>
-                <div className="file-drop-zone" onDragOver={(e) => e.preventDefault()} onDrop={(e) => dropFiles(e, "after")}><FilePlus2 size={30} /><strong>Inserir depois da página {page + 1}</strong><span>em “{active.name}”</span></div>
+                <div className="file-drop-zone" onDragOver={(e) => e.preventDefault()} onDrop={(e) => dropFiles(e, "before")}><FilePlus2 size={30} /><strong>{translateUi("Inserir antes da página")}{" "}{page + 1}</strong><span>{translateUi("em “")}{active.name}”</span></div>
+                <div className="file-drop-zone" onDragOver={(e) => e.preventDefault()} onDrop={(e) => dropFiles(e, "after")}><FilePlus2 size={30} /><strong>{translateUi("Inserir depois da página")}{" "}{page + 1}</strong><span>{translateUi("em “")}{active.name}”</span></div>
               </>
             )}
           </div>
-          <p>Solte sobre a opção desejada · PDF, imagens e documentos do Office</p>
+          <p>{translateUi("Solte sobre a opção desejada · PDF, imagens e documentos do Office")}</p>
         </div>
       )}
       {ribbonMode === "auto" && !reading && <div className="chrome-hotzone" onMouseEnter={() => setPeek(true)} />}
       <div className={`chrome ${peek ? "peek" : ""}`} onMouseLeave={() => { if (ribbonMode === "auto") setPeek(false); }}>
       <header className="titlebar">
-        <button className="brand-title" title="Página inicial" aria-label="Ir para a página inicial" onClick={goHome}>
+        <button className="brand-title" title={translateUi("Página inicial")} aria-label={translateUi("Ir para a página inicial")} onClick={goHome}>
           <img className="brand-icon" src={appIconUrl} alt="" width={34} height={34} />
-          <span>GCP<span className="brand-divider">/</span>PDF</span>
-          <span className="brand-edition">LOCAL</span>
+          <span>{translateUi("GCP")}<span className="brand-divider">/</span>{translateUi("PDF")}</span>
+          <span className="brand-edition">{translateUi("LOCAL")}</span>
         </button>
-        <div className={`document-tabs ${tabDrop ? "drop-target" : ""}`} onDragOver={(e) => { if (e.dataTransfer.types.includes(TAB_MIME)) { e.preventDefault(); setTabDrop(true); } }} onDragLeave={() => setTabDrop(false)} onDrop={tabDropEvent}>
+        <div className={`document-tabs ${tabDrop ? "drop-target" : ""}`} onDragOver={(e) => { if (e.dataTransfer.types.includes(TAB_MIME)) { e.preventDefault(); setTabDrop(true); } }} onDragLeave={() => setTabDrop(false)} onDrop={e=>void tabDropEvent(e)}>
           {workspace.documents.map((doc) => (
             <div
               key={doc.id}
               className={`document-tab ${!showHome && active?.id === doc.id ? "active" : ""}`}
+              role="tab" aria-selected={!showHome && active?.id === doc.id}
               draggable
+              onDragOver={e=>{if(e.dataTransfer.types.includes(TAB_MIME)){e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect="move";}}}
+              onDrop={e=>{if(!e.dataTransfer.types.includes(TAB_MIME))return;const r=e.currentTarget.getBoundingClientRect(),index=workspace.documents.findIndex(d=>d.id===doc.id),before=e.clientX<r.left+r.width/2?doc.id:workspace.documents[index+1]?.id;void tabDropEvent(e,before);}}
               onDragStart={(e) => { dragEndInside.current = false; const payload = JSON.stringify({ documentId: doc.id, sourceWindowId: workspace.windowId }); e.dataTransfer.setData(TAB_MIME, payload); e.dataTransfer.setData("text/plain", payload); e.dataTransfer.effectAllowed = "move"; }}
               onDragEnd={(e) => { if (e.dataTransfer.dropEffect === "none" && !dragEndInside.current) void perform(() => window.gcp.detachDocument(doc.id)); }}
               onClick={() => resumeDocument(doc.id)}
               onDragEnter={(e) => { if (e.dataTransfer.types.includes(PAGE_MIME) && active?.id !== doc.id) { clearTimeout(tabHover.current); tabHover.current = setTimeout(() => resumeDocument(doc.id), 550); } }}
               onDragLeave={() => clearTimeout(tabHover.current)}
-              title={`${doc.path || doc.name}\nArraste para fora para abrir em outra janela, ou para a barra de abas de outra janela para juntar`}
+              title={`${doc.name}${doc.path?"\n"+doc.path:""}\n${translateUi("Arraste para reorganizar as abas ou para outra janela.")}`}
             >
               <FileText size={15} />
               <span>{doc.name}</span>
-              {doc.revision !== doc.savedRevision && <i className="dirty-dot" title="Alterações não salvas" />}
-              <button className="tab-detach" title="Destacar em nova janela" aria-label={`Destacar ${doc.name}`} onClick={(e) => { e.stopPropagation(); void perform(() => window.gcp.detachDocument(doc.id)); }}><MoveUpRight size={13} /></button>
-              <button className="tab-close" title="Fechar documento" aria-label={`Fechar ${doc.name}`} onClick={(e) => { e.stopPropagation(); void perform(() => window.gcp.closeDocument(doc.id)); }}><X size={13} /></button>
+              {doc.revision !== doc.savedRevision && <i className="dirty-dot" title={translateUi("Alterações não salvas")} />}
+              <button className="tab-detach" title={translateUi("Destacar em nova janela")} aria-label={`Destacar ${doc.name}`} onClick={(e) => { e.stopPropagation(); void perform(() => window.gcp.detachDocument(doc.id)); }}><MoveUpRight size={13} /></button>
+              <button className="tab-close" title={translateUi("Fechar documento")} aria-label={`Fechar ${doc.name}`} onClick={(e) => { e.stopPropagation(); void perform(() => window.gcp.closeDocument(doc.id)); }}><X size={13} /></button>
             </div>
           ))}
-          <button className="new-tab" aria-label="Abrir documento" title="Abrir documento · Ctrl+O" onClick={actions.open}><Plus size={18} /></button>
+          <button className="new-tab" aria-label={translateUi("Abrir documento")} title={translateUi("Abrir documento · Ctrl+O")} onClick={actions.open}><Plus size={18} /></button>
         </div>
         <div className="window-actions">
           
-          <IconButton title={workspace.theme === "light" ? "Ativar tema escuro" : "Ativar tema claro"} onClick={() => void perform(() => window.gcp.setTheme(workspace.theme === "light" ? "dark" : "light"))}>{workspace.theme === "light" ? <Moon size={17} /> : <Sun size={17} />}</IconButton>
-          <IconButton title="Central de ajuda · F1" onClick={() => { setHelpTopic(undefined); setModal("help"); }}><HelpCircle size={17} /></IconButton>
-          <IconButton title="Configurações" onClick={() => setModal("settings")}><Settings size={17} /></IconButton>
+          <IconButton title={workspace.theme === "light" ? translateUi("Ativar tema escuro") : translateUi("Ativar tema claro")} onClick={() => void perform(() => window.gcp.setTheme(workspace.theme === "light" ? "dark" : "light"))}>{workspace.theme === "light" ? <Moon size={17} /> : <Sun size={17} />}</IconButton>
+          <IconButton title={translateUi("Central de ajuda · F1")} onClick={() => { setHelpTopic(undefined); setModal("help"); }}><HelpCircle size={17} /></IconButton>
+          <IconButton title={translateUi("Configurações")} onClick={() => setModal("settings")}><Settings size={17} /></IconButton>
         </div>
       </header>
       <div className="menu-row">
         <div className="ribbon-tabs">
           {TABS.map((label) => (
-            <button className={tab === label ? "active" : ""} key={label} onDoubleClick={() => setRibbon(ribbonMode === "pinned" ? "collapsed" : "pinned")} onClick={() => { openTab(label); if (ribbonMode !== "pinned") setPeek(true); if (label === "Comentário") showPanel("comments"); if (label === "Assinar") showPanel("signatures"); if (label === "IA") showPanel("ai"); if (label === "Organizar") showPanel("pages"); }}>
-              {label === "IA" && <Sparkles size={14} />} {label}
+            <button className={tab === label ? "active" : ""} key={translateUi(label)} onDoubleClick={() => setRibbon(ribbonMode === "pinned" ? "collapsed" : "pinned")} onClick={() => { openTab(label); if (ribbonMode !== "pinned") setPeek(true); if (label === "Comentário") showPanel("comments"); if (label === "Assinar") showPanel("signatures"); if (label === "IA") showPanel("ai"); if (label === "Organizar") showPanel("pages"); }}>
+              {label === "IA" && <Sparkles size={14} />} {translateUi(label)}
             </button>
           ))}
         </div>
-        <button className="tool-finder" onClick={() => setModal("palette")}><Search size={14} /> Localizar ferramentas <kbd>Ctrl+K</kbd></button>
+        <button className="tool-finder" onClick={() => setModal("palette")}><Search size={14} />{" "}{translateUi("Localizar ferramentas")}{" "}<kbd>{translateUi("Ctrl+K")}</kbd></button>
         
-        <button className="publisher-link" onClick={() => void window.gcp.openExternal(SITE)}>Gestão Cultural Pro <ArrowUpRight size={12} /></button>
+        <button className="publisher-link" onClick={() => void window.gcp.openExternal(SITE)}>{translateUi("Gestão Cultural Pro")}{" "}<ArrowUpRight size={12} /></button>
         <RibbonModeMenu mode={ribbonMode} onMode={setRibbon} />
       </div>
       <div className="ribbon-panel" onClick={(e) => { if (ribbonMode === "collapsed" && (e.target as HTMLElement).closest(".tool-button")) setPeek(false); }}>
@@ -661,45 +667,45 @@ export default function App() {
       </div>
       </div>
       {tool.kind === "stamp" && (
-        <div className="tool-hint"><span className="pulse-dot" /> Clique na página para aplicar “{tool.name}” ou arraste para definir o tamanho. <button className="text-button" onClick={() => setTool({ kind: "select" })}>Concluir <Check size={14} /></button></div>
+        <div className="tool-hint"><span className="pulse-dot" />{" "}{translateUi("Clique na página para aplicar “")}{tool.name}{translateUi("” ou arraste para definir o tamanho.")}{" "}<button className="text-button" onClick={() => setTool({ kind: "select" })}>{translateUi("Concluir")}{" "}<Check size={14} /></button></div>
       )}
-      {tool.kind === "sign-place" && <div className="tool-hint"><span className="pulse-dot" /> Mova o carimbo até o local desejado e clique para assinar. Esc cancela. <button className="text-button" onClick={() => { setPlaced(null); setTool({ kind: "select" }); }}>Cancelar</button></div>}
-      {(tool.kind === "field" || tool.kind === "sign-area") && <div className="tool-hint"><span className="pulse-dot" /> {tool.kind === "field" ? "Clique ou arraste na página para criar o campo." : "Arraste na página a área onde o carimbo da assinatura digital vai aparecer."} <button className="text-button" onClick={() => { setHelpTopic(tool.kind === "field" ? "formularios" : "assinatura"); setModal("help"); }}><HelpCircle size={13} /> Como usar</button><button className="text-button" onClick={() => setTool({ kind: "select" })}>Concluir <Check size={14} /></button></div>}
-      {tool.kind === "markup" && <div className="tool-hint"><span className="pulse-dot" /> Selecione o texto com o mouse para {tool.style === "highlight" ? "destacar" : tool.style === "underline" ? "sublinhar" : "tachar"}. Em áreas sem texto, arraste um retângulo. <button className="text-button" onClick={() => setTool({ kind: "select" })}>Concluir <Check size={14} /></button></div>}
-      {tool.kind === "edit" && !sourceSelection && <div className="tool-hint"><span className="pulse-dot" /> Clique em um bloco de texto para editá-lo na página. Arraste imagens para movê-las. <button className="text-button" onClick={() => { setHelpTopic("editar"); setModal("help"); }}><HelpCircle size={13} /> Como usar</button><button className="text-button" onClick={() => setTool({ kind: "select" })}>Concluir <Check size={14} /></button></div>}
+      {tool.kind === "sign-place" && <div className="tool-hint"><span className="pulse-dot" />{" "}{translateUi("Mova o carimbo até o local desejado e clique para assinar. Esc cancela.")}{" "}<button className="text-button" onClick={() => { setPlaced(null); setTool({ kind: "select" }); }}>{translateUi("Cancelar")}</button></div>}
+      {(tool.kind === "field" || tool.kind === "sign-area") && <div className="tool-hint"><span className="pulse-dot" /> {tool.kind === "field" ? translateUi("Clique ou arraste na página para criar o campo.") : translateUi("Arraste na página a área onde o carimbo da assinatura digital vai aparecer.")} <button className="text-button" onClick={() => { setHelpTopic(tool.kind === "field" ? "formularios" : "assinatura"); setModal("help"); }}><HelpCircle size={13} />{" "}{translateUi("Como usar")}</button><button className="text-button" onClick={() => setTool({ kind: "select" })}>{translateUi("Concluir")}{" "}<Check size={14} /></button></div>}
+      {tool.kind === "markup" && <div className="tool-hint"><span className="pulse-dot" />{" "}{translateUi("Selecione o texto com o mouse para")}{" "}{tool.style === "highlight" ? translateUi("destacar") : tool.style === "underline" ? translateUi("sublinhar") : translateUi("tachar")}{translateUi(". Em áreas sem texto, arraste um retângulo.")}{" "}<button className="text-button" onClick={() => setTool({ kind: "select" })}>{translateUi("Concluir")}{" "}<Check size={14} /></button></div>}
+      {tool.kind === "edit" && !sourceSelection && <div className="tool-hint"><span className="pulse-dot" />{" "}{translateUi("Clique em um bloco de texto para editá-lo na página. Arraste imagens para movê-las.")}{" "}<button className="text-button" onClick={() => { setHelpTopic("editar"); setModal("help"); }}><HelpCircle size={13} />{" "}{translateUi("Como usar")}</button><button className="text-button" onClick={() => setTool({ kind: "select" })}>{translateUi("Concluir")}{" "}<Check size={14} /></button></div>}
       <div className="workbench">
-        <nav className="rail" aria-label="Painéis do documento">
-          <IconButton title="Miniaturas das páginas" active={panel === "pages" && sideOpen} onClick={() => (panel === "pages" ? setSideOpen(!sideOpen) : showPanel("pages"))}><Files size={20} /></IconButton>
-          <IconButton title="Marcadores" active={panel === "bookmarks" && sideOpen} onClick={() => showPanel("bookmarks")}><BookmarkIcon size={20} /></IconButton>
-          <IconButton title="Pesquisar no documento · Ctrl+F" active={panel === "search" && sideOpen} onClick={() => showPanel("search")}><Search size={20} /></IconButton>
-          <IconButton title="Comentários" active={panel === "comments" && sideOpen} onClick={() => showPanel("comments")}><MessageSquare size={20} /></IconButton>
-          <IconButton title="Banco de assinaturas" active={panel === "signatures" && sideOpen} onClick={() => showPanel("signatures")}><SignatureIcon size={20} /></IconButton>
-          <IconButton title="Pergunte à IA" active={panel === "ai" && sideOpen} onClick={() => showPanel("ai")}><Sparkles size={20} /></IconButton>
+        <nav className="rail" aria-label={translateUi("Painéis do documento")}>
+          <IconButton title={translateUi("Miniaturas das páginas")} active={panel === "pages" && sideOpen} onClick={() => (panel === "pages" ? setSideOpen(!sideOpen) : showPanel("pages"))}><Files size={20} /></IconButton>
+          <IconButton title={translateUi("Marcadores")} active={panel === "bookmarks" && sideOpen} onClick={() => showPanel("bookmarks")}><BookmarkIcon size={20} /></IconButton>
+          <IconButton title={translateUi("Pesquisar no documento · Ctrl+F")} active={panel === "search" && sideOpen} onClick={() => showPanel("search")}><Search size={20} /></IconButton>
+          <IconButton title={translateUi("Comentários")} active={panel === "comments" && sideOpen} onClick={() => showPanel("comments")}><MessageSquare size={20} /></IconButton>
+          <IconButton title={translateUi("Banco de assinaturas")} active={panel === "signatures" && sideOpen} onClick={() => showPanel("signatures")}><SignatureIcon size={20} /></IconButton>
+          <IconButton title={translateUi("Pergunte à IA")} active={panel === "ai" && sideOpen} onClick={() => showPanel("ai")}><Sparkles size={20} /></IconButton>
           <div className="rail-spacer" />
-          <IconButton title="Nova janela para comparar documentos" onClick={() => void perform(() => window.gcp.newWindow())}><SplitSquareHorizontal size={20} /></IconButton>
-          <IconButton title="Apoie o projeto" onClick={() => setModal("support")}><Heart size={20} className="heart-filled" /></IconButton>
+          <IconButton title={translateUi("Nova janela para comparar documentos")} onClick={() => void perform(() => window.gcp.newWindow())}><SplitSquareHorizontal size={20} /></IconButton>
+          <IconButton title={translateUi("Apoie o projeto")} onClick={() => setModal("support")}><Heart size={20} className="heart-filled" /></IconButton>
         </nav>
         {sideOpen && !(tab === "Organizar" && active) && (
           <aside className={`sidebar panel-${panel}`} style={{ width: panelWidth }}>
             <div className="sidebar-heading">
-              <h2>{panel === "comments" ? "Comentários" : panel === "bookmarks" ? "Marcadores" : panel === "pages" ? "Páginas" : panel === "search" ? "Pesquisar" : panel === "signatures" ? "Suas assinaturas" : "Assistente de IA"} {panel === "pages" && active && <span>{active.pageCount}</span>}</h2>
-              {panel === "ai" && <IconButton title={aiWide ? "Reduzir painel" : "Ampliar painel"} onClick={() => setWidths((w) => { const next = { ...w, ai: aiWide ? 420 : Math.min(760, window.innerWidth * 0.55) }; store("gcp.panel-widths", next); return next; })}>{aiWide ? <Minimize2 size={15} /> : <Maximize2 size={15} />}</IconButton>}
-              <IconButton title="Recolher painel" onClick={() => setSideOpen(false)}><PanelLeftClose size={16} /></IconButton>
+              <h2>{panel === "comments" ? translateUi("Comentários") : panel === "bookmarks" ? translateUi("Marcadores") : panel === "pages" ? translateUi("Páginas") : panel === "search" ? translateUi("Pesquisar") : panel === "signatures" ? translateUi("Suas assinaturas") : translateUi("Assistente de IA")} {panel === "pages" && active && <span>{active.pageCount}</span>}</h2>
+              {panel === "ai" && <IconButton title={aiWide ? translateUi("Reduzir painel") : translateUi("Ampliar painel")} onClick={() => setWidths((w) => { const next = { ...w, ai: aiWide ? 420 : Math.min(760, window.innerWidth * 0.55) }; store("gcp.panel-widths", next); return next; })}>{aiWide ? <Minimize2 size={15} /> : <Maximize2 size={15} />}</IconButton>}
+              <IconButton title={translateUi("Recolher painel")} onClick={() => setSideOpen(false)}><PanelLeftClose size={16} /></IconButton>
             </div>
             {panel === "bookmarks" && active && <BookmarksPanel doc={active} currentPage={page} readingTop={() => viewer.current?.readingTop() ?? 0} onGo={(index, top) => { setPage(index); viewer.current?.scrollToPage(index, top); }} onError={onError} notify={notify} />}
-            {panel === "comments" && active && <CommentsPanel objects={active.objects} pages={active.pages} currentPage={page} openNote={openNote} onClose={() => setSideOpen(false)}
-              onOpen={(note) => { setOpenNote(note.id); setSelectedObjects(new Set([note.id])); const index = active.pages.findIndex((p) => p.id === note.page); if (index >= 0 && index !== page) choosePage(index); }}
+            {panel === "comments" && active && <CommentsPanel annotations={active.annotations} onOpenAnnotation={(a) => { setSelectedObjects(new Set()); setToolState({kind:"select"}); const index=active.pages.findIndex(p=>p.id===a.page); if(index>=0)choosePage(index); setOpenNote(`native:${a.page}:${a.index}`); }} onDeleteAnnotation={(a) => { setOpenNote(null); void operation({type:"delete-annotation",page:a.page,index:a.index}); }} objects={active.objects} pages={active.pages} currentPage={page} openNote={openNote} onClose={() => setSideOpen(false)}
+              onOpen={(note) => { setOpenNote(note.id); setSelectedObjects(new Set([note.id])); const index = active.pages.findIndex((p) => p.id === note.page); if (index >= 0) choosePage(index); }}
               onSelectObject={(object) => { setToolState({ kind: "select" }); setSelectedObjects(new Set([object.id])); const index = active.pages.findIndex((p) => p.id === object.page); if (index >= 0) choosePage(index); }}
               onCreate={(text) => { const ref = active.pages[page]!, geo = pageGeometry(ref), width = geo ? (((geo.rotation + ref.rotate) % 180) ? geo.height : geo.width) : 595; const id = uid(); void operation({ type: "add-object", object: { id, page: ref.id, kind: "note", x: Math.max(8, width - 40), y: 24 + active.objects.filter((o) => o.kind === "note" && o.page === ref.id).length * 28, width: 22, height: 22, text, author: commentAuthor(), createdAt: new Date().toISOString(), color: "#ffd43b", replies: [] } }); setOpenNote(id); }}
               onUpdate={(object) => void operation({ type: "update-object", object })} onDelete={(id) => { if (openNote === id) setOpenNote(null); deleteObjects([id]); }} />}
             {panel === "pages" && (
               <>
-                <div className="thumb-zoom"><ZoomOut size={13} /><input type="range" min={70} max={260} value={thumbSize} aria-label="Tamanho das miniaturas" onChange={(e) => { const v = Number(e.target.value); setThumbSize(v); store("gcp.thumb", v); }} /><ZoomIn size={13} /></div>
+                <div className="thumb-zoom"><ZoomOut size={13} /><input type="range" min={70} max={260} value={thumbSize} aria-label={translateUi("Tamanho das miniaturas")} onChange={(e) => { const v = Number(e.target.value); setThumbSize(v); store("gcp.thumb", v); }} /><ZoomIn size={13} /></div>
                 <div className="thumbnail-actions">
-                  <IconButton title="Girar páginas selecionadas à esquerda" disabled={!active} onClick={() => rotate(-90)}><RotateCcw size={17} /></IconButton>
-                  <IconButton title="Girar páginas selecionadas à direita" disabled={!active} onClick={() => rotate(90)}><RotateCw size={17} /></IconButton>
-                  <IconButton title="Inserir página em branco após a seleção" disabled={!active} onClick={actions.blank}><FilePlus2 size={17} /></IconButton>
-                  <IconButton title="Excluir páginas selecionadas" disabled={!active || !selection.size || selection.size === active.pageCount} onClick={actions.deletePages}><Trash2 size={17} /></IconButton>
+                  <IconButton title={translateUi("Girar páginas selecionadas à esquerda")} disabled={!active} onClick={() => rotate(-90)}><RotateCcw size={17} /></IconButton>
+                  <IconButton title={translateUi("Girar páginas selecionadas à direita")} disabled={!active} onClick={() => rotate(90)}><RotateCw size={17} /></IconButton>
+                  <IconButton title={translateUi("Inserir página em branco após a seleção")} disabled={!active} onClick={actions.blank}><FilePlus2 size={17} /></IconButton>
+                  <IconButton title={translateUi("Excluir páginas selecionadas")} disabled={!active || !selection.size || selection.size === active.pageCount} onClick={actions.deletePages}><Trash2 size={17} /></IconButton>
                   <div className="toolbar-spacer" />
                   <span>{selection.size ? `${selection.size} selec.` : ""}</span>
                 </div>
@@ -713,7 +719,7 @@ export default function App() {
                           onDragLeave={() => setDropIndex(null)}
                           onDrop={(e) => void pageDrop(e, index)}
                         >
-                          <span>{dropIndex === index ? "Inserir páginas aqui" : ""}</span>
+                          <span>{dropIndex === index ? translateUi("Inserir páginas aqui") : ""}</span>
                         </div>
                         {index < active.pageCount && (
                           <div
@@ -731,9 +737,9 @@ export default function App() {
                               <PageThumb pageRef={active.pages[index]!} width={Math.min(thumbSize, panelWidth - 70)} />
                               {selection.has(index) && <span className="thumbnail-check"><Check size={11} /></span>}
                               <div className="thumbnail-hover-actions">
-                                <button title="Girar esta página à esquerda" onClick={(e) => { e.stopPropagation(); rotate(-90, [index]); }}><RotateCcw size={14} /></button>
-                                <button title="Girar esta página à direita" onClick={(e) => { e.stopPropagation(); rotate(90, [index]); }}><RotateCw size={14} /></button>
-                                <button title="Excluir esta página" disabled={active.pageCount < 2} onClick={(e) => { e.stopPropagation(); void operation({ type: "delete", pages: [index] }); }}><Trash2 size={14} /></button>
+                                <button title={translateUi("Girar esta página à esquerda")} onClick={(e) => { e.stopPropagation(); rotate(-90, [index]); }}><RotateCcw size={14} /></button>
+                                <button title={translateUi("Girar esta página à direita")} onClick={(e) => { e.stopPropagation(); rotate(90, [index]); }}><RotateCw size={14} /></button>
+                                <button title={translateUi("Excluir esta página")} disabled={active.pageCount < 2} onClick={(e) => { e.stopPropagation(); void operation({ type: "delete", pages: [index] }); }}><Trash2 size={14} /></button>
                                 <GripVertical size={14} />
                               </div>
                             </div>
@@ -743,7 +749,7 @@ export default function App() {
                       </React.Fragment>
                     ))
                   ) : (
-                    <div className="sidebar-empty"><Files size={27} /><p>As páginas aparecem aqui ao abrir um PDF.</p></div>
+                    <div className="sidebar-empty"><Files size={27} /><p>{translateUi("As páginas aparecem aqui ao abrir um PDF.")}</p></div>
                   )}
                 </div>
 
@@ -753,22 +759,22 @@ export default function App() {
               <div className="sidebar-body">
                 <div className="search-box">
                   <Search size={16} />
-                  <input ref={searchRef} value={query} onChange={(e) => { setQuery(e.target.value); if (!e.target.value.trim()) clearSearch(); }} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); clearSearch(); return; } if (e.key === "Enter") { if (activeSearch === query.trim() && totalHits) goHit(hit + (e.shiftKey ? -1 : 1)); else void findText(); } }} placeholder="Buscar no documento" />
-                  {(query || activeSearch) && <button className="search-clear" title="Limpar busca e destaques · Esc" onClick={() => { clearSearch(); searchRef.current?.focus(); }}><X size={15} /></button>}
-                  <button title="Pesquisar" disabled={!active || searching} onClick={() => void findText()}>{searching ? <LoaderCircle className="spin" size={15} /> : <ChevronRight size={17} />}</button>
+                  <input ref={searchRef} value={query} onChange={(e) => { setQuery(e.target.value); if (!e.target.value.trim()) clearSearch(); }} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); clearSearch(); return; } if (e.key === "Enter") { if (activeSearch === query.trim() && totalHits) goHit(hit + (e.shiftKey ? -1 : 1)); else void findText(); } }} placeholder={translateUi("Buscar no documento")} />
+                  {(query || activeSearch) && <button className="search-clear" title={translateUi("Limpar busca e destaques · Esc")} onClick={() => { clearSearch(); searchRef.current?.focus(); }}><X size={15} /></button>}
+                  <button title={translateUi("Pesquisar")} disabled={!active || searching} onClick={() => void findText()}>{searching ? <LoaderCircle className="spin" size={15} /> : <ChevronRight size={17} />}</button>
                 </div>
-                <p className="sidebar-description">Localize texto em todas as páginas do documento.</p>
+                <p className="sidebar-description">{translateUi("Localize texto em todas as páginas do documento.")}</p>
                 {matches.length > 0 && (
                   <>
                     <div className="search-nav">
-                      <strong>{hit + 1} de {totalHits}</strong>
-                      <span>{totalHits} resultado{totalHits > 1 ? "s" : ""} em {matches.length} página{matches.length > 1 ? "s" : ""}</span>
-                      <IconButton title="Resultado anterior · Shift+Enter" onClick={() => goHit(hit - 1)}><ChevronLeft size={16} /></IconButton>
-                      <IconButton title="Próximo resultado · Enter" onClick={() => goHit(hit + 1)}><ChevronRight size={16} /></IconButton>
+                      <strong>{hit + 1}{" "}{translateUi("de")}{" "}{totalHits}</strong>
+                      <span>{totalHits}{" "}{translateUi("resultado")}{totalHits > 1 ? translateUi("s") : ""}{" "}{translateUi("em")}{" "}{matches.length}{" "}{translateUi("página")}{matches.length > 1 ? translateUi("s") : ""}</span>
+                      <IconButton title={translateUi("Resultado anterior · Shift+Enter")} onClick={() => goHit(hit - 1)}><ChevronLeft size={16} /></IconButton>
+                      <IconButton title={translateUi("Próximo resultado · Enter")} onClick={() => goHit(hit + 1)}><ChevronRight size={16} /></IconButton>
                     </div>
                     {matches.map((m) => {
                       const first = matches.slice(0, matches.indexOf(m)).reduce((sum, x) => sum + x.count, 0);
-                      return <button className={`search-result ${focus?.page === m.page ? "active" : ""}`} key={m.page} onClick={() => { setHit(first); choosePage(m.page); }}><FileText size={16} /><span>Página {m.page + 1}</span><small>{m.count}</small><ChevronRight size={15} /></button>;
+                      return <button className={`search-result ${focus?.page === m.page ? "active" : ""}`} key={m.page} onClick={() => { setHit(first); choosePage(m.page); }}><FileText size={16} /><span>{translateUi("Página")}{" "}{m.page + 1}</span><small>{m.count}</small><ChevronRight size={15} /></button>;
                     })}
                   </>
                 )}
@@ -776,22 +782,22 @@ export default function App() {
             )}
             {panel === "signatures" && (
               <div className="signature-panel">
-                <p className="sidebar-description">Sua biblioteca pessoal. Escolha uma assinatura e clique onde deseja aplicá-la.</p>
-                <button className="button primary full" onClick={() => setModal("signature")}><Plus size={16} /> Nova assinatura</button>
+                <p className="sidebar-description">{translateUi("Sua biblioteca pessoal. Escolha uma assinatura e clique onde deseja aplicá-la.")}</p>
+                <button className="button primary full" onClick={() => setModal("signature")}><Plus size={16} />{" "}{translateUi("Nova assinatura")}</button>
                 <div className="signature-list">
                   {signatures.map((signature) => (
                     <div className={`saved-signature ${tool.kind === "stamp" && tool.signature && tool.name === signature.name ? "selected" : ""}`} key={signature.id}>
                       <button className="signature-choice" disabled={!active} onClick={() => setTool({ kind: "stamp", dataUrl: signature.dataUrl, name: signature.name, signature: true })}>
                         <div className="signature-image"><img src={signature.dataUrl} alt={signature.name} /></div>
                         <strong>{signature.name}</strong>
-                        <span>Clique para aplicar</span>
+                        <span>{translateUi("Clique para aplicar")}</span>
                       </button>
                       <button className="signature-delete" title={`Excluir assinatura ${signature.name}`} onClick={() => void perform(async () => { setSignatures(await window.gcp.deleteSignature(signature.id)); if (tool.kind === "stamp" && tool.signature && tool.name === signature.name) setTool({ kind: "select" }); })}><Trash2 size={14} /></button>
                     </div>
                   ))}
                 </div>
-                {!signatures.length && <div className="sidebar-empty"><PenLine size={32} /><h3>Assine do seu jeito</h3><p>Desenhe ou importe uma imagem. Salve quantas assinaturas precisar, cada uma com seu nome.</p></div>}
-                <div className="sidebar-note"><ShieldCheck size={15} /> Imagens de assinatura não substituem certificados digitais ICP-Brasil.</div>
+                {!signatures.length && <div className="sidebar-empty"><PenLine size={32} /><h3>{translateUi("Assine do seu jeito")}</h3><p>{translateUi("Desenhe ou importe uma imagem. Salve quantas assinaturas precisar, cada uma com seu nome.")}</p></div>}
+                <div className="sidebar-note"><ShieldCheck size={15} />{" "}{translateUi("Imagens de assinatura não substituem certificados digitais ICP-Brasil.")}</div>
               </div>
             )}
             {panel === "ai" && (
@@ -801,8 +807,8 @@ export default function App() {
                   <>
                     <div className="ai-intro">
                       <div className="ai-orb"><Sparkles size={22} /></div>
-                      <h3>Uma nova perspectiva<br />para seus documentos</h3>
-                      <p>Peça um resumo, encontre informações ou esclareça um trecho.</p>
+                      <h3>{translateUi("Uma nova perspectiva")}<br />{translateUi("para seus documentos")}</h3>
+                      <p>{translateUi("Peça um resumo, encontre informações ou esclareça um trecho.")}</p>
                     </div>
                     <div className="ai-suggestions">
                       {["Resuma os principais pontos deste documento.", "Quais são os prazos e as obrigações mencionados?", "Explique este documento em linguagem simples."].map((s) => (
@@ -816,31 +822,31 @@ export default function App() {
                     <div className="ai-exchange" key={i}>
                       <div className="ai-question">{item.question}</div>
                       <div className="ai-answer">
-                        <div className="ai-answer-head"><Sparkles size={14} /><strong>Resposta</strong><button title="Copiar resposta" onClick={() => void window.gcp.copyText(item.answer).then(() => notify("Resposta copiada."))}><Copy size={13} /></button></div>
+                        <div className="ai-answer-head"><Sparkles size={14} /><strong>{translateUi("Resposta")}</strong><button title={translateUi("Copiar resposta")} onClick={() => void window.gcp.copyText(item.answer).then(() => notify("Resposta copiada."))}><Copy size={13} /></button></div>
                         <Markdown text={splitSuggestions(item.answer).body} />
                       </div>
                       {i === conversation.length - 1 && splitSuggestions(item.answer).suggestions.length > 0 && (
                         <div className="ai-followups">
-                          <span>Continue a conversa</span>
+                          <span>{translateUi("Continue a conversa")}</span>
                           {splitSuggestions(item.answer).suggestions.map((s, k) => <button key={k} disabled={aiBusy} onClick={() => void ask(s)}>{k < 2 ? <ArrowDownRight size={13} /> : <Lightbulb size={13} />}{s}</button>)}
                         </div>
                       )}
                     </div>
                   ))}
-                  {aiBusy && <div className="ai-thinking"><LoaderCircle className="spin" size={17} /> Analisando o documento…</div>}
+                  {aiBusy && <div className="ai-thinking"><LoaderCircle className="spin" size={17} />{" "}{translateUi("Analisando o documento…")}</div>}
                 </div>
                 <div className="ai-compose">
-                  <textarea value={question} onChange={(e) => setQuestion(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void ask(); } }} placeholder="O que você deseja saber? (Enter envia)" rows={3} disabled={!active || aiBusy} />
+                  <textarea value={question} onChange={(e) => setQuestion(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void ask(); } }} placeholder={translateUi("O que você deseja saber? (Enter envia)")} rows={3} disabled={!active || aiBusy} />
                   <div className="ai-compose-actions">
-                    <button className="text-button" onClick={() => setModal("settings")}><Settings size={14} /> Configurar API</button>
-                    {conversation.length > 0 && <button className="text-button" onClick={() => setConversation([])}>Nova conversa</button>}
-                    <button className="button primary" disabled={!active || !question.trim() || aiBusy} onClick={() => void ask()}><Send size={15} /> Enviar</button>
+                    <button className="text-button" onClick={() => setModal("settings")}><Settings size={14} />{" "}{translateUi("Configurar API")}</button>
+                    {conversation.length > 0 && <button className="text-button" onClick={() => setConversation([])}>{translateUi("Nova conversa")}</button>}
+                    <button className="button primary" disabled={!active || !question.trim() || aiBusy} onClick={() => void ask()}><Send size={15} />{" "}{translateUi("Enviar")}</button>
                   </div>
                 </div>
-                <p className="ai-disclosure">Ao enviar, o texto do PDF será compartilhado com o provedor da sua API. Revise as respostas antes de usá-las.</p>
+                <p className="ai-disclosure">{translateUi("Ao enviar, o texto do PDF será compartilhado com o provedor da sua API. Revise as respostas antes de usá-las.")}</p>
               </div>
             )}
-            <div className="sidebar-resizer" onPointerDown={startResize} title="Arraste para ajustar a largura" />
+            <div className="sidebar-resizer" onPointerDown={startResize} title={translateUi("Arraste para ajustar a largura")} />
           </aside>
         )}
         <main className={`document-area ${showHome ? "empty" : ""}`}>
@@ -850,19 +856,19 @@ export default function App() {
                 <div className="document-location">
                   <FileText size={14} />
                   <span>{active.name}</span>
-                  {docDirty ? <span className="unsaved-label">Não salvo</span> : <span className="saved-label"><Check size={12} /> Salvo</span>}
+                  {docDirty ? <span className="unsaved-label">{translateUi("Não salvo")}</span> : <span className="saved-label"><Check size={12} />{" "}{translateUi("Salvo")}</span>}
                 </div>
                 <div className="viewer-controls">
-                  <IconButton title="Página anterior" disabled={page <= 0} onClick={() => choosePage(page - 1)}><ChevronLeft size={16} /></IconButton>
+                  <IconButton title={translateUi("Página anterior")} disabled={page <= 0} onClick={() => choosePage(page - 1)}><ChevronLeft size={16} /></IconButton>
                   <label className="page-input">
-                    <input aria-label="Número da página" key={page} defaultValue={page + 1} onKeyDown={(e) => { if (e.key === "Enter") { const n = Number((e.target as HTMLInputElement).value); if (n >= 1 && n <= active.pageCount) choosePage(n - 1); } }} />
+                    <input aria-label={translateUi("Número da página")} key={page} defaultValue={page + 1} onKeyDown={(e) => { if (e.key === "Enter") { const n = Number((e.target as HTMLInputElement).value); if (n >= 1 && n <= active.pageCount) choosePage(n - 1); } }} />
                     <span>/ {active.pageCount}</span>
                   </label>
-                  <IconButton title="Próxima página" disabled={page >= active.pageCount - 1} onClick={() => choosePage(page + 1)}><ChevronRight size={16} /></IconButton>
+                  <IconButton title={translateUi("Próxima página")} disabled={page >= active.pageCount - 1} onClick={() => choosePage(page + 1)}><ChevronRight size={16} /></IconButton>
                 </div>
               </>
             ) : (
-              <><span className="welcome-breadcrumb">Seu espaço de documentos</span><span className="version-tag">PT-BR · Local</span></>
+              <><span className="welcome-breadcrumb">{translateUi("Seu espaço de documentos")}</span><span className="version-tag">{translateUi("PT-BR · Local")}</span></>
             )}
           </div>
           {showHome && <Home files={recent.items} documents={workspace.documents} activeId={active?.id} currentPage={page} ready={ready} onOpen={openFilesFromHome} onNew={() => void perform(() => window.gcp.newDocument())} onActivate={resumeDocument} onRemove={recent.remove} onClear={recent.clear} onCombine={() => actions.quick("combine")} onConvert={() => actions.quick("convert")} onSupport={() => setModal("support")} />}
@@ -901,9 +907,10 @@ export default function App() {
                   notify("Este botão não tem ação. Clique com o botão direito no campo para definir uma em Propriedades.");
                 }}
                 onEditImage={openImageEditor}
+                onDeleteAnnotation={(a) => { setOpenNote(null); void operation({type:"delete-annotation",page:a.page,index:a.index}); }}
                 openNote={openNote}
                 onSourceImageEdit={(pageId, image, rect) => void perform(async () => { const src = await window.gcp.exportSourceImage(active.id, pageId, image, false); if (src) setImageEdit({ id: "", src, source: { page: pageId, image, rect } }); }, "Abrindo a imagem…")}
-                onOpenNote={(id) => { setOpenNote(id); if (id) { setPanel("comments"); setSideOpen(true); } }}
+                onOpenNote={(id) => { setOpenNote(id); if(id?.startsWith("native:"))setSelectedObjects(new Set()); if (id) { setPanel("comments"); setSideOpen(true); } }}
                 onArea={(pageId, rect) => {
                   if (tool.kind === "sign-area") { setSignArea({ page: pageId, rect }); setToolState({ kind: "select" }); setModal("certificate"); return; }
                   if (tool.kind === "sign-place" && placed) { const options = placed.options; setToolState({ kind: "select" }); setPlaced(null); void perform(async () => { const path = await window.gcp.signDocument(active.id, { ...options, page: pageId, rect }); if (path) { notify("Documento assinado digitalmente."); void window.gcp.openFiles([path]); } }); return; }
@@ -927,43 +934,42 @@ export default function App() {
       <footer className="statusbar">
         <div>
           <span className={`status-dot ${busy ? "working" : ""}`} />
-          {busy || (!ready ? "Preparando seu espaço…" : active ? `Página ${page + 1} de ${active.pageCount} · ${selectedPages.length} selecionada${selectedPages.length !== 1 ? "s" : ""}${active.objects.length ? ` · ${active.objects.length} anotaç${active.objects.length > 1 ? "ões" : "ão"}` : ""}` : "Pronto para começar")}
+          {busy ? translateUi(busy) : !ready ? translateUi("Preparando seu espaço…") : active ? <>{translateUi("Página {page} de {total} · {selected} selecionada(s)",{page:page+1,total:active.pageCount,selected:selectedPages.length})}{active.objects.length?translateUi(" · {count} anotação(ões)",{count:active.objects.length}):""}</> : translateUi("Pronto para começar")}
           {busy && <LoaderCircle size={12} className="spin" />}
         </div>
         <div>
           {active && <ZoomBox zoom={zoom} compact onZoom={actions.zoomTo} />}
-          <ShieldCheck size={12} /><span>Processamento local</span><span className="status-divider" />PT-BR
-          <button onClick={() => setModal("support")}><Heart size={12} /> Apoie o projeto</button>
+          <ShieldCheck size={12} /><span>{translateUi("Processamento local")}</span><span className="status-divider" />{translateUi("PT-BR")}{" "}<button onClick={() => setModal("support")}><Heart size={12} />{" "}{translateUi("Apoie o projeto")}</button>
         </div>
       </footer>
       {toast && (
         <div className={`toast ${toast.error ? "error" : ""}`} role={toast.error ? "alert" : "status"}>
           {toast.error ? <X size={17} /> : <Check size={17} />}
           <span>{toast.text}</span>
-          <button aria-label="Fechar aviso" onClick={() => setToast(null)}><X size={15} /></button>
+          <button aria-label={translateUi("Fechar aviso")} onClick={() => setToast(null)}><X size={15} /></button>
         </div>
       )}
       {pageMenu && active && (
         <div className="context-backdrop" onMouseDown={() => setPageMenu(null)} onContextMenu={(e) => { e.preventDefault(); setPageMenu(null); }}>
           <div className="context-menu" style={{ left: Math.min(pageMenu.x, window.innerWidth - 250), top: Math.min(pageMenu.y, window.innerHeight - 430) }} onMouseDown={(e) => e.stopPropagation()} onClick={() => setPageMenu(null)}>
             <div className="context-title">{selectedPages.length > 1 ? `${selectedPages.length} páginas selecionadas` : `Página ${pageMenu.index + 1}`}</div>
-            <button onClick={() => organize.extract("tab")}><FileOutput size={14} /> Extrair para nova aba</button>
-            <button onClick={() => organize.extract("file")}><FileOutput size={14} /> Extrair em um PDF…</button>
-            <button onClick={() => organize.extract("files")}><FileOutput size={14} /> Extrair separadamente (um PDF por página)…</button>
-            <button onClick={() => setModal("split")}><Scissors size={14} /> Dividir documento…</button>
-            <button onClick={() => organize.replace()}><Replace size={14} /> Substituir páginas…</button>
+            <button onClick={() => organize.extract("tab")}><FileOutput size={14} />{" "}{translateUi("Extrair para nova aba")}</button>
+            <button onClick={() => organize.extract("file")}><FileOutput size={14} />{" "}{translateUi("Extrair em um PDF…")}</button>
+            <button onClick={() => organize.extract("files")}><FileOutput size={14} />{" "}{translateUi("Extrair separadamente (um PDF por página)…")}</button>
+            <button onClick={() => setModal("split")}><Scissors size={14} />{" "}{translateUi("Dividir documento…")}</button>
+            <button onClick={() => organize.replace()}><Replace size={14} />{" "}{translateUi("Substituir páginas…")}</button>
             <hr />
-            <button onClick={() => rotate(-90)}><RotateCcw size={14} /> Girar à esquerda</button>
-            <button onClick={() => rotate(90)}><RotateCw size={14} /> Girar à direita</button>
+            <button onClick={() => rotate(-90)}><RotateCcw size={14} />{" "}{translateUi("Girar à esquerda")}</button>
+            <button onClick={() => rotate(90)}><RotateCw size={14} />{" "}{translateUi("Girar à direita")}</button>
             <hr />
-            <button onClick={() => pageTools.copy(true)}><Scissors size={14} /> Recortar <kbd>Ctrl+X</kbd></button>
-            <button onClick={() => pageTools.copy(false)}><Copy size={14} /> Copiar <kbd>Ctrl+C</kbd></button>
-            <button onClick={() => pageTools.paste(false)}><ClipboardPaste size={14} /> Colar antes <kbd>Ctrl+Shift+V</kbd></button>
-            <button onClick={() => pageTools.paste(true)}><ClipboardPaste size={14} /> Colar depois <kbd>Ctrl+V</kbd></button>
-            <button onClick={() => organize.insertFile(pageMenu.index + 1)}><FilePlus2 size={14} /> Inserir de arquivo depois…</button>
-            <button onClick={() => void operation({ type: "blank", index: pageMenu.index + 1 })}><FilePlus2 size={14} /> Inserir página em branco</button>
+            <button onClick={() => pageTools.copy(true)}><Scissors size={14} />{" "}{translateUi("Recortar")}{" "}<kbd>{translateUi("Ctrl+X")}</kbd></button>
+            <button onClick={() => pageTools.copy(false)}><Copy size={14} />{" "}{translateUi("Copiar")}{" "}<kbd>{translateUi("Ctrl+C")}</kbd></button>
+            <button onClick={() => pageTools.paste(false)}><ClipboardPaste size={14} />{" "}{translateUi("Colar antes")}{" "}<kbd>{translateUi("Ctrl+Shift+V")}</kbd></button>
+            <button onClick={() => pageTools.paste(true)}><ClipboardPaste size={14} />{" "}{translateUi("Colar depois")}{" "}<kbd>{translateUi("Ctrl+V")}</kbd></button>
+            <button onClick={() => organize.insertFile(pageMenu.index + 1)}><FilePlus2 size={14} />{" "}{translateUi("Inserir de arquivo depois…")}</button>
+            <button onClick={() => void operation({ type: "blank", index: pageMenu.index + 1 })}><FilePlus2 size={14} />{" "}{translateUi("Inserir página em branco")}</button>
             <hr />
-            <button className="danger" disabled={selectedPages.length >= active.pageCount} onClick={() => organize.remove(selectedPages)}><Trash2 size={14} /> Excluir páginas</button>
+            <button className="danger" disabled={selectedPages.length >= active.pageCount} onClick={() => organize.remove(selectedPages)}><Trash2 size={14} />{" "}{translateUi("Excluir páginas")}</button>
           </div>
         </div>
       )}
@@ -987,26 +993,26 @@ export default function App() {
       {fieldProps && active && <FieldPropsDialog key={fieldProps.name} name={fieldProps.name} type={fieldProps.type} onClose={() => setFieldProps(null)} onApply={(props) => { const target = fieldProps; setFieldProps(null); void perform(async () => { await window.gcp.setFormFieldProps(active.id, target.page, target.name, props); notify("Propriedades do campo aplicadas."); }, "Aplicando propriedades…"); }} />}
       {modal === "compress" && active && <CompressDialog doc={active} onClose={() => setModal(null)} onDone={(message) => notify(message)} onError={onError} />}
       {modal === "split" && active && (
-        <Modal title="Dividir documento" description={`${active.name} · ${active.pageCount} páginas`} onClose={() => setModal(null)}>
+        <Modal title={translateUi("Dividir documento")} description={`${active.name} · ${active.pageCount} páginas`} onClose={() => setModal(null)}>
           <div className="segmented">
-            <button className={splitMode === "pages" ? "selected" : ""} onClick={() => setSplitMode("pages")}>Por número de páginas</button>
-            <button className={splitMode === "size" ? "selected" : ""} onClick={() => setSplitMode("size")}>Por tamanho do arquivo</button>
+            <button className={splitMode === "pages" ? "selected" : ""} onClick={() => setSplitMode("pages")}>{translateUi("Por número de páginas")}</button>
+            <button className={splitMode === "size" ? "selected" : ""} onClick={() => setSplitMode("size")}>{translateUi("Por tamanho do arquivo")}</button>
           </div>
           {splitMode === "pages" ? (
             <>
-              <label className="field">Páginas por arquivo<input type="number" min={1} max={active.pageCount} value={splitEvery} onChange={(e) => setSplitEvery(Math.max(1, Math.min(active.pageCount, Number(e.target.value) || 1)))} /></label>
-              <p className="sidebar-description">Serão criados {Math.ceil(active.pageCount / splitEvery)} arquivo(s) PDF na pasta que você escolher.</p>
+              <label className="field">{translateUi("Páginas por arquivo")}<input type="number" min={1} max={active.pageCount} value={splitEvery} onChange={(e) => setSplitEvery(Math.max(1, Math.min(active.pageCount, Number(e.target.value) || 1)))} /></label>
+              <p className="sidebar-description">{translateUi("Serão criados")}{" "}{Math.ceil(active.pageCount / splitEvery)}{" "}{translateUi("arquivo(s) PDF na pasta que você escolher.")}</p>
             </>
           ) : (
             <>
-              <label className="field">Tamanho máximo de cada arquivo (MB)<input type="number" min={0.1} step={0.5} value={splitMb} onChange={(e) => setSplitMb(Math.max(0.1, Number(e.target.value) || 1))} /></label>
-              <div className="chip-row">{[1, 2, 5, 10, 25].map((mb) => <button key={mb} className={`chip ${splitMb === mb ? "selected" : ""}`} onClick={() => setSplitMb(mb)}>{mb} MB</button>)}</div>
-              <p className="sidebar-description">Útil para portais com limite de envio (SALIC, Prosas, e-mail). Cada parte recebe o máximo de páginas que cabe no limite; uma página maior que o limite fica sozinha.</p>
+              <label className="field">{translateUi("Tamanho máximo de cada arquivo (MB)")}<input type="number" min={0.1} step={0.5} value={splitMb} onChange={(e) => setSplitMb(Math.max(0.1, Number(e.target.value) || 1))} /></label>
+              <div className="chip-row">{[1, 2, 5, 10, 25].map((mb) => <button key={mb} className={`chip ${splitMb === mb ? "selected" : ""}`} onClick={() => setSplitMb(mb)}>{mb}{" "}{translateUi("MB")}</button>)}</div>
+              <p className="sidebar-description">{translateUi("Útil para portais com limite de envio (SALIC, Prosas, e-mail). Cada parte recebe o máximo de páginas que cabe no limite; uma página maior que o limite fica sozinha.")}</p>
             </>
           )}
           <div className="modal-footer">
-            <button className="button secondary" onClick={() => setModal(null)}>Cancelar</button>
-            <button className="button primary" onClick={() => { setModal(null); void perform(async () => { const folder = await window.gcp.splitDocument(active.id, splitMode === "size" ? { maxMb: splitMb } : { every: splitEvery }); if (folder) notify(`Documento dividido em ${folder}`); }, "Dividindo…"); }}>Escolher pasta e dividir</button>
+            <button className="button secondary" onClick={() => setModal(null)}>{translateUi("Cancelar")}</button>
+            <button className="button primary" onClick={() => { setModal(null); void perform(async () => { const folder = await window.gcp.splitDocument(active.id, splitMode === "size" ? { maxMb: splitMb } : { every: splitEvery }); if (folder) notify(`Documento dividido em ${folder}`); }, "Dividindo…"); }}>{translateUi("Escolher pasta e dividir")}</button>
           </div>
         </Modal>
       )}
@@ -1014,22 +1020,22 @@ export default function App() {
       {modal === "signature" && <SignatureDialog onClose={() => setModal(null)} onSaved={setSignatures} />}
       {modal === "support" && <SupportDialog onClose={() => setModal(null)} />}
       {modal === "combine" && (
-        <Modal title="Combinar documentos abertos" description="Confira a ordem dos arquivos antes de gerar um novo PDF." onClose={() => setModal(null)}>
+        <Modal title={translateUi("Combinar documentos abertos")} description={translateUi("Confira a ordem dos arquivos antes de gerar um novo PDF.")} onClose={() => setModal(null)}>
           <div className="combine-list">
             {combineIds.map((id, index) => {
               const doc = workspace.documents.find((d) => d.id === id);
               return doc && (
                 <div className="combine-row" key={id}>
-                  <span>{index + 1}</span><FileText size={17} /><strong>{doc.name}</strong><small>{doc.pageCount} págs.</small>
-                  <IconButton title="Mover para cima" disabled={index === 0} onClick={() => setCombineIds((ids) => { const copy = [...ids]; [copy[index - 1], copy[index]] = [copy[index]!, copy[index - 1]!]; return copy; })}><ChevronLeft className="rotate-90" size={16} /></IconButton>
-                  <IconButton title="Remover da combinação" onClick={() => setCombineIds((ids) => ids.filter((x) => x !== id))}><X size={15} /></IconButton>
+                  <span>{index + 1}</span><FileText size={17} /><strong>{doc.name}</strong><small>{doc.pageCount}{" "}{translateUi("págs.")}</small>
+                  <IconButton title={translateUi("Mover para cima")} disabled={index === 0} onClick={() => setCombineIds((ids) => { const copy = [...ids]; [copy[index - 1], copy[index]] = [copy[index]!, copy[index - 1]!]; return copy; })}><ChevronLeft className="rotate-90" size={16} /></IconButton>
+                  <IconButton title={translateUi("Remover da combinação")} onClick={() => setCombineIds((ids) => ids.filter((x) => x !== id))}><X size={15} /></IconButton>
                 </div>
               );
             })}
           </div>
           <div className="modal-footer">
-            <button className="button secondary" onClick={() => setModal(null)}>Cancelar</button>
-            <button className="button primary" disabled={combineIds.length < 2 || !!busy} onClick={() => void perform(async () => { await window.gcp.combineDocuments(combineIds); setModal(null); notify("Documentos combinados. Use Salvar para escolher o destino."); })}><Layers3 size={16} /> Combinar documentos</button>
+            <button className="button secondary" onClick={() => setModal(null)}>{translateUi("Cancelar")}</button>
+            <button className="button primary" disabled={combineIds.length < 2 || !!busy} onClick={() => void perform(async () => { await window.gcp.combineDocuments(combineIds); setModal(null); notify("Documentos combinados. Use Salvar para escolher o destino."); })}><Layers3 size={16} />{" "}{translateUi("Combinar documentos")}</button>
           </div>
         </Modal>
       )}

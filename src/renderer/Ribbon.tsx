@@ -1,3 +1,4 @@
+import {t as translateUi} from "./i18n";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   MousePointer2,
@@ -133,6 +134,7 @@ export interface RibbonActions {
   home?(): void;
   open(): void;
   save(): void;
+  saveAs(): void;
   print(): void;
   undo(): void;
   redo(): void;
@@ -233,7 +235,7 @@ function Big({
       title={title ?? label}
     >
       {icon}
-      <span>{label}</span>
+      <span>{translateUi(label)}</span>
     </button>
   );
 }
@@ -253,8 +255,8 @@ function Small({
   return (
     <button
       className={`icon-button ${active ? "active" : ""}`}
-      title={title}
-      aria-label={title}
+      title={translateUi(title)}
+      aria-label={translateUi(title)}
       aria-pressed={active || undefined}
       disabled={disabled}
       onClick={onClick}
@@ -280,16 +282,16 @@ function ShapeMenu({
       <button
         className={`tool-button split ${tool.kind === "shape" ? "selected" : ""}`}
         disabled={disabled}
-        title="Formas"
+        title={translateUi("Formas")}
         onClick={() => setTool({ kind: "shape", shape: current })}
       >
         {SHAPE_ICONS[current]}
-        <span>Formas</span>
+        <span>{translateUi("Formas")}</span>
       </button>
       <button
         className="dropdown-caret"
         disabled={disabled}
-        aria-label="Escolher forma"
+        aria-label={translateUi("Escolher forma")}
         onClick={() => setOpen(!open)}
       >
         <ChevronDown size={12} />
@@ -309,7 +311,7 @@ function ShapeMenu({
             >
               {SHAPE_ICONS[s.shape]} {s.label}
               {(s.shape === "polyline" || s.shape === "polygon") && (
-                <small>duplo clique conclui</small>
+                <small>{translateUi("duplo clique conclui")}</small>
               )}
             </button>
           ))}
@@ -331,9 +333,9 @@ function MeasureMenu({ tool, setTool, disabled }: { tool: Tool; setTool: (t: Too
   return (
     <div className="dropdown" ref={ref}>
       <button className={`tool-button split ${active ? "selected" : ""}`} disabled={disabled} title={`Medir ${current.label.toLowerCase()} em centímetros`} onClick={() => setTool({ kind: "shape", shape: current.shape, measure: current.measure })}>
-        {MEASURE_ICON[current.measure]}<span>Medir</span>
+        {MEASURE_ICON[current.measure]}<span>{translateUi("Medir")}</span>
       </button>
-      <button className="dropdown-caret" disabled={disabled} aria-label="Escolher medida" onClick={() => setOpen(!open)}><ChevronDown size={12} /></button>
+      <button className="dropdown-caret" disabled={disabled} aria-label={translateUi("Escolher medida")} onClick={() => setOpen(!open)}><ChevronDown size={12} /></button>
       {open && (
         <div className="dropdown-menu">
           {MEASURES.map((m) => <button key={m.measure} className={active === m.measure ? "active" : ""} onClick={() => { setTool({ kind: "shape", shape: m.shape, measure: m.measure }); setOpen(false); }}>{MEASURE_ICON[m.measure]} {m.label}<small>{m.hint}</small></button>)}
@@ -390,16 +392,16 @@ function EditMenu({
         {current.icon}
         <span>
           {mode === "all"
-            ? "Editar tudo"
+            ? translateUi("Editar tudo")
             : mode === "text"
-              ? "Editar texto"
-              : "Editar imagens"}
+              ? translateUi("Editar texto")
+              : translateUi("Editar imagens")}
         </span>
       </button>
       <button
         className="dropdown-caret"
         disabled={disabled}
-        aria-label="Escolher modo de edição"
+        aria-label={translateUi("Escolher modo de edição")}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
@@ -407,7 +409,7 @@ function EditMenu({
         <ChevronDown size={12} />
       </button>
       {open && (
-        <div className="dropdown-menu" role="menu" aria-label="Modos de edição">
+        <div className="dropdown-menu" role="menu" aria-label={translateUi("Modos de edição")}>
           {options.map((option) => (
             <button
               key={option.mode}
@@ -452,7 +454,7 @@ function HighlightMenu({
       <button
         className={`tool-button split ${active ? "selected" : ""}`}
         disabled={disabled}
-        title="Destacar texto (selecione o trecho)"
+        title={translateUi("Destacar texto (selecione o trecho)")}
         onClick={() => setTool({ kind: "markup", style: "highlight" })}
       >
         <span
@@ -461,12 +463,12 @@ function HighlightMenu({
         >
           <Highlighter size={17} />
         </span>
-        <span>Destacar</span>
+        <span>{translateUi("Destacar")}</span>
       </button>
       <button
         className="dropdown-caret"
         disabled={disabled}
-        aria-label="Cor do destaque"
+        aria-label={translateUi("Cor do destaque")}
         onClick={() => setOpen(!open)}
       >
         <ChevronDown size={12} />
@@ -486,7 +488,7 @@ function HighlightMenu({
                 }}
               />
             ))}
-            <label className="swatch custom" title="Outra cor">
+            <label className="swatch custom" title={translateUi("Outra cor")}>
               <input
                 type="color"
                 value={style.highlight}
@@ -494,9 +496,7 @@ function HighlightMenu({
               />
             </label>
           </div>
-          <label className="slider-row">
-            Opacidade
-            <input
+          <label className="slider-row">{" "}{translateUi("Opacidade")}{" "}<input
               type="range"
               min={0.15}
               max={1}
@@ -526,7 +526,7 @@ function Swatches({
       {allowNone && (
         <button
           className={`swatch none ${value === null ? "active" : ""}`}
-          title="Sem preenchimento"
+          title={translateUi("Sem preenchimento")}
           onClick={() => onChange(null)}
         />
       )}
@@ -539,7 +539,7 @@ function Swatches({
           onClick={() => onChange(color)}
         />
       ))}
-      <label className="swatch custom" title="Outra cor">
+      <label className="swatch custom" title={translateUi("Outra cor")}>
         <input
           type="color"
           value={value ?? "#ffffff"}
@@ -567,21 +567,20 @@ function PropertyBar({
     return (
       <div className="property-bar">
         <span className="property-title">
-          <PencilLine size={15} /> Texto original
-        </span>
+          <PencilLine size={15} />{" "}{translateUi("Texto original")}{" "}</span>
         <select
-          title="Fonte"
+          title={translateUi("Fonte")}
           defaultValue=""
           onChange={(e) =>
             e.target.value && actions.formatParagraph({ font: e.target.value })
           }
         >
           <option value="">{p.font || "Fonte do documento"}</option>
-          <option value="helvetica">Helvetica / Arial</option>
-          <option value="times">Times</option>
-          <option value="courier">Courier</option>
+          <option value="helvetica">{translateUi("Helvetica / Arial")}</option>
+          <option value="times">{translateUi("Times")}</option>
+          <option value="courier">{translateUi("Courier")}</option>
         </select>
-        <label className="number-field" title="Tamanho">
+        <label className="number-field" title={translateUi("Tamanho")}>
           <input
             type="number"
             min={4}
@@ -598,27 +597,25 @@ function PropertyBar({
               Number(e.target.value) !== Number(p.size.toFixed(1)) &&
               actions.formatParagraph({ size: Number(e.target.value) })
             }
-          />
-          pt
-        </label>
+          />{" "}{translateUi("pt")}{" "}</label>
         <Small
           icon={<Bold size={15} />}
-          title="Negrito"
+          title={translateUi("Negrito")}
           active={p.bold}
           onClick={() => actions.formatParagraph({ bold: !p.bold })}
         />
         <Small
           icon={<Italic size={15} />}
-          title="Itálico"
+          title={translateUi("Itálico")}
           active={p.italic}
           onClick={() => actions.formatParagraph({ italic: !p.italic })}
         />
         <Small
           icon={<Underline size={15} />}
-          title="Sublinhado"
+          title={translateUi("Sublinhado")}
           onClick={() => actions.formatParagraph({ underline: true })}
         />
-        <label className="color-field" title="Cor do texto">
+        <label className="color-field" title={translateUi("Cor do texto")}>
           <input
             type="color"
             defaultValue={source.color}
@@ -627,23 +624,20 @@ function PropertyBar({
         </label>
         <Small
           icon={<AlignLeft size={15} />}
-          title="Alinhar à esquerda"
+          title={translateUi("Alinhar à esquerda")}
           onClick={() => actions.formatParagraph({ align: "left" })}
         />
         <Small
           icon={<AlignCenter size={15} />}
-          title="Centralizar"
+          title={translateUi("Centralizar")}
           onClick={() => actions.formatParagraph({ align: "center" })}
         />
         <Small
           icon={<AlignRight size={15} />}
-          title="Alinhar à direita"
+          title={translateUi("Alinhar à direita")}
           onClick={() => actions.formatParagraph({ align: "right" })}
         />
-        <span className="property-hint">
-          Edite o texto na página · Ctrl+Enter aplica · Esc cancela · arraste o
-          ícone para mover
-        </span>
+        <span className="property-hint">{" "}{translateUi("Edite o texto na página · Ctrl+Enter aplica · Esc cancela · arraste o ícone para mover")}{" "}</span>
       </div>
     );
   }
@@ -666,17 +660,14 @@ function PropertyBar({
     return (
       <div className="property-bar">
         <span className="property-title">
-          {selection.length} objeto{selection.length > 1 ? "s" : ""} selecionado
-          {selection.length > 1 ? "s" : ""}
+          {selection.length}{" "}{translateUi("objeto")}{selection.length > 1 ? translateUi("s") : ""}{" "}{translateUi("selecionado")}{" "}{selection.length > 1 ? translateUi("s") : ""}
         </span>
         {selection.length === 1 && selection[0]!.kind === "image" && (
           <button className="text-button" onClick={actions.editImage}>
-            <ImageIcon size={14} /> Editar imagem (recortar, girar, ajustes)
-          </button>
+            <ImageIcon size={14} />{" "}{translateUi("Editar imagem (recortar, girar, ajustes)")}{" "}</button>
         )}
         <button className="text-button danger" onClick={actions.deleteObjects}>
-          <Trash2 size={14} /> Excluir
-        </button>
+          <Trash2 size={14} />{" "}{translateUi("Excluir")}{" "}</button>
       </div>
     );
   }
@@ -685,8 +676,7 @@ function PropertyBar({
       {textual && (
         <>
           <span className="property-title">
-            <Type size={15} /> Texto
-          </span>
+            <Type size={15} />{" "}{translateUi("Texto")}{" "}</span>
           <select
             className="font-select"
             value={style.font}
@@ -696,12 +686,12 @@ function PropertyBar({
                 : `"${style.font}"`,
             }}
             onChange={(e) => actions.restyle({ font: e.target.value })}
-            title="Fonte"
+            title={translateUi("Fonte")}
           >
-            <optgroup label="Padrão do PDF">
-              <option value="sans">Sem serifa (Helvetica)</option>
-              <option value="serif">Com serifa (Times)</option>
-              <option value="mono">Monoespaçada (Courier)</option>
+            <optgroup label={translateUi("Padrão do PDF")}>
+              <option value="sans">{translateUi("Sem serifa (Helvetica)")}</option>
+              <option value="serif">{translateUi("Com serifa (Times)")}</option>
+              <option value="mono">{translateUi("Monoespaçada (Courier)")}</option>
             </optgroup>
             {fonts.length > 0 && (
               <optgroup label={`Instaladas neste computador (${fonts.length})`}>
@@ -717,7 +707,7 @@ function PropertyBar({
               </optgroup>
             )}
           </select>
-          <label className="number-field" title="Tamanho">
+          <label className="number-field" title={translateUi("Tamanho")}>
             <input
               type="number"
               min={4}
@@ -728,40 +718,38 @@ function PropertyBar({
                   size: Math.max(4, Number(e.target.value) || 12),
                 })
               }
-            />
-            pt
-          </label>
+            />{" "}{translateUi("pt")}{" "}</label>
           <Small
             icon={<Bold size={15} />}
-            title="Negrito"
+            title={translateUi("Negrito")}
             active={style.bold}
             onClick={() => actions.restyle({ bold: !style.bold })}
           />
           <Small
             icon={<Italic size={15} />}
-            title="Itálico"
+            title={translateUi("Itálico")}
             active={style.italic}
             onClick={() => actions.restyle({ italic: !style.italic })}
           />
           <Small
             icon={<AlignLeft size={15} />}
-            title="Alinhar à esquerda"
+            title={translateUi("Alinhar à esquerda")}
             active={style.align === "left"}
             onClick={() => actions.restyle({ align: "left" })}
           />
           <Small
             icon={<AlignCenter size={15} />}
-            title="Centralizar"
+            title={translateUi("Centralizar")}
             active={style.align === "center"}
             onClick={() => actions.restyle({ align: "center" })}
           />
           <Small
             icon={<AlignRight size={15} />}
-            title="Alinhar à direita"
+            title={translateUi("Alinhar à direita")}
             active={style.align === "right"}
             onClick={() => actions.restyle({ align: "right" })}
           />
-          <span className="property-label">Cor</span>
+          <span className="property-label">{translateUi("Cor")}</span>
           <Swatches
             value={style.textColor}
             onChange={(v) => actions.restyle({ textColor: v ?? "#1f1a2e" })}
@@ -771,15 +759,12 @@ function PropertyBar({
       {highlighting && (
         <>
           <span className="property-title">
-            <Highlighter size={15} /> Destaque
-          </span>
+            <Highlighter size={15} />{" "}{translateUi("Destaque")}{" "}</span>
           <Swatches
             value={style.highlight}
             onChange={(v) => actions.restyle({ highlight: v ?? "#ffe066" })}
           />
-          <label className="slider-row">
-            Opacidade
-            <input
+          <label className="slider-row">{" "}{translateUi("Opacidade")}{" "}<input
               type="range"
               min={0.15}
               max={1}
@@ -796,15 +781,12 @@ function PropertyBar({
       {stroked && (
         <>
           <span className="property-title">
-            <PenLine size={15} /> Contorno
-          </span>
+            <PenLine size={15} />{" "}{translateUi("Contorno")}{" "}</span>
           <Swatches
             value={style.stroke}
             onChange={(v) => actions.restyle({ stroke: v ?? "#1f1a2e" })}
           />
-          <label className="slider-row">
-            Espessura
-            <input
+          <label className="slider-row">{" "}{translateUi("Espessura")}{" "}<input
               type="range"
               min={0.5}
               max={16}
@@ -814,11 +796,11 @@ function PropertyBar({
                 actions.restyle({ strokeWidth: Number(e.target.value) })
               }
             />
-            <b>{style.strokeWidth} pt</b>
+            <b>{style.strokeWidth}{" "}{translateUi("pt")}</b>
           </label>
           {fillable && (
             <>
-              <span className="property-label">Preenchimento</span>
+              <span className="property-label">{translateUi("Preenchimento")}</span>
               <Swatches
                 value={style.fill}
                 allowNone
@@ -826,9 +808,7 @@ function PropertyBar({
               />
             </>
           )}
-          <label className="slider-row">
-            Opacidade
-            <input
+          <label className="slider-row">{" "}{translateUi("Opacidade")}{" "}<input
               type="range"
               min={0.1}
               max={1}
@@ -844,8 +824,7 @@ function PropertyBar({
       )}
       {selection.length > 0 && (
         <button className="text-button danger" onClick={actions.deleteObjects}>
-          <Trash2 size={14} /> Excluir
-        </button>
+          <Trash2 size={14} />{" "}{translateUi("Excluir")}{" "}</button>
       )}
     </div>
   );
@@ -873,7 +852,7 @@ export function ZoomBox({
   return (
     <div className={`zoom-box ${compact ? "compact" : ""}`} ref={ref}>
       <input
-        aria-label="Zoom em porcentagem"
+        aria-label={translateUi("Zoom em porcentagem")}
         value={text}
         onChange={(e) => setText(e.target.value)}
         onFocus={(e) => e.target.select()}
@@ -887,7 +866,7 @@ export function ZoomBox({
         onBlur={apply}
       />
       <span>%</span>
-      <button aria-label="Tamanhos de zoom" onClick={() => setOpen(!open)}>
+      <button aria-label={translateUi("Tamanhos de zoom")} onClick={() => setOpen(!open)}>
         <ChevronDown size={12} />
       </button>
       {open && (
@@ -913,17 +892,13 @@ export function ZoomBox({
               onZoom("width");
               setOpen(false);
             }}
-          >
-            Ajustar à largura
-          </button>
+          >{" "}{translateUi("Ajustar à largura")}{" "}</button>
           <button
             onClick={() => {
               onZoom("page");
               setOpen(false);
             }}
-          >
-            Página inteira
-          </button>
+          >{" "}{translateUi("Página inteira")}{" "}</button>
           {ZOOMS.map((z) => (
             <button
               key={z}
@@ -985,7 +960,7 @@ function ScrollRow({
       {edges.left && (
         <button
           className="row-arrow left"
-          aria-label="Mais ferramentas à esquerda"
+          aria-label={translateUi("Mais ferramentas à esquerda")}
           onClick={() => scroll(-260)}
         >
           <ChevronDown size={14} style={{ transform: "rotate(90deg)" }} />
@@ -1005,7 +980,7 @@ function ScrollRow({
       {edges.right && (
         <button
           className="row-arrow right"
-          aria-label="Mais ferramentas à direita"
+          aria-label={translateUi("Mais ferramentas à direita")}
           onClick={() => scroll(260)}
         >
           <ChevronDown size={14} style={{ transform: "rotate(-90deg)" }} />
@@ -1036,7 +1011,7 @@ export function Ribbon(props: Props) {
   const select = (
     <Big
       icon={<MousePointer2 size={17} />}
-      label="Selecionar"
+      label={translateUi("Selecionar")}
       active={is("select")}
       disabled={none}
       onClick={() => setTool({ kind: "select" })}
@@ -1053,7 +1028,7 @@ export function Ribbon(props: Props) {
   const addText = (
     <Big
       icon={<Type size={18} />}
-      label="Adicionar texto"
+      label={translateUi("Adicionar texto")}
       active={is("text")}
       disabled={none}
       onClick={() => setTool({ kind: "text" })}
@@ -1062,7 +1037,7 @@ export function Ribbon(props: Props) {
   const image = (
     <Big
       icon={<ImageIcon size={18} />}
-      label="Imagem"
+      label={translateUi("Imagem")}
       active={is("stamp") && tool.kind === "stamp" && !tool.signature}
       disabled={none}
       onClick={actions.image}
@@ -1071,7 +1046,7 @@ export function Ribbon(props: Props) {
   const ink = (
     <Big
       icon={<PenLine size={18} />}
-      label="Desenhar"
+      label={translateUi("Desenhar")}
       active={is("ink")}
       disabled={none}
       onClick={() => setTool({ kind: "ink" })}
@@ -1084,7 +1059,7 @@ export function Ribbon(props: Props) {
   ) => (
     <Big
       icon={icon}
-      label={label}
+      label={translateUi(label)}
       active={tool.kind === "markup" && tool.style === style}
       disabled={none}
       onClick={() => setTool({ kind: "markup", style })}
@@ -1097,20 +1072,20 @@ export function Ribbon(props: Props) {
           {select}
           <Small
             icon={<ZoomOut size={17} />}
-            title="Diminuir zoom"
+            title={translateUi("Diminuir zoom")}
             disabled={none}
             onClick={() => actions.zoom(1 / 1.15)}
           />
           <ZoomBox zoom={props.zoom} onZoom={actions.zoomTo} />
           <Small
             icon={<ZoomIn size={17} />}
-            title="Aumentar zoom"
+            title={translateUi("Aumentar zoom")}
             disabled={none}
             onClick={() => actions.zoom(1.15)}
           />
           <Small
             icon={<Maximize size={16} />}
-            title="Ajustar à largura"
+            title={translateUi("Ajustar à largura")}
             disabled={none}
             onClick={actions.fit}
           />
@@ -1144,7 +1119,7 @@ export function Ribbon(props: Props) {
                     ocr: (
                       <Big
                         icon={<ScanText size={18} />}
-                        label="OCR"
+                        label={translateUi("OCR")}
                         disabled={none}
                         onClick={actions.ocr}
                       />
@@ -1152,7 +1127,7 @@ export function Ribbon(props: Props) {
                     compress: (
                       <Big
                         icon={<Minimize2 size={18} />}
-                        label="Comprimir"
+                        label={translateUi("Comprimir")}
                         disabled={none}
                         onClick={actions.compress}
                       />
@@ -1160,7 +1135,7 @@ export function Ribbon(props: Props) {
                     find: (
                       <Big
                         icon={<Search size={18} />}
-                        label="Buscar"
+                        label={translateUi("Buscar")}
                         disabled={none}
                         onClick={actions.find}
                       />
@@ -1168,21 +1143,21 @@ export function Ribbon(props: Props) {
                     ai: (
                       <Big
                         icon={<Sparkles size={18} />}
-                        label="IA"
+                        label={translateUi("IA")}
                         onClick={actions.ai}
                       />
                     ),
                     signatures: (
                       <Big
                         icon={<SignatureIcon size={18} />}
-                        label="Minhas assinaturas"
+                        label={translateUi("Minhas assinaturas")}
                         onClick={actions.signatures}
                       />
                     ),
                     stamps: (
                       <Big
                         icon={<StampIcon size={18} />}
-                        label="Carimbos"
+                        label={translateUi("Carimbos")}
                         disabled={none}
                         onClick={actions.stamps}
                       />
@@ -1190,7 +1165,7 @@ export function Ribbon(props: Props) {
                     rotate: (
                       <Big
                         icon={<RotateCw size={18} />}
-                        label="Girar páginas"
+                        label={translateUi("Girar páginas")}
                         disabled={none}
                         onClick={() => actions.rotate(90)}
                       />
@@ -1198,14 +1173,14 @@ export function Ribbon(props: Props) {
                     combine: (
                       <Big
                         icon={<Combine size={18} />}
-                        label="Combinar arquivos"
+                        label={translateUi("Combinar arquivos")}
                         onClick={() => actions.quick("combine")}
                       />
                     ),
                     compare: (
                       <Big
                         icon={<GitCompareArrows size={18} />}
-                        label="Comparar PDFs"
+                        label={translateUi("Comparar PDFs")}
                         disabled={none}
                         onClick={actions.compareFiles}
                       />
@@ -1213,7 +1188,7 @@ export function Ribbon(props: Props) {
                     word: (
                       <Big
                         icon={<FileText size={18} />}
-                        label="Para Word"
+                        label={translateUi("Para Word")}
                         disabled={none}
                         onClick={() => actions.exportAs("docx")}
                       />
@@ -1239,9 +1214,9 @@ export function Ribbon(props: Props) {
         <div className="tool-group">
           <Big
             icon={<MessageSquare size={18} />}
-            label="Adicionar comentário"
+            label={translateUi("Adicionar comentário")}
             active={tool.kind === "note"}
-            title="Clique na página onde deseja deixar o comentário"
+            title={translateUi("Clique na página onde deseja deixar o comentário")}
             disabled={none || !actions.comment}
             onClick={() => actions.comment?.()}
           />
@@ -1261,14 +1236,14 @@ export function Ribbon(props: Props) {
         <div className="tool-group">
           <Big
             icon={<Type size={18} />}
-            label="Caixa de texto"
+            label={translateUi("Caixa de texto")}
             active={is("text")}
             disabled={none}
             onClick={() => setTool({ kind: "text" })}
           />
           <Big
             icon={<StampIcon size={18} />}
-            label="Carimbos"
+            label={translateUi("Carimbos")}
             disabled={none}
             onClick={actions.stamps}
           />
@@ -1283,37 +1258,37 @@ export function Ribbon(props: Props) {
         <div className="tool-group">
           <Big
             icon={<RotateCcw size={18} />}
-            label="Girar à esquerda"
+            label={translateUi("Girar à esquerda")}
             disabled={none}
             onClick={() => actions.rotate(-90)}
           />
           <Big
             icon={<RotateCw size={18} />}
-            label="Girar à direita"
+            label={translateUi("Girar à direita")}
             disabled={none}
             onClick={() => actions.rotate(90)}
           />
           <Big
             icon={<FilePlus2 size={18} />}
-            label="Página em branco"
+            label={translateUi("Página em branco")}
             disabled={none}
             onClick={actions.blank}
           />
           <Big
             icon={<Trash2 size={18} />}
-            label="Excluir páginas"
+            label={translateUi("Excluir páginas")}
             disabled={none || !props.pagesSelected}
             onClick={actions.deletePages}
           />
           <Big
             icon={<Hash size={18} />}
-            label="Numerar páginas"
+            label={translateUi("Numerar páginas")}
             disabled={none}
             onClick={actions.numbering}
           />
           <Big
             icon={<Minimize2 size={18} />}
-            label="Comprimir"
+            label={translateUi("Comprimir")}
             disabled={none}
             onClick={actions.compress}
           />
@@ -1321,18 +1296,18 @@ export function Ribbon(props: Props) {
         <div className="tool-group">
           <Big
             icon={<Layers3 size={18} />}
-            label="Combinar abertos"
+            label={translateUi("Combinar abertos")}
             disabled={none}
             onClick={actions.combineOpen}
           />
           <Big
             icon={<Combine size={18} />}
-            label="Combinar arquivos"
+            label={translateUi("Combinar arquivos")}
             onClick={() => actions.quick("combine")}
           />
           <Big
             icon={<FolderOpen size={18} />}
-            label="Abrir outro"
+            label={translateUi("Abrir outro")}
             onClick={actions.open}
           />
         </div>
@@ -1343,43 +1318,43 @@ export function Ribbon(props: Props) {
         <div className="tool-group">
           <Big
             icon={<FileInput size={18} />}
-            label="XML fiscal para PDF"
+            label={translateUi("XML fiscal para PDF")}
             onClick={actions.fiscalXml}
-            title="Converter XML de NF-e, NFC-e, NFS-e ou CF-e/SAT em um PDF local"
+            title={translateUi("Converter XML de NF-e, NFC-e, NFS-e ou CF-e/SAT em um PDF local")}
           />
           <Big
             icon={<FileText size={18} />}
-            label="Para Word"
+            label={translateUi("Para Word")}
             disabled={none}
             onClick={() => actions.exportAs("docx")}
           />
           <Big
             icon={<Table2 size={18} />}
-            label="Para Excel"
+            label={translateUi("Para Excel")}
             disabled={none}
             onClick={() => actions.exportAs("xlsx")}
           />
           <Big
             icon={<Presentation size={18} />}
-            label="Para PowerPoint"
+            label={translateUi("Para PowerPoint")}
             disabled={none}
             onClick={() => actions.exportAs("pptx")}
           />
           <Big
             icon={<ImageIcon size={18} />}
-            label="Para imagem"
+            label={translateUi("Para imagem")}
             disabled={none}
             onClick={() => actions.exportAs("png")}
           />
           <Big
             icon={<FileImage size={18} />}
-            label="PDF de imagens"
+            label={translateUi("PDF de imagens")}
             disabled={none}
             onClick={() => actions.exportAs("image-pdf")}
           />
           <Big
             icon={<FileType2 size={18} />}
-            label="Para texto"
+            label={translateUi("Para texto")}
             disabled={none}
             onClick={() => actions.exportAs("txt")}
           />
@@ -1387,12 +1362,12 @@ export function Ribbon(props: Props) {
         <div className="tool-group">
           <Big
             icon={<FileInput size={18} />}
-            label="Arquivos para PDF"
+            label={translateUi("Arquivos para PDF")}
             onClick={() => actions.quick("convert")}
           />
           <Big
             icon={<ScanText size={18} />}
-            label="OCR"
+            label={translateUi("OCR")}
             disabled={none}
             onClick={actions.ocr}
           />
@@ -1405,12 +1380,12 @@ export function Ribbon(props: Props) {
           {select}
           <Big
             icon={<SignatureIcon size={18} />}
-            label="Minhas assinaturas"
+            label={translateUi("Minhas assinaturas")}
             onClick={actions.signatures}
           />
           <Big
             icon={<Type size={18} />}
-            label="Texto / data"
+            label={translateUi("Texto / data")}
             active={is("text")}
             disabled={none}
             onClick={() => setTool({ kind: "text" })}
@@ -1419,21 +1394,21 @@ export function Ribbon(props: Props) {
         <div className="tool-group">
           <Big
             icon={<BadgeCheck size={18} />}
-            label="Certificado digital"
+            label={translateUi("Certificado digital")}
             active={is("sign-area")}
             disabled={none}
             onClick={() => setTool({ kind: "sign-area" })}
-            title="Desenhe a área do carimbo e assine com seu certificado ICP-Brasil (A1/A3)"
+            title={translateUi("Desenhe a área do carimbo e assine com seu certificado ICP-Brasil (A1/A3)")}
           />
           <Big
             icon={<FileSignature size={18} />}
-            label="Assinatura invisível"
+            label={translateUi("Assinatura invisível")}
             disabled={none}
             onClick={() => actions.certificate(false)}
           />
           <Big
             icon={<ShieldCheck size={18} />}
-            label="Verificar assinaturas"
+            label={translateUi("Verificar assinaturas")}
             disabled={none}
             onClick={actions.checkSignatures}
           />
@@ -1460,7 +1435,7 @@ export function Ribbon(props: Props) {
             <Big
               key={field}
               icon={icon}
-              label={label}
+              label={translateUi(label)}
               active={tool.kind === "field" && tool.field === field}
               disabled={none}
               onClick={() => setTool({ kind: "field", field })}
@@ -1471,20 +1446,20 @@ export function Ribbon(props: Props) {
         <div className="tool-group">
           <Big
             icon={<ScanSearch size={18} />}
-            label="Reconhecer formulário"
+            label={translateUi("Reconhecer formulário")}
             disabled={none}
             onClick={actions.detectFields}
-            title="Encontra linhas, caixas e espaços em branco e cria os campos automaticamente"
+            title={translateUi("Encontra linhas, caixas e espaços em branco e cria os campos automaticamente")}
           />
           <Big
             icon={<FileDown size={18} />}
-            label="Exportar dados (CSV)"
+            label={translateUi("Exportar dados (CSV)")}
             disabled={none}
             onClick={() => actions.exportData("csv")}
           />
           <Big
             icon={<FileDown size={18} />}
-            label="XML / XFDF"
+            label={translateUi("XML / XFDF")}
             disabled={none}
             onClick={() => actions.exportData("xfdf")}
           />
@@ -1495,16 +1470,16 @@ export function Ribbon(props: Props) {
       <div className="tool-group">
         <Big
           icon={<Lock size={18} />}
-          label="Criptografar com senha"
+          label={translateUi("Criptografar com senha")}
           disabled={none}
           onClick={actions.protect}
         />
         <Big
           icon={<Eraser size={18} />}
-          label="Remover dados ocultos"
+          label={translateUi("Remover dados ocultos")}
           disabled={none}
           onClick={actions.removeHidden}
-          title="Metadados, anexos, camadas ocultas, scripts e dados privados"
+          title={translateUi("Metadados, anexos, camadas ocultas, scripts e dados privados")}
         />
       </div>
     ),
@@ -1512,29 +1487,29 @@ export function Ribbon(props: Props) {
       <div className="tool-group">
         <Big
           icon={<SplitSquareHorizontal size={18} />}
-          label="Comparar em nova janela"
+          label={translateUi("Comparar em nova janela")}
           disabled={none}
           onClick={actions.compare}
         />
         <Big
           icon={<GitCompareArrows size={18} />}
-          label="Comparar PDFs"
+          label={translateUi("Comparar PDFs")}
           onClick={actions.compareFiles}
-          title="Mostra lado a lado todas as diferenças de texto entre duas versões"
+          title={translateUi("Mostra lado a lado todas as diferenças de texto entre duas versões")}
         />
         <Big
           icon={<BarChart3 size={18} />}
-          label="Estatísticas"
+          label={translateUi("Estatísticas")}
           disabled={none}
           onClick={actions.stats}
-          title="Palavras, caracteres, páginas e o que mais pesa no arquivo"
+          title={translateUi("Palavras, caracteres, páginas e o que mais pesa no arquivo")}
         />
         <Big
           icon={<FileCog size={18} />}
-          label="Propriedades"
+          label={translateUi("Propriedades")}
           disabled={none}
           onClick={actions.properties}
-          title="Título, autor, assunto, palavras-chave e demais metadados"
+          title={translateUi("Título, autor, assunto, palavras-chave e demais metadados")}
         />
       </div>
     ),
@@ -1543,77 +1518,77 @@ export function Ribbon(props: Props) {
         <div className="tool-group">
           <Big
             icon={<BookOpenText size={18} />}
-            label="Modo leitura"
+            label={translateUi("Modo leitura")}
             disabled={none}
             onClick={actions.reading}
-            title="Leitura sem distrações na janela atual · Esc para sair"
+            title={translateUi("Leitura sem distrações na janela atual · Esc para sair")}
           />
           <Big
             icon={<Expand size={18} />}
-            label="Tela cheia"
+            label={translateUi("Tela cheia")}
             onClick={actions.fullscreen}
-            title="Tela cheia · F11"
+            title={translateUi("Tela cheia · F11")}
           />
           <Big
             icon={<PanelLeft size={18} />}
-            label="Painel lateral"
+            label={translateUi("Painel lateral")}
             onClick={actions.sidebar}
           />
         </div>
         <div className="tool-group">
           <Big
             icon={<Pin size={18} />}
-            label="Faixa fixa"
+            label={translateUi("Faixa fixa")}
             active={props.ribbonMode === "pinned"}
             onClick={() => actions.ribbon("pinned")}
           />
           <Big
             icon={<ChevronsUp size={18} />}
-            label="Recolher faixa"
+            label={translateUi("Recolher faixa")}
             active={props.ribbonMode === "collapsed"}
             onClick={() => actions.ribbon("collapsed")}
-            title="Mostra só as guias · Ctrl+F1"
+            title={translateUi("Mostra só as guias · Ctrl+F1")}
           />
           <Big
             icon={<EyeOff size={18} />}
-            label="Ocultar auto."
+            label={translateUi("Ocultar auto.")}
             active={props.ribbonMode === "auto"}
             onClick={() => actions.ribbon("auto")}
-            title="A faixa aparece ao passar o mouse no topo"
+            title={translateUi("A faixa aparece ao passar o mouse no topo")}
           />
         </div>
         <div className="tool-group">
           <Big
             icon={<RectangleVertical size={18} />}
-            label="Uma página"
+            label={translateUi("Uma página")}
             active={props.layout === "single"}
             disabled={none}
             onClick={() => actions.layout("single")}
           />
           <Big
             icon={<Columns2 size={18} />}
-            label="Duas páginas"
+            label={translateUi("Duas páginas")}
             active={props.layout === "double"}
             disabled={none}
             onClick={() => actions.layout("double")}
           />
           <Big
             icon={<BookOpen size={18} />}
-            label="Livro (com capa)"
+            label={translateUi("Livro (com capa)")}
             active={props.layout === "cover"}
             disabled={none}
             onClick={() => actions.layout("cover")}
-            title="Duas páginas, com a capa sozinha, como um livro aberto"
+            title={translateUi("Duas páginas, com a capa sozinha, como um livro aberto")}
           />
           <Big
             icon={<MoveHorizontal size={18} />}
-            label="Ajustar largura"
+            label={translateUi("Ajustar largura")}
             disabled={none}
             onClick={() => actions.zoomTo("width")}
           />
           <Big
             icon={<Maximize size={18} />}
-            label="Página inteira"
+            label={translateUi("Página inteira")}
             disabled={none}
             onClick={() => actions.zoomTo("page")}
           />
@@ -1637,15 +1612,15 @@ export function Ribbon(props: Props) {
                   style={{ background: swatch }}
                 />
               }
-              label={label}
+              label={translateUi(label)}
               active={props.filter === value}
               onClick={() => actions.filter(value)}
-              title={`Filtro de leitura: ${label}`}
+              title={`Filtro de leitura: ${translateUi(label)}`}
             />
           ))}
           <Big
             icon={props.dark ? <Sun size={18} /> : <Moon size={18} />}
-            label={props.dark ? "Tema claro" : "Tema escuro"}
+            label={props.dark ? translateUi("Tema claro") : translateUi("Tema escuro")}
             onClick={actions.theme}
           />
         </div>
@@ -1655,7 +1630,7 @@ export function Ribbon(props: Props) {
       <div className="tool-group">
         <Big
           icon={<Sparkles size={18} />}
-          label="Assistente de IA"
+          label={translateUi("Assistente de IA")}
           onClick={actions.ai}
         />
       </div>
@@ -1665,39 +1640,40 @@ export function Ribbon(props: Props) {
     <>
       <ScrollRow className={`toolbar labels-${props.labels}`}>
         <div className="tool-group">
-          {actions.home && <Small icon={<Home size={18} />} title="Página inicial" onClick={actions.home} />}
+          {actions.home && <Small icon={<Home size={18} />} title={translateUi("Página inicial")} onClick={actions.home} />}
           <Small
             icon={<FolderOpen size={18} />}
-            title="Abrir · Ctrl+O"
+            title={translateUi("Abrir · Ctrl+O")}
             onClick={actions.open}
           />
           <Small
             icon={<Save size={18} />}
-            title="Salvar · Ctrl+S"
+            title={translateUi("Salvar · Ctrl+S")}
             disabled={none}
             onClick={actions.save}
           />
+          <Small icon={<Save size={18} />} title={translateUi("Salvar como · Ctrl+Shift+S")} disabled={none} onClick={actions.saveAs} />
           <Small
             icon={<Download size={18} />}
-            title="Exportar (Word, Excel, PowerPoint, imagem…) · Ctrl+E"
+            title={translateUi("Exportar (Word, Excel, PowerPoint, imagem…) · Ctrl+E")}
             disabled={none}
             onClick={() => actions.exportAs()}
           />
           <Small
             icon={<Printer size={18} />}
-            title="Imprimir · Ctrl+P"
+            title={translateUi("Imprimir · Ctrl+P")}
             disabled={none}
             onClick={actions.print}
           />
           <Small
             icon={<Undo2 size={18} />}
-            title="Desfazer · Ctrl+Z"
+            title={translateUi("Desfazer · Ctrl+Z")}
             disabled={!props.canUndo}
             onClick={actions.undo}
           />
           <Small
             icon={<Redo2 size={18} />}
-            title="Refazer · Ctrl+Y"
+            title={translateUi("Refazer · Ctrl+Y")}
             disabled={!props.canRedo}
             onClick={actions.redo}
           />

@@ -1,3 +1,4 @@
+import {getLocale,t as translateUi} from "./i18n";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
@@ -141,15 +142,15 @@ function openedDate(value: number) {
     today = new Date(now.getFullYear(), now.getMonth(), now.getDate()),
     day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const days = Math.round((today.getTime() - day.getTime()) / 86400000),
-    time = date.toLocaleTimeString("pt-BR", {
+    time = date.toLocaleTimeString(getLocale(), {
       hour: "2-digit",
       minute: "2-digit",
     });
   return days === 0
-    ? `Hoje, ${time}`
+    ? translateUi("Hoje, {time}",{time})
     : days === 1
-      ? `Ontem, ${time}`
-      : date.toLocaleDateString("pt-BR", {
+      ? translateUi("Ontem, {time}",{time})
+      : date.toLocaleDateString(getLocale(), {
           day: "2-digit",
           month: "2-digit",
           year: "numeric",
@@ -232,18 +233,11 @@ export function Home({
       <section className="home-hero">
         <div>
           <div className="home-kicker">
-            <img src={appIconUrl} alt="" /> SEU ESPAÇO DE DOCUMENTOS
-          </div>
-          <h1>
-            Seu próximo documento
-            <br />
-            <span>começa por aqui.</span>
+            <img src={appIconUrl} alt="" />{" "}{translateUi("SEU ESPAÇO DE DOCUMENTOS")}{" "}</div>
+          <h1>{" "}{translateUi("Seu próximo documento")}{" "}<br />
+            <span>{translateUi("começa por aqui.")}</span>
           </h1>
-          <p>
-            Abra um arquivo, retome sua leitura ou reúna novas ideias.
-            <br />
-            Tudo organizado, com seus documentos no seu computador.
-          </p>
+          <p>{" "}{translateUi("Abra um arquivo, retome sua leitura ou reúna novas ideias.")}{" "}<br />{" "}{translateUi("Tudo organizado, com seus documentos no seu computador.")}{" "}</p>
           <div className="home-primary-actions">
             <button
               className="button primary"
@@ -256,55 +250,51 @@ export function Home({
               }
               disabled={!ready}
             >
-              <FolderOpen size={18} /> Abrir documentos <kbd>Ctrl+O</kbd>
+              <FolderOpen size={18} />{" "}{translateUi("Abrir documentos")}{" "}<kbd>{translateUi("Ctrl+O")}</kbd>
             </button>
             <button
               className="button secondary"
               onClick={onNew}
               disabled={!ready}
             >
-              <Plus size={18} /> Novo PDF
-            </button>
+              <Plus size={18} />{" "}{translateUi("Novo PDF")}{" "}</button>
           </div>
         </div>
         <div className="home-side-card">
           {active ? (
             <>
               <span className="home-card-kicker">
-                <Check size={14} /> ABERTO NESTA JANELA
-              </span>
+                <Check size={14} />{" "}{translateUi("ABERTO NESTA JANELA")}{" "}</span>
               <div className="home-side-file">
                 <div className="home-file-illustration">
                   <FileText size={26} />
                 </div>
                 <div>
                   <strong title={active.name}>{active.name}</strong>
-                  <small>Página {currentPage + 1} de {active.pageCount}</small>
+                  <small>{translateUi("Página")}{" "}{currentPage + 1}{" "}{translateUi("de")}{" "}{active.pageCount}</small>
                 </div>
               </div>
-              <p>Suas abas e alterações continuam abertas.</p>
+              <p>{translateUi("Suas abas e alterações continuam abertas.")}</p>
               <button
                 className="button secondary"
                 onClick={() => onActivate(active.id)}
-              >
-                Voltar ao documento <ArrowRight size={15} />
+              >{" "}{translateUi("Voltar ao documento")}{" "}<ArrowRight size={15} />
               </button>
             </>
           ) : (
             <>
               <span className="home-card-kicker">
-                <ShieldCheck size={14} /> LOCAL POR NATUREZA
-              </span>
+                <ShieldCheck size={14} />{" "}{translateUi("LOCAL POR NATUREZA")}{" "}</span>
               <div className="home-side-file">
                 <div className="home-file-illustration">
                   <ShieldCheck size={26} />
                 </div>
                 <div>
-                  <strong>Seu trabalho. Seu controle.</strong>
-                  <small>Leia, edite e assine sem cadastro.</small>
+                  <strong>{translateUi("Seu trabalho. Seu controle.")}</strong>
+                  <small>{translateUi("Leia, edite e assine sem cadastro.")}</small>
                 </div>
               </div>
-              <p>Você escolhe quando compartilhar.</p>
+              <p>{translateUi("Você escolhe quando compartilhar.")}</p>
             </>
           )}
         </div>
@@ -312,10 +302,9 @@ export function Home({
       {documents.length > 0 && (
         <section className="home-open-section">
           <div className="home-section-title">
-            <h2>
-              Continuar trabalhando <span>{documents.length}</span>
+            <h2>{" "}{translateUi("Continuar trabalhando")}{" "}<span>{documents.length}</span>
             </h2>
-            <span>Os documentos permanecem nas abas.</span>
+            <span>{translateUi("Os documentos permanecem nas abas.")}</span>
           </div>
           <div className="home-open-tabs">
             {documents.map((doc) => (
@@ -328,7 +317,7 @@ export function Home({
                 <FileText size={16} />
                 <span>{doc.name}</span>
                 {doc.revision !== doc.savedRevision && (
-                  <i title="Alterações não salvas" />
+                  <i title={translateUi("Alterações não salvas")} />
                 )}
                 <ArrowUpRight size={14} />
               </button>
@@ -340,29 +329,28 @@ export function Home({
         <section className="home-history">
           <div className="home-section-title">
             <h2>
-              <Clock3 size={17} /> Arquivos recentes <span>{files.length}</span>
+              <Clock3 size={17} />{" "}{translateUi("Arquivos recentes")}{" "}<span>{files.length}</span>
             </h2>
             {files.length > 0 && (
               <button
                 className="text-button"
                 onClick={onClear}
-                title="Limpar somente o histórico. Os arquivos não serão excluídos."
+                title={translateUi("Limpar somente o histórico. Os arquivos não serão excluídos.")}
               >
-                <Trash2 size={13} /> Limpar histórico
-              </button>
+                <Trash2 size={13} />{" "}{translateUi("Limpar histórico")}{" "}</button>
             )}
           </div>
           <div className="home-search">
             <Search size={16} />
             <input
-              aria-label="Pesquisar arquivos recentes"
-              placeholder="Pesquisar por nome ou pasta"
+              aria-label={translateUi("Pesquisar arquivos recentes")}
+              placeholder={translateUi("Pesquisar por nome ou pasta")}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
             {query && (
               <button
-                aria-label="Limpar pesquisa de recentes"
+                aria-label={translateUi("Limpar pesquisa de recentes")}
                 onClick={() => setQuery("")}
               >
                 <X size={15} />
@@ -406,13 +394,12 @@ export function Home({
                       </span>
                       <span className="home-recent-meta">
                         {open ? (
-                          <b>Aberto</b>
+                          <b>{translateUi("Aberto")}</b>
                         ) : resume !== null && resume < file.pageCount ? (
-                          <span>Continuar na página {resume + 1}</span>
+                          <span>{translateUi("Continuar na página")}{" "}{resume + 1}</span>
                         ) : (
                           <span>
-                            {file.pageCount} página
-                            {file.pageCount !== 1 ? "s" : ""}
+                            {file.pageCount}{" "}{translateUi("página")}{" "}{file.pageCount !== 1 ? translateUi("s") : ""}
                           </span>
                         )}
                         <small>{openedDate(file.openedAt)}</small>
@@ -422,7 +409,7 @@ export function Home({
                       className="home-remove"
                       onClick={() => onRemove(file.path)}
                       aria-label={`Remover ${file.name} dos recentes`}
-                      title="Remover dos recentes sem excluir o arquivo"
+                      title={translateUi("Remover dos recentes sem excluir o arquivo")}
                     >
                       <X size={15} />
                     </button>
@@ -437,62 +424,55 @@ export function Home({
               </div>
               <h3>
                 {query
-                  ? "Nenhum arquivo corresponde à pesquisa"
-                  : "Seu histórico começa no próximo arquivo"}
+                  ? translateUi("Nenhum arquivo corresponde à pesquisa")
+                  : translateUi("Seu histórico começa no próximo arquivo")}
               </h3>
               <p>
                 {query
-                  ? "Experimente outra palavra ou procure pelo nome da pasta."
-                  : "Os documentos que você abrir aparecerão aqui para retomar quando quiser."}
+                  ? translateUi("Experimente outra palavra ou procure pelo nome da pasta.")
+                  : translateUi("Os documentos que você abrir aparecerão aqui para retomar quando quiser.")}
               </p>
               {query && (
-                <button className="text-button" onClick={() => setQuery("")}>
-                  Limpar pesquisa
-                </button>
+                <button className="text-button" onClick={() => setQuery("")}>{" "}{translateUi("Limpar pesquisa")}{" "}</button>
               )}
             </div>
           )}
           <p className="home-history-note">
-            <ShieldCheck size={12} /> Histórico salvo somente neste computador.
-            Remover da lista não exclui os arquivos.
-          </p>
+            <ShieldCheck size={12} />{" "}{translateUi("Histórico salvo somente neste computador. Remover da lista não exclui os arquivos.")}{" "}</p>
         </section>
         <aside className="home-shortcuts">
-          <h2>Faça mais com seus PDFs</h2>
+          <h2>{translateUi("Faça mais com seus PDFs")}</h2>
           <button onClick={onCombine}>
             <span className="home-shortcut-icon">
               <Layers3 size={22} />
             </span>
-            <strong>Combinar arquivos</strong>
-            <p>Reúna documentos e imagens em um só PDF.</p>
+            <strong>{translateUi("Combinar arquivos")}</strong>
+            <p>{translateUi("Reúna documentos e imagens em um só PDF.")}</p>
             <ArrowUpRight size={15} />
           </button>
           <button onClick={onConvert}>
             <span className="home-shortcut-icon">
               <FileText size={22} />
             </span>
-            <strong>Converter para PDF</strong>
-            <p>Prepare seus arquivos para compartilhar ou arquivar.</p>
+            <strong>{translateUi("Converter para PDF")}</strong>
+            <p>{translateUi("Prepare seus arquivos para compartilhar ou arquivar.")}</p>
             <ArrowUpRight size={15} />
           </button>
           <div className="home-support">
             <Heart size={20} />
-            <strong>Desenvolvido por Bruno Albertini</strong>
-            <button className="text-button" onClick={onSupport}>
-              Apoie o projeto <ArrowUpRight size={13} />
+            <strong>{translateUi("Desenvolvido por Bruno Albertini")}</strong>
+            <button className="text-button" onClick={onSupport}>{" "}{translateUi("Apoie o projeto")}{" "}<ArrowUpRight size={13} />
             </button>
           </div>
         </aside>
       </div>
-      <footer className="home-footer">
-        Desenvolvido por <strong>Bruno Albertini</strong>
+      <footer className="home-footer">{" "}{translateUi("Desenvolvido por")}{" "}<strong>{translateUi("Bruno Albertini")}</strong>
         <span>·</span>
         <button
           onClick={() =>
             void window.gcp.openExternal("https://gestaoculturalpro.com.br/")
           }
-        >
-          Gestão Cultural Pro <ArrowUpRight size={12} />
+        >{" "}{translateUi("Gestão Cultural Pro")}{" "}<ArrowUpRight size={12} />
         </button>
       </footer>
     </div>

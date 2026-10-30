@@ -1,7 +1,9 @@
+import {t as translateUi} from "./i18n";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Move, LoaderCircle } from "lucide-react";
 import type { FieldValue, PageObject, PageRef, Point, Rect, SourceObjects, SourceParagraph } from "../shared/types";
 import { FormLayer } from "./FormLayer";
+import { NativeAnnotations } from "./NativeAnnotations";
 import { NoteBubble, commentAuthor, type PdfNote } from "./Comments";
 import { SignaturePreview } from "./Security";
 import { fromPage, inkPath, measureLabel, objectBounds, pageTransform, resizeObject, shapePath, toPage, translateObject } from "../shared/geometry";
@@ -14,6 +16,8 @@ interface PageText { items: { str: string; fontName: string; transform: number[]
 interface EditorRun { text: string; font: string; size: number }
 interface EditorLine { runs: EditorRun[]; baseline: number; x: number; right: number }
 interface Props {
+  annotations:import("../shared/types").PdfAnnotation[];
+  onDeleteAnnotation:(a:import("../shared/types").PdfAnnotation)=>void;
   docId: string;
   pageRef: PageRef;
   index: number;
@@ -510,6 +514,7 @@ export function PageView(props: Props) {
       <div ref={textLayer} className="textLayer" />
       {near && <FormLayer pageRef={pageRef} rotation={rotation} scale={scale} values={props.fields} interactive={tool.kind === "select"} onChange={props.onFields} onFieldMenu={(name, type) => props.onFieldMenu?.(pageRef.id, name, type)} onButton={(action) => props.onFormButton?.(pageRef.id, action)} onError={props.onError} />}
       <div className="page-overlay" style={{ width: size.width, height: size.height, transform: pageTransform(size, rotation, scale) }}>
+        <NativeAnnotations annotations={props.annotations} open={props.openNote} onOpen={(id)=>props.onOpenNote?.(id)} onDelete={props.onDeleteAnnotation} interactive={tool.kind === "select"} />
         <svg className="overlay-vectors" width={size.width} height={size.height} viewBox={`0 0 ${size.width} ${size.height}`}>
           {preview.map((o) => <VectorView key={o.id} o={o} />)}
           {draft && <VectorView o={draft} />}
@@ -542,7 +547,7 @@ export function PageView(props: Props) {
               const moving = drag?.kind === "source" && drag.target.kind === "image" && drag.target.index === image.index ? drag : dropped?.index === image.index && dropped.generation === source.generation ? dropped : null;
               const sizing = drag?.kind === "source-resize" && drag.index === image.index ? drag.to : null, r = sizing ?? image.rect, picked = pickedImage === image.index;
               return (
-                <div key={"i" + image.index} className={`source-box image ${picked ? "picked" : ""}`} data-source={`image:${image.index}`} title="Arraste para mover · duplo clique para editar · botão direito para mais opções"
+                <div key={"i" + image.index} className={`source-box image ${picked ? "picked" : ""}`} data-source={`image:${image.index}`} title={translateUi("Arraste para mover · duplo clique para editar · botão direito para mais opções")}
                   onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setPickedImage(image.index); setImageMenu({ x: e.clientX, y: e.clientY, index: image.index, rect: image.rect }); }}
                   style={{ left: r.x + (moving?.dx ?? 0), top: r.y + (moving?.dy ?? 0), width: r.width, height: r.height, ["--handle" as string]: `${8 / scale}px` }}>
                   {moving?.ghost && <img className="source-ghost" src={moving.ghost} alt="" draggable={false} />}
@@ -554,7 +559,7 @@ export function PageView(props: Props) {
               const moving = drag?.kind === "source" && drag.target.kind === "text" && drag.target.index === p.index + 1, active = activeParagraph?.index === p.index;
               return (
                 <div key={"p" + p.index} className={`source-box text ${active ? "active" : ""}`} data-source={`text:${p.index}`} style={{ left: p.rect.x + (moving ? drag.dx : 0) - 2, top: p.rect.y + (moving ? drag.dy : 0) - 2, width: p.rect.width + 4, height: p.rect.height + 4 }}>
-                  {active && <span className="source-grip" data-grip title="Arraste para mover o parágrafo" style={{ ["--grip" as string]: `${18 / scale}px` }}><Move size={12} /></span>}
+                  {active && <span className="source-grip" data-grip title={translateUi("Arraste para mover o parágrafo")} style={{ ["--grip" as string]: `${18 / scale}px` }}><Move size={12} /></span>}
                 </div>
               );
             })}
@@ -572,21 +577,21 @@ export function PageView(props: Props) {
       </div>
       {imageMenu && (
         <div className="context-menu image-menu" style={{ position: "fixed", left: Math.min(imageMenu.x, window.innerWidth - 270), top: Math.min(imageMenu.y, window.innerHeight - 350) }} onPointerDown={(e) => e.stopPropagation()} onMouseLeave={() => setImageMenu(null)}>
-          <div className="context-title">Imagem</div>
-          <button onClick={() => { const m = imageMenu; setImageMenu(null); props.onSourceImageEdit?.(pageRef.id, m.index, m.rect); }}>Editar imagem (recortar, cores, fundo)…</button>
-          <button onClick={() => { const m = imageMenu; setImageMenu(null); void (async () => { const picked = await window.gcp.chooseImage(); if (!picked) return; setEngineBusy(true); try { await window.gcp.editSourceImage(props.docId, pageRef.id, { image: m.index, action: "replace", dataUrl: picked.dataUrl }); } finally { setEngineBusy(false); } })().catch(props.onError); }}>Substituir imagem…</button>
-          <button onClick={() => { const m = imageMenu; setImageMenu(null); void window.gcp.exportSourceImage(props.docId, pageRef.id, m.index, true).catch(props.onError); }}>Salvar imagem como…</button>
+          <div className="context-title">{translateUi("Imagem")}</div>
+          <button onClick={() => { const m = imageMenu; setImageMenu(null); props.onSourceImageEdit?.(pageRef.id, m.index, m.rect); }}>{translateUi("Editar imagem (recortar, cores, fundo)…")}</button>
+          <button onClick={() => { const m = imageMenu; setImageMenu(null); void (async () => { const picked = await window.gcp.chooseImage(); if (!picked) return; setEngineBusy(true); try { await window.gcp.editSourceImage(props.docId, pageRef.id, { image: m.index, action: "replace", dataUrl: picked.dataUrl }); } finally { setEngineBusy(false); } })().catch(props.onError); }}>{translateUi("Substituir imagem…")}</button>
+          <button onClick={() => { const m = imageMenu; setImageMenu(null); void window.gcp.exportSourceImage(props.docId, pageRef.id, m.index, true).catch(props.onError); }}>{translateUi("Salvar imagem como…")}</button>
           <hr />
-          <button onClick={() => imageAction(imageMenu.index, "rotate", -1)}>Girar 90° à esquerda</button>
-          <button onClick={() => imageAction(imageMenu.index, "rotate", 1)}>Girar 90° à direita</button>
-          <button onClick={() => imageAction(imageMenu.index, "flip_horizontal")}>Espelhar na horizontal</button>
-          <button onClick={() => imageAction(imageMenu.index, "flip_vertical")}>Espelhar na vertical</button>
+          <button onClick={() => imageAction(imageMenu.index, "rotate", -1)}>{translateUi("Girar 90° à esquerda")}</button>
+          <button onClick={() => imageAction(imageMenu.index, "rotate", 1)}>{translateUi("Girar 90° à direita")}</button>
+          <button onClick={() => imageAction(imageMenu.index, "flip_horizontal")}>{translateUi("Espelhar na horizontal")}</button>
+          <button onClick={() => imageAction(imageMenu.index, "flip_vertical")}>{translateUi("Espelhar na vertical")}</button>
           <hr />
-          <button className="danger" onClick={() => imageAction(imageMenu.index, "delete")}>Excluir imagem</button>
+          <button className="danger" onClick={() => imageAction(imageMenu.index, "delete")}>{translateUi("Excluir imagem")}</button>
         </div>
       )}
       {(engineBusy || (tool.kind === "edit" && near && !source)) && (
-        <div className="page-busy"><LoaderCircle size={14} className="spin" /> {engineBusy ? "Aplicando no PDF…" : "Lendo textos da página…"}</div>
+        <div className="page-busy"><LoaderCircle size={14} className="spin" /> {engineBusy ? translateUi("Aplicando no PDF…") : translateUi("Lendo textos da página…")}</div>
       )}
     </div>
   );
@@ -680,13 +685,13 @@ function ParagraphEditor({ paragraph, lines, caret, colors, onCommit, onError }:
       onBlur={e=>{const to=e.relatedTarget as HTMLElement|null, pointer=lastPointer.current;if(box.current?.contains(to)||to?.closest('.property-bar')||(pointer&&Date.now()-pointer.at<200&&pointer.target.closest('.property-bar')))return;void commit(false);}}>
       {usable ? lines.map((line,i)=><div key={i} style={{marginLeft:line.x-paragraph.rect.x,minHeight:pitch}}>{line.runs.map((run,r)=><span key={r} style={{fontFamily:`"${run.font}", ${fallback}`,fontSize:run.size}}>{run.text}</span>)}</div>) : paragraph.text.split("\n").map((line,i)=><div key={i}>{line||<br/>}</div>)}
     </div>
-    <span className="source-width-handle" role="slider" aria-label="Largura da caixa de texto" aria-valuenow={Math.round(width)} tabIndex={0}
-      title="Arraste para ajustar a largura da caixa de texto"
+    <span className="source-width-handle" role="slider" aria-label={translateUi("Largura da caixa de texto")} aria-valuenow={Math.round(width)} tabIndex={0}
+      title={translateUi("Arraste para ajustar a largura da caixa de texto")}
       onKeyDown={e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();e.stopPropagation();resized.current=true;setWidth(w=>Math.max(20,w+(e.key==='ArrowRight'?5:-5)));}}}
       onPointerDown={e=>{e.preventDefault();e.stopPropagation();if(saving)return;const node=box.current!;drag.current={x:e.clientX,width,scale:node.getBoundingClientRect().width/node.offsetWidth||1};e.currentTarget.setPointerCapture(e.pointerId);}}
       onPointerMove={e=>{if(!drag.current)return;resized.current=true;setWidth(Math.max(20,drag.current.width+(e.clientX-drag.current.x)/drag.current.scale));}}
       onPointerUp={e=>{if(!drag.current)return;drag.current=null;e.currentTarget.releasePointerCapture(e.pointerId);content.current?.focus();}} />
-    {saving && <span className="source-editor-hint" contentEditable={false}>Aplicando…</span>}
+    {saving && <span className="source-editor-hint" contentEditable={false}>{translateUi("Aplicando…")}</span>}
   </div>;
 }
 

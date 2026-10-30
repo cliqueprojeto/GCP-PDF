@@ -31,3 +31,7 @@ preferences.json
 
 # Notas internas de desenvolvimento (ficam só neste computador)
 HANDOFF.md
+
+# Modelos adicionais baixados e verificados durante a compilação
+assets/tessdata/eng.traineddata
+assets/tessdata/spa.traineddata

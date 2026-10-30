@@ -1,3 +1,5 @@
+import {t as translateUi} from "./i18n";
+import {useLocale,setLocale} from "./i18n";
 import React from "react";
 import { createRoot } from "react-dom/client";
 import "@fontsource/inter/400.css";
@@ -21,20 +23,15 @@ class AppBoundary extends React.Component<
     if (this.state.error)
       return (
         <main className="fatal-error">
-          <h1>Vamos recuperar sua área de trabalho</h1>
-          <p>
-            A interface encontrou um problema. Seus documentos salvos permanecem
-            no computador.
-          </p>
+          <h1>{translateUi("Vamos recuperar sua área de trabalho")}</h1>
+          <p>{" "}{translateUi("A interface encontrou um problema. Seus documentos salvos permanecem no computador.")}{" "}</p>
           <pre>{this.state.error}</pre>
-          <button onClick={() => location.reload()}>Reabrir interface</button>
+          <button onClick={() => location.reload()}>{translateUi("Reabrir interface")}</button>
         </main>
       );
     return this.props.children;
   }
 }
-createRoot(document.getElementById("root")!).render(
-  <AppBoundary>
-    {location.hash === "#quick" ? <Quick /> : <App />}
-  </AppBoundary>,
-);
+function LocalizedApp(){useLocale();return <AppBoundary>{location.hash === "#quick" ? <Quick /> : <App />}</AppBoundary>;}
+async function start(){window.gcp?.onLanguage(settings=>setLocale(settings.locale));try{const language=await window.gcp.getLanguage();setLocale(language.locale);document.documentElement.lang=language.locale;}catch{document.documentElement.lang="pt-BR";}createRoot(document.getElementById("root")!).render(<LocalizedApp/>);}
+void start();

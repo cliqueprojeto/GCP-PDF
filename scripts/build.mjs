@@ -1,3 +1,5 @@
+import {prepareOcr} from './prepare-ocr.mjs';
+await prepareOcr();
 import {build as bundle} from 'esbuild';
 import {build as viteBuild} from 'vite';
 import react from '@vitejs/plugin-react';

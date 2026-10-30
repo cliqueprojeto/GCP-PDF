@@ -1,9 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import fontkit from '@pdf-lib/fontkit';
-import { PDFDocument, PDFName, PDFDict, PDFArray, PDFHexString, PDFString, PDFNumber, PDFTextField, PDFCheckBox, PDFRadioGroup, PDFDropdown, PDFOptionList, degrees, rgb, type PDFPage, type PDFFont, LineCapStyle, ParseSpeeds, StandardFonts, BlendMode } from 'pdf-lib';
+import { PDFDocument, PDFContentStream, PDFRef, PDFName, PDFDict, PDFArray, PDFHexString, PDFString, PDFNumber, PDFTextField, PDFCheckBox, PDFRadioGroup, PDFDropdown, PDFOptionList, degrees, rgb, PDFPage, type PDFFont, LineCapStyle, ParseSpeeds, StandardFonts } from 'pdf-lib';
 import type { PageObject, PageRef } from '../shared/types';
-import {measureLabel,  inkPath, shapePath } from '../shared/geometry';
+import {measureLabel, objectBounds, shapePath } from '../shared/geometry';
 
 /** Page-structure edits used by the engine tests and by materialization. */
 export type PdfOperation =
@@ -249,27 +249,48 @@ async function drawObjects(doc: PDFDocument, page: PDFPage, objects: PageObject[
         break;
       }
       case 'shape': {
+        if(!o.measure&&['rect','ellipse','line','arrow','polyline','polygon'].includes(o.shape)){
+          const bottom=at({x:o.x,y:o.y+o.height}),top=at({x:o.x+o.width,y:o.y});
+          const points=(o.points??[{x:o.x,y:o.y},{x:o.x+o.width,y:o.y+o.height}]).map(p=>at(p));
+          const rgbArray=(hex:string)=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255);
+          const area=objectBounds(o),pad=['line','arrow','polyline','polygon'].includes(o.shape)?Math.max(2,o.strokeWidth*4):0;
+          const nativeRect=pad?[box.x+area.x-pad,box.y+box.height-area.y-area.height-pad,box.x+area.x+area.width+pad,box.y+box.height-area.y+pad]:[bottom.x,bottom.y,top.x,top.y];
+          const shape={Type:'Annot',Subtype:({rect:'Square',ellipse:'Circle',line:'Line',arrow:'Line',polyline:'PolyLine',polygon:'Polygon'} as Record<string,string>)[o.shape],Rect:nativeRect,C:rgbArray(o.stroke),CA:o.opacity,BS:{W:o.strokeWidth,S:'S'},F:4,NM:PDFString.of('GCP-PDF:shape:'+o.id),...(o.fill?{IC:rgbArray(o.fill)}:{}),...(['line','arrow'].includes(o.shape)?{L:points.flatMap(p=>[p.x,p.y]),LE:['None',o.shape==='arrow'?'OpenArrow':'None']}:{ }),...(['polyline','polygon'].includes(o.shape)?{Vertices:points.flatMap(p=>[p.x,p.y])}:{})};
+          page.node.addAnnot(doc.context.register(doc.context.obj(shape)));break;
+        }
+        const appearance=PDFPage.create(doc),bounds=objectBounds(o),padding=Math.max(3,o.strokeWidth*5,o.shape==='cloud'?Math.min(o.width,o.height)*.2:0);
+        const extent=[at({x:bounds.x-padding,y:bounds.y-padding}),at({x:bounds.x+bounds.width+padding,y:bounds.y+bounds.height+padding})];
         const path = shapePath(o), stroke = { borderColor: color(o.stroke), borderWidth: o.strokeWidth, borderOpacity: o.opacity, borderLineCap: LineCapStyle.Round };
-        page.drawSvgPath(path.outline, { ...origin, ...stroke, ...(path.closed && o.fill ? { color: color(o.fill), opacity: o.opacity } : {}) });
-        if (path.head) page.drawSvgPath(path.head, { ...origin, ...stroke });
+        appearance.drawSvgPath(path.outline, { ...origin, ...stroke, ...(path.closed && o.fill ? { color: color(o.fill), opacity: o.opacity } : {}) });
+        if (path.head) appearance.drawSvgPath(path.head, { ...origin, ...stroke });
         const label = measureLabel(o);
         if (label) {
           const font = await doc.embedFont(StandardFonts.HelveticaBold), size = Math.max(7, o.strokeWidth * 4 + 5), width = font.widthOfTextAtSize(label.text, size), rad = (label.angle * Math.PI) / 180;
           const offset = o.measure === 'perimeter' ? 0 : -width / 2, start = { x: label.at.x + offset * Math.cos(rad), y: label.at.y + offset * Math.sin(rad) - size * 0.45 };
           const p = at(start);
-          page.drawText(label.text, { x: p.x, y: p.y, size, font, color: color(o.stroke), opacity: o.opacity, rotate: degrees(-label.angle) });
+          for(const [x,y] of [[0,-size*.3],[width,-size*.3],[0,size],[width,size]])extent.push({x:p.x+x!*Math.cos(rad)+y!*Math.sin(rad),y:p.y-x!*Math.sin(rad)+y!*Math.cos(rad)});
+          appearance.drawText(label.text, { x: p.x, y: p.y, size, font, color: color(o.stroke), opacity: o.opacity, rotate: degrees(-label.angle) });
         }
+        const rect=[Math.min(...extent.map(p=>p.x)),Math.min(...extent.map(p=>p.y)),Math.max(...extent.map(p=>p.x)),Math.max(...extent.map(p=>p.y))];
+        const contents=appearance.node.Contents();
+        const streams=contents instanceof PDFArray?contents.asArray().map(ref=>{const stream=doc.context.lookup(ref);if(!(stream instanceof PDFContentStream))throw new Error('Não foi possível gerar a aparência da anotação.');return stream;}):[];
+        const ap=doc.context.register(doc.context.flateStream(Buffer.concat(streams.map(stream=>stream.getUnencodedContents())),{Type:'XObject',Subtype:'Form',BBox:rect,Resources:appearance.node.Resources()}));
+        if(contents instanceof PDFArray)for(const ref of contents.asArray())if(ref instanceof PDFRef)doc.context.delete(ref);
+        doc.context.delete(appearance.ref);
+        page.node.addAnnot(doc.context.register(doc.context.obj({Type:'Annot',Subtype:'Stamp',Rect:rect,AP:{N:ap},F:4,NM:PDFString.of('GCP-PDF:shape:'+o.id),Contents:PDFHexString.fromText(label?.text??'')})));
         break;
       }
-      case 'ink':
-        page.drawSvgPath(inkPath(o.points), { ...origin, borderColor: color(o.stroke), borderWidth: o.strokeWidth, borderOpacity: o.opacity, borderLineCap: LineCapStyle.Round });
+      case 'ink': {
+        const pts=o.points.map(p=>at(p)),pad=o.strokeWidth/2;
+        page.node.addAnnot(doc.context.register(doc.context.obj({Type:'Annot',Subtype:'Ink',Rect:[Math.min(...pts.map(p=>p.x))-pad,Math.min(...pts.map(p=>p.y))-pad,Math.max(...pts.map(p=>p.x))+pad,Math.max(...pts.map(p=>p.y))+pad],InkList:[pts.flatMap(p=>[p.x,p.y])],C:[parseInt(o.stroke.slice(1,3),16)/255,parseInt(o.stroke.slice(3,5),16)/255,parseInt(o.stroke.slice(5,7),16)/255],CA:o.opacity,BS:{W:o.strokeWidth,S:'S'},F:4,NM:PDFString.of('GCP-PDF:ink:'+o.id)})));
         break;
-      case 'markup':
-        for (const r of o.rects) {
-          if (o.style === 'highlight') page.drawRectangle({ ...at({ x: r.x, y: r.y + r.height }), width: r.width, height: r.height, color: color(o.color), opacity: o.opacity, blendMode: BlendMode.Multiply });
-          else { const y = r.y + r.height * (o.style === 'underline' ? 0.94 : 0.55); page.drawLine({ start: at({ x: r.x, y }), end: at({ x: r.x + r.width, y }), thickness: Math.max(0.8, r.height * 0.07), color: color(o.color), opacity: Math.max(o.opacity, 0.8) }); }
-        }
+      }
+      case 'markup': {
+        const quads=o.rects.flatMap(r=>{const tl=at({x:r.x,y:r.y}),tr=at({x:r.x+r.width,y:r.y}),bl=at({x:r.x,y:r.y+r.height}),br=at({x:r.x+r.width,y:r.y+r.height});return [tl.x,tl.y,tr.x,tr.y,bl.x,bl.y,br.x,br.y];});
+        const xs=quads.filter((_,i)=>i%2===0),ys=quads.filter((_,i)=>i%2===1);
+        page.node.addAnnot(doc.context.register(doc.context.obj({Type:'Annot',Subtype:{highlight:'Highlight',underline:'Underline',strike:'StrikeOut'}[o.style],Rect:[Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)],QuadPoints:quads,C:[parseInt(o.color.slice(1,3),16)/255,parseInt(o.color.slice(3,5),16)/255,parseInt(o.color.slice(5,7),16)/255],CA:o.opacity,F:4,NM:PDFString.of('GCP-PDF:markup:'+o.id)})));
         break;
+      }
     }
   }
 }
@@ -301,10 +322,7 @@ export async function materialize(input: {pages: PageRef[]; objects: PageObject[
     for (const ref of pages) { const [copy] = await doc.copyPages(loaded.get(ref.base)!, [ref.src]); output.push(doc.addPage(copy!)); }
   }
   pages.forEach((ref, index) => { if (ref.rotate % 360) { const page = output[index]!; page.setRotation(degrees((nativeRotation(page) + ref.rotate) % 360)); } });
-  if (input.syncNotes && input.withObjects !== false) for (const page of output) {
-    const annots=page.node.Annots(); if(!annots)continue;
-    for(let i=annots.size()-1;i>=0;i--){const entry=doc.context.lookup(annots.get(i));if(!(entry instanceof PDFDict))continue;const name=entry.get(PDFName.of('NM'));if((name instanceof PDFString||name instanceof PDFHexString)&&name.decodeText().startsWith('GCP-PDF:'))annots.remove(i);}
-  }
+  if (input.syncNotes && input.withObjects !== false) removeOwnedNotes(doc,output);
   const fonts = new Map<string, Promise<PDFFont>>(), byPage = new Map(pages.map((ref, index) => [ref.id, output[index]!]));
   for (const ref of pages) { const own = objects.filter(o => o.page === ref.id); if (own.length) await drawObjects(doc, byPage.get(ref.id)!, own, input.asset, fonts, input.fontFile); }
   if (Object.keys(fields).length) fillForm(doc, fields);
@@ -346,6 +364,12 @@ function fillForm(doc: PDFDocument, values: Record<string, string | boolean | st
   try { form.updateFieldAppearances(); } catch { /* Appearances stay as the viewer draws them. */ }
 }
 
+
+/** Owned notes have their own editable overlay, so omit their source appearances in the viewer. */
+function removeOwnedNotes(doc:PDFDocument,pages:PDFPage[]){
+ for(const page of pages){const annots=page.node.Annots();if(!annots)continue;for(let i=annots.size()-1;i>=0;i--){const entry=doc.context.lookup(annots.get(i));if(!(entry instanceof PDFDict))continue;const name=entry.get(PDFName.of('NM'));if((name instanceof PDFString||name instanceof PDFHexString)&&/^GCP-PDF:(note|reply):/.test(name.decodeText()))annots.remove(i);}}
+}
+export async function noteOverlayBase(bytes:Uint8Array){const doc=await load(bytes);removeOwnedNotes(doc,doc.getPages());return save(doc);}
 
 /** Reads only notes owned by GCP-PDF. Other applications' annotations stay untouched. */
 export async function readPdfNotes(bytes:Uint8Array,existing?:PDFDocument):Promise<({page:number}&Omit<Extract<PageObject,{kind:'note'}>,'page'>)[]> {

@@ -1,3 +1,4 @@
+import {t as translateUi} from "./i18n";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { FileCog, GitCompareArrows, LoaderCircle, FolderOpen, X, ChevronUp, ChevronDown, FileText, Type } from "lucide-react";
 import type { DocumentInfo, DocumentMetadata, DocumentStats, PageRef, PdfOperation } from "../shared/types";
@@ -20,13 +21,13 @@ export function PropertiesDialog({ doc, onClose, onError, onSaved }: { doc: Docu
   const [info, setInfo] = useState<Awaited<ReturnType<typeof window.gcp.getProperties>> | null>(null), [form, setForm] = useState<Partial<DocumentMetadata>>({});
   useEffect(() => { void window.gcp.getProperties(doc.id).then((value) => { setInfo(value); setForm({ title: value.title, author: value.author, subject: value.subject, keywords: value.keywords, creator: value.creator, producer: value.producer }); }).catch(onError); }, [doc.id]);
   const date = (iso?: string) => (iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "long", timeStyle: "short" }) : "—");
-  const field = (key: keyof DocumentMetadata, label: string, placeholder = "") => <label className="field">{label}<input value={(form[key] as string) ?? ""} placeholder={placeholder} onChange={(e) => setForm({ ...form, [key]: e.target.value })} /></label>;
+  const field = (key: keyof DocumentMetadata, label: string, placeholder = "") => <label className="field">{translateUi(label)}<input value={(form[key] as string) ?? ""} placeholder={placeholder} onChange={(e) => setForm({ ...form, [key]: e.target.value })} /></label>;
   return (
-    <Modal title="Propriedades do documento" description={doc.name} onClose={onClose} wide>
-      {!info ? <div className="cert-loading"><LoaderCircle className="spin" size={18} /> Lendo propriedades…</div> : (
+    <Modal title={translateUi("Propriedades do documento")} description={doc.name} onClose={onClose} wide>
+      {!info ? <div className="cert-loading"><LoaderCircle className="spin" size={18} />{" "}{translateUi("Lendo propriedades…")}</div> : (
         <div className="props-grid">
           <section>
-            <h3>Descrição</h3>
+            <h3>{translateUi("Descrição")}</h3>
             {field("title", "Título", "Ex.: Prestação de contas — Projeto Paraíso")}
             {field("author", "Autor", "Pessoa ou instituição")}
             {field("subject", "Assunto")}
@@ -34,24 +35,24 @@ export function PropertiesDialog({ doc, onClose, onError, onSaved }: { doc: Docu
             <div className="field-row">{field("creator", "Aplicativo de criação")}{field("producer", "Produtor do PDF")}</div>
           </section>
           <section className="props-facts">
-            <h3>Arquivo</h3>
+            <h3>{translateUi("Arquivo")}</h3>
             <dl>
-              <dt>Local</dt><dd title={info.path}>{info.path ?? "Ainda não salvo"}</dd>
-              <dt>Tamanho</dt><dd>{info.fileSize ? bytes(info.fileSize) : "—"}</dd>
-              <dt>Páginas</dt><dd>{number(info.pageCount)}</dd>
-              <dt>Tamanho da página</dt><dd>{paper(info.pageSize.width, info.pageSize.height)}</dd>
-              <dt>Versão do PDF</dt><dd>{info.version || "—"}</dd>
-              <dt>Criado em</dt><dd>{date(info.created)}</dd>
-              <dt>Modificado em</dt><dd>{date(info.modified)}</dd>
-              <dt>Segurança</dt><dd>{info.encrypted ? "Protegido por senha" : "Sem proteção"}</dd>
+              <dt>{translateUi("Local")}</dt><dd title={info.path}>{info.path ?? "Ainda não salvo"}</dd>
+              <dt>{translateUi("Tamanho")}</dt><dd>{info.fileSize ? bytes(info.fileSize) : "—"}</dd>
+              <dt>{translateUi("Páginas")}</dt><dd>{number(info.pageCount)}</dd>
+              <dt>{translateUi("Tamanho da página")}</dt><dd>{paper(info.pageSize.width, info.pageSize.height)}</dd>
+              <dt>{translateUi("Versão do PDF")}</dt><dd>{info.version || "—"}</dd>
+              <dt>{translateUi("Criado em")}</dt><dd>{date(info.created)}</dd>
+              <dt>{translateUi("Modificado em")}</dt><dd>{date(info.modified)}</dd>
+              <dt>{translateUi("Segurança")}</dt><dd>{info.encrypted ? translateUi("Protegido por senha") : translateUi("Sem proteção")}</dd>
             </dl>
           </section>
         </div>
       )}
       <div className="modal-footer">
-        <span className="footer-note">As alterações entram no PDF ao salvar.</span>
-        <button className="button secondary" onClick={onClose}>Cancelar</button>
-        <button className="button primary" disabled={!info} onClick={() => void window.gcp.applyOperation(doc.id, { type: "set-metadata", values: form } as PdfOperation, doc.revision).then(() => { onSaved(); onClose(); }).catch(onError)}><FileCog size={15} /> Aplicar</button>
+        <span className="footer-note">{translateUi("As alterações entram no PDF ao salvar.")}</span>
+        <button className="button secondary" onClick={onClose}>{translateUi("Cancelar")}</button>
+        <button className="button primary" disabled={!info} onClick={() => void window.gcp.applyOperation(doc.id, { type: "set-metadata", values: form } as PdfOperation, doc.revision).then(() => { onSaved(); onClose(); }).catch(onError)}><FileCog size={15} />{" "}{translateUi("Aplicar")}</button>
       </div>
     </Modal>
   );
@@ -64,42 +65,42 @@ export function StatsDialog({ doc, onClose, onError, onGoto }: { doc: DocumentIn
   const heavy = useMemo(() => (stats ? [...stats.pages].sort((a, b) => b.total - a.total).slice(0, 8) : []), [stats]);
   const max = heavy[0]?.total || 1;
   return (
-    <Modal title="Estatísticas do documento" description={doc.name} onClose={onClose} wide>
-      {!stats ? <div className="cert-loading"><LoaderCircle className="spin" size={18} /> Contando palavras e pesando as páginas…</div> : (
+    <Modal title={translateUi("Estatísticas do documento")} description={doc.name} onClose={onClose} wide>
+      {!stats ? <div className="cert-loading"><LoaderCircle className="spin" size={18} />{" "}{translateUi("Contando palavras e pesando as páginas…")}</div> : (
         <div className="stats">
           <div className="stat-cards">
             {([["Palavras", number(stats.words)], ["Caracteres (com espaços)", number(stats.characters)], ["Caracteres (sem espaços)", number(stats.charactersNoSpaces)], ["Linhas", number(stats.lines)], ["Páginas", number(stats.pageCount)], ["Imagens", number(stats.images)], ["Anotações", number(stats.annotations)], ["Tamanho do PDF", bytes(stats.size)]] as const).map(([label, value]) => (
-              <div key={label} className="stat-card"><strong>{value}</strong><span>{label}</span></div>
+              <div key={translateUi(label)} className="stat-card"><strong>{value}</strong><span>{translateUi(label)}</span></div>
             ))}
           </div>
           <div className="stats-columns">
             <section>
-              <h3>Páginas mais pesadas</h3>
+              <h3>{translateUi("Páginas mais pesadas")}</h3>
               <div className="heavy-list">
                 {heavy.map((p) => (
-                  <button key={p.page} className="heavy-row" onClick={() => { onGoto(p.page - 1); onClose(); }} title="Ir para a página">
-                    <span className="heavy-page">Pág. {p.page}</span>
+                  <button key={p.page} className="heavy-row" onClick={() => { onGoto(p.page - 1); onClose(); }} title={translateUi("Ir para a página")}>
+                    <span className="heavy-page">{translateUi("Pág.")}{" "}{p.page}</span>
                     <span className="heavy-bar">
                       <span className="seg images" style={{ width: `${(p.images / max) * 100}%` }} />
                       <span className="seg fonts" style={{ width: `${(p.fonts / max) * 100}%` }} />
                       <span className="seg content" style={{ width: `${(p.content / max) * 100}%` }} />
                     </span>
                     <span className="heavy-size">{bytes(p.total)}</span>
-                    <small>{p.imageCount ? `${p.imageCount} ${p.imageCount > 1 ? "imagens" : "imagem"} ${bytes(p.images)}` : "sem imagens"} · fontes {bytes(p.fonts)} · conteúdo {bytes(p.content)} · {number(p.words)} palavras</small>
+                    <small>{p.imageCount ? `${p.imageCount} ${p.imageCount > 1 ? "imagens" : "imagem"} ${bytes(p.images)}` : translateUi("sem imagens")}{" "}{translateUi("· fontes")}{" "}{bytes(p.fonts)}{" "}{translateUi("· conteúdo")}{" "}{bytes(p.content)} · {number(p.words)}{" "}{translateUi("palavras")}</small>
                   </button>
                 ))}
               </div>
-              <div className="legend"><span><i className="images" /> Imagens</span><span><i className="fonts" /> Fontes</span><span><i className="content" /> Texto e vetores</span></div>
-              <p className="footer-note">Recursos compartilhados (como uma fonte usada em várias páginas) são contados em cada página que os usa. Para reduzir, use Comprimir PDF.</p>
+              <div className="legend"><span><i className="images" />{" "}{translateUi("Imagens")}</span><span><i className="fonts" />{" "}{translateUi("Fontes")}</span><span><i className="content" />{" "}{translateUi("Texto e vetores")}</span></div>
+              <p className="footer-note">{translateUi("Recursos compartilhados (como uma fonte usada em várias páginas) são contados em cada página que os usa. Para reduzir, use Comprimir PDF.")}</p>
             </section>
             <section>
-              <h3>Fontes usadas ({stats.fonts.length})</h3>
+              <h3>{translateUi("Fontes usadas (")}{stats.fonts.length})</h3>
               <ul className="font-list">{stats.fonts.map((f) => <li key={f}><Type size={13} /> {f}</li>)}</ul>
             </section>
           </div>
         </div>
       )}
-      <div className="modal-footer"><button className="button primary" onClick={onClose}>Fechar</button></div>
+      <div className="modal-footer"><button className="button primary" onClick={onClose}>{translateUi("Fechar")}</button></div>
     </Modal>
   );
 }
@@ -214,36 +215,36 @@ export function CompareView({ documents, first, onClose, onOpen }: { documents: 
   }
   const totals = result ? { changed: result.changes.filter((c) => c.kind === "changed").length, deleted: result.changes.filter((c) => c.kind === "deleted").length, inserted: result.changes.filter((c) => c.kind === "inserted").length } : null;
   return (
-    <div className="compare-view" role="dialog" aria-label="Comparar documentos">
+    <div className="compare-view" role="dialog" aria-label={translateUi("Comparar documentos")}>
       <header className="compare-header">
         <GitCompareArrows size={18} />
-        <strong>Comparar documentos</strong>
+        <strong>{translateUi("Comparar documentos")}</strong>
         <span className="compare-file a" title={a?.name}><FileText size={14} /> {a?.name ?? "—"}</span>
-        <span className="compare-vs">com</span>
+        <span className="compare-vs">{translateUi("com")}</span>
         <select value={second} onChange={(e) => setSecond(e.target.value)}>
-          {!others.length && <option value="">Abra o outro PDF…</option>}
+          {!others.length && <option value="">{translateUi("Abra o outro PDF…")}</option>}
           {others.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
-        <button className="button secondary" onClick={() => void onOpen()}><FolderOpen size={14} /> Abrir outro PDF</button>
-        {totals && <span className="compare-totals"><b className="changed">{totals.changed} alterações</b><b className="deleted">{totals.deleted} exclusões</b><b className="inserted">{totals.inserted} inserções</b></span>}
-        <button className="icon-button" title="Fechar comparação" onClick={onClose}><X size={18} /></button>
+        <button className="button secondary" onClick={() => void onOpen()}><FolderOpen size={14} />{" "}{translateUi("Abrir outro PDF")}</button>
+        {totals && <span className="compare-totals"><b className="changed">{totals.changed}{" "}{translateUi("alterações")}</b><b className="deleted">{totals.deleted}{" "}{translateUi("exclusões")}</b><b className="inserted">{totals.inserted}{" "}{translateUi("inserções")}</b></span>}
+        <button className="icon-button" title={translateUi("Fechar comparação")} onClick={onClose}><X size={18} /></button>
       </header>
       <div className="compare-body">
         <aside className="compare-list">
-          <div className="compare-nav"><span>{result?.changes.length ? `${focus + 1} de ${result.changes.length}` : busy ? "Comparando…" : error ? "Comparação não concluída" : !result ? "Selecione dois documentos" : "Nenhuma diferença"}</span><button className="icon-button" title="Diferença anterior" onClick={() => go(focus - 1)}><ChevronUp size={16} /></button><button className="icon-button" title="Próxima diferença" onClick={() => go(focus + 1)}><ChevronDown size={16} /></button></div>
-          {busy && <div className="cert-loading"><LoaderCircle className="spin" size={16} /> Lendo e comparando o texto…</div>}
+          <div className="compare-nav"><span>{result?.changes.length ? `${focus + 1} de ${result.changes.length}` : busy ? translateUi("Comparando…") : error ? translateUi("Comparação não concluída") : !result ? translateUi("Selecione dois documentos") : translateUi("Nenhuma diferença")}</span><button className="icon-button" title={translateUi("Diferença anterior")} onClick={() => go(focus - 1)}><ChevronUp size={16} /></button><button className="icon-button" title={translateUi("Próxima diferença")} onClick={() => go(focus + 1)}><ChevronDown size={16} /></button></div>
+          {busy && <div className="cert-loading"><LoaderCircle className="spin" size={16} />{" "}{translateUi("Lendo e comparando o texto…")}</div>}
           {error && <p className="quick-error">{error}</p>}
-          {!busy && result && !result.changes.length && <p className="sidebar-description">Texto e aparência renderizada dos documentos são iguais ({number(result.words[0])} palavras).</p>}
+          {!busy && result && !result.changes.length && <p className="sidebar-description">{translateUi("Texto e aparência renderizada dos documentos são iguais (")}{number(result.words[0])}{" "}{translateUi("palavras).")}</p>}
           {result?.changes.slice(0, 2000).map((c, n) => (
             <button key={n} className={`compare-item ${c.kind} ${n === focus ? "active" : ""}`} onClick={() => go(n)}>
-              <small>{c.kind === "changed" ? "Alterado" : c.kind === "deleted" ? "Excluído" : "Inserido"} · pág. {(c.a[0]?.page ?? c.b[0]!.page) + 1}</small>
+              <small>{c.kind === "changed" ? translateUi("Alterado") : c.kind === "deleted" ? translateUi("Excluído") : translateUi("Inserido")}{" "}{translateUi("· pág.")}{" "}{(c.a[0]?.page ?? c.b[0]!.page) + 1}</small>
               {c.a.length > 0 && <del>{c.a.map((w) => w.text).join(" ").slice(0, 160)}</del>}
               {c.b.length > 0 && <ins>{c.b.map((w) => w.text).join(" ").slice(0, 160)}</ins>}
             </button>
           ))}
         </aside>
         <div className="compare-column" ref={left}>{pair && Array.from({length:pair[0].numPages},(_,i) => <ComparePage key={i} pdf={pair[0]} index={i} width={width} marks={marks.a.get(i) ?? []} focus={focus} />)}</div>
-        <div className="compare-column" ref={right}>{pair ? Array.from({length:pair[1].numPages},(_,i) => <ComparePage key={i} pdf={pair[1]} index={i} width={width} marks={marks.b.get(i) ?? []} focus={focus} />) : <div className="compare-empty"><FolderOpen size={28} /><p>Abra a outra versão do PDF para comparar.</p></div>}</div>
+        <div className="compare-column" ref={right}>{pair ? Array.from({length:pair[1].numPages},(_,i) => <ComparePage key={i} pdf={pair[1]} index={i} width={width} marks={marks.b.get(i) ?? []} focus={focus} />) : <div className="compare-empty"><FolderOpen size={28} /><p>{translateUi("Abra a outra versão do PDF para comparar.")}</p></div>}</div>
       </div>
     </div>
   );

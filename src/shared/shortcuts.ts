@@ -4,7 +4,7 @@ export const HOME_ACTIONS = [
   { id: "shapes", label: "Formas" },
   { id: "edit-all", label: "Editar tudo" },
   { id: "add-text", label: "Adicionar texto" },
-  { id: "ocr", label: "OCR PT-BR" },
+  { id: "ocr", label: "OCR" },
   { id: "compress", label: "Comprimir" },
   { id: "find", label: "Buscar" },
   { id: "ai", label: "IA" },

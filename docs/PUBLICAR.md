@@ -65,7 +65,7 @@ O arquivo deve conter linhas começando com `- `. Aspas protegem nomes de arquiv
 - Typecheck, testes, atualização da versão, geração dos arquivos, preparação, commit, tag, envio e criação da release são conferidos pelo código de saída. Qualquer falha interrompe a sequência.
 - Instalador e portátil são obrigatórios. As notas da release incluem o SHA-256 do instalador, verificado pelo atualizador do aplicativo.
 - Somente arquivos de código, configuração, documentação pública, licenças e recursos do aplicativo são preparados. `HANDOFF.md`, `.cache/`, `evidence/`, arquivos de credenciais e saídas de compilação ficam de fora. Arquivos previamente preparados no Git não são misturados à publicação.
-- `LICENSE` continua sendo a licença proprietária do GCP-PDF; `THIRD_PARTY_NOTICES.md` e as licenças dos componentes de terceiros permanecem incluídos.
+- `LICENSE` mantém a licença GPL-3.0-or-later do GCP-PDF; `THIRD_PARTY_NOTICES.md` e as licenças dos componentes de terceiros permanecem incluídos.
 
 ## Se ocorrer uma falha
 

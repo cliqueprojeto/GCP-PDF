@@ -1,5 +1,6 @@
 import {_electron as electron} from 'playwright-core';
 import {PDFDocument,StandardFonts} from 'pdf-lib';
+import {createCanvas} from '@napi-rs/canvas';
 import {mkdtemp,mkdir,readFile,writeFile,readdir,rm} from 'node:fs/promises';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
@@ -43,13 +44,21 @@ try{
   return after.paragraphs.map(p=>p.text).join('\n');
  },Array.from(savedBytes));
  check('texto editado persiste ao reabrir arquivo salvo',edited.includes('Documento cultural editado'));
- await page.evaluate(id=>window.gcp.runOcr(id,[0]),id);
- check('OCR local com worker, WASM e modelo português empacotados',true);
  const converted=await page.evaluate(async()=>{
   const current=await window.gcp.getWorkspace();
   const result=await window.gcp.getBase(current.documents[0].pages[0].base);return !!result;
  });
  check('leitura dos bytes pelo preload empacotado',converted);
+ for(const [language,text,expected] of [['pt-BR','Cultura brasileira e participação social.','participação'],['en','Cultural projects support public education.','education'],['es','La educación cultural necesita colaboración.','colaboración']]){
+  const canvas=createCanvas(1600,450),context=canvas.getContext('2d');context.fillStyle='white';context.fillRect(0,0,1600,450);context.fillStyle='black';context.font='48px sans-serif';context.fillText(text,50,180);
+  const scanned=await PDFDocument.create(),image=await scanned.embedPng(canvas.toBuffer('image/png'));scanned.addPage([800,225]).drawImage(image,{x:0,y:0,width:800,height:225});
+  const fixture=join(root,`OCR-${language}.pdf`);await writeFile(fixture,await scanned.save());await page.evaluate(file=>window.gcp.openFiles([file]),fixture);
+  const scanId=(await page.evaluate(()=>window.gcp.getWorkspace())).activeDocumentId;
+  await page.evaluate(async({id,language})=>{await window.gcp.setLanguage(language,language);await window.gcp.runOcr(id,[0]);},{id:scanId,language});
+  const recognized=await app.evaluate(async(_e,id)=>{const {engine,store}=globalThis.__gcpTest;const bytes=await store.materialize(id);const result=await engine.objects(`ocr-packaged-${id}`,()=>bytes,0);return result.paragraphs.map(p=>p.text).join(' ');},scanId);
+  check(`OCR ${language}: worker, WASM e modelo locais do pacote geram texto pesquisável`,recognized.toLowerCase().includes(expected));
+ }
+
  // Generate an ephemeral identity with the shipped engine, then sign through
  // the real file-picker/preload/IPC flow. No real certificate is used in CI.
  const engineFolder=await app.evaluate(async(_e,id)=>{

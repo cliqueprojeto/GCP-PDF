@@ -1,3 +1,4 @@
+import type {LanguagePreference} from '../shared/locale';
 import {app,safeStorage} from 'electron';
 import {readFile,mkdir,writeFile,rename,unlink} from 'node:fs/promises';
 import {join,dirname} from 'node:path';
@@ -7,20 +8,23 @@ import {usageToday,recordUsage,type AiUsage} from '../shared/ai-usage';
 /** Works on a free Google AI Studio key; "Encontrar melhor modelo" upgrades it when the key has billing. */
 export const DEFAULT_GEMINI_MODEL='gemini-3.5-flash-lite';
 export async function atomicWrite(path:string,bytes:Uint8Array|string){const temp=path+'.gcp-'+randomUUID()+'.tmp';try{await writeFile(temp,bytes,{flag:'wx',mode:0o600});await rename(temp,path);}catch(error){await unlink(temp).catch(()=>{});throw error;}}
-type Preferences={theme:'light'|'dark';signatures:Signature[];ai:Omit<AiConfig,'hasKey'>;keys:Record<string,string>;quickActions?:boolean;updates?:UpdatePreferences;seenVersion?:string;aiUsage?:AiUsage};
+type Preferences={language?:LanguagePreference;ocrLanguage?:LanguagePreference;theme:'light'|'dark';signatures:Signature[];ai:Omit<AiConfig,'hasKey'>;keys:Record<string,string>;quickActions?:boolean;updates?:UpdatePreferences;seenVersion?:string;aiUsage?:AiUsage};
 export class Settings {
  private value:Preferences={theme:'light',signatures:[],ai:{provider:'gemini',model:DEFAULT_GEMINI_MODEL,baseUrl:'https://generativelanguage.googleapis.com/v1beta'},keys:{}};
  private queue:Promise<unknown>=Promise.resolve();
  private file='';
  async init(){this.file=join(app.getPath('userData'),'preferences.json');await mkdir(dirname(this.file),{recursive:true});try{const parsed=JSON.parse(await readFile(this.file,'utf8'));if(parsed&&Array.isArray(parsed.signatures)&&parsed.ai&&parsed.keys)this.value={...this.value,...parsed};}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT'){await rename(this.file,this.file+'.invalid-'+Date.now()).catch(()=>{});}}}
  private persist(){const snapshot=JSON.stringify(this.value,null,2);const job=this.queue.then(()=>atomicWrite(this.file,snapshot));this.queue=job.catch(()=>{});return job;}
+ get language():LanguagePreference{return ['pt-BR','en','es','auto'].includes(this.value.language??'')?this.value.language!:'auto';}
+ get ocrLanguage():LanguagePreference{return ['pt-BR','en','es','auto'].includes(this.value.ocrLanguage??'')?this.value.ocrLanguage!:'auto';}
+ async setLanguage(language:LanguagePreference,ocr:LanguagePreference){if(!['auto','pt-BR','en','es'].includes(language)||!['auto','pt-BR','en','es'].includes(ocr))throw new Error('Idioma inválido.');this.value.language=language;this.value.ocrLanguage=ocr;await this.persist();}
  get theme(){return this.value.theme;}
  aiUsage(){return usageToday(this.value.aiUsage);}
  async recordAiUsage(status:number){this.value.aiUsage=recordUsage(this.value.aiUsage,status);await this.persist();}
  get seenVersion(){return this.value.seenVersion;}
  async setSeenVersion(version:string){this.value.seenVersion=version;await this.persist();}
  // A token saved by versions up to 0.3.6 (private repository) is no longer used and is dropped on the next save.
- get updates():UpdatePreferences{const {frequency='weekly',lastCheck}=(this.value.updates??{}) as UpdatePreferences;return lastCheck===undefined?{frequency}:{frequency,lastCheck};}
+ get updates():UpdatePreferences{const {frequency='startup',lastCheck}=(this.value.updates??{}) as UpdatePreferences;return lastCheck===undefined?{frequency}:{frequency,lastCheck};}
  async setUpdates(patch:Partial<UpdatePreferences>){this.value.updates={...this.updates,...patch};await this.persist();}
  /** Explorer quick actions are on unless the user removed them. */
  get quickActions(){return this.value.quickActions!==false;}

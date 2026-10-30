@@ -1,3 +1,4 @@
+import {t as translateUi} from "./i18n";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
@@ -132,9 +133,9 @@ export function CommandPalette({
     const words = fold(query).split(/\s+/).filter(Boolean);
     const scored = commands
       .map((c) => {
-        const label = fold(c.label),
+        const label = fold(translateUi(c.label)),
           all = fold(
-            `${c.label} ${c.group} ${c.keywords ?? ""} ${c.help ?? ""}`,
+            `${translateUi(c.label)} ${translateUi(c.group)} ${c.keywords ?? ""} ${c.help ?? ""}`,
           );
         if (!words.every((w) => all.includes(w))) return null;
         const labelWords = label.split(/[^a-z0-9]+/),
@@ -184,13 +185,13 @@ export function CommandPalette({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="palette" role="dialog" aria-label="Localizar ferramentas">
+      <div className="palette" role="dialog" aria-label={translateUi("Localizar ferramentas")}>
         <div className="palette-search">
           <Search size={17} />
           <input
             autoFocus
             value={query}
-            placeholder="Localizar ferramentas e comandos… (ex.: senha, juntar, assinar)"
+            placeholder={translateUi("Localizar ferramentas e comandos… (ex.: senha, juntar, assinar)")}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "ArrowDown") {
@@ -205,7 +206,7 @@ export function CommandPalette({
               if (e.key === "Escape") onClose();
             }}
           />
-          <kbd>Esc</kbd>
+          <kbd>{translateUi("Esc")}</kbd>
         </div>
         <div className="palette-list" ref={list}>
           {results.map((c, i) => (
@@ -226,7 +227,7 @@ export function CommandPalette({
                 );
               })()}
               <span className="palette-label">
-                {c.label}
+                {translateUi(c.label)}
                 {c.help && i === index && <small>{c.help}</small>}
               </span>
               <span className="palette-group">{c.group}</span>
@@ -238,13 +239,12 @@ export function CommandPalette({
             </button>
           ))}
           {!results.length && (
-            <div className="palette-empty">
-              Nenhuma ferramenta encontrada para “{query}”.
+            <div className="palette-empty">{" "}{translateUi("Nenhuma ferramenta encontrada para “")}{query}”.
             </div>
           )}
         </div>
         <div className="palette-footer">
-          <span>↑↓ navegar · Enter executar</span>
+          <span>{translateUi("↑↓ navegar · Enter executar")}</span>
           <button
             className="text-button"
             onClick={() => {
@@ -252,8 +252,7 @@ export function CommandPalette({
               onHelp();
             }}
           >
-            <BookOpen size={13} /> Central de ajuda
-          </button>
+            <BookOpen size={13} />{" "}{translateUi("Central de ajuda")}{" "}</button>
         </div>
       </div>
     </div>
@@ -570,9 +569,7 @@ export const TOPICS: Topic[] = [
           textAnchor="middle"
           fill="#e5484d"
           fontWeight="700"
-        >
-          PDF
-        </text>
+        >{" "}{translateUi("PDF")}{" "}</text>
         <path d="M70 50h20" stroke="#7446e8" strokeWidth="2" />
         <path d="M86 45l6 5-6 5" fill="none" stroke="#7446e8" strokeWidth="2" />
         <rect
@@ -591,9 +588,7 @@ export const TOPICS: Topic[] = [
           textAnchor="middle"
           fill="#2b5797"
           fontWeight="700"
-        >
-          DOCX
-        </text>
+        >{" "}{translateUi("DOCX")}{" "}</text>
       </svg>
     ),
   },
@@ -641,18 +636,17 @@ export function HelpDialog({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="help" role="dialog" aria-label="Central de ajuda">
+      <div className="help" role="dialog" aria-label={translateUi("Central de ajuda")}>
         <nav className="help-nav">
           <h2>
-            <BookOpen size={17} /> Central de ajuda
-          </h2>
+            <BookOpen size={17} />{" "}{translateUi("Central de ajuda")}{" "}</h2>
           {TOPICS.map((t) => (
             <button
               key={t.id}
               className={t.id === item.id ? "active" : ""}
               onClick={() => setCurrent(t.id)}
             >
-              {t.title}
+              {translateUi(t.title)}
               <ChevronRight size={13} />
             </button>
           ))}
@@ -660,17 +654,17 @@ export function HelpDialog({
         <article className="help-body">
           <button
             className="help-close"
-            aria-label="Fechar ajuda"
+            aria-label={translateUi("Fechar ajuda")}
             onClick={onClose}
           >
             <X size={18} />
           </button>
           {item.art}
-          <h3>{item.title}</h3>
-          <p className="help-summary">{item.summary}</p>
+          <h3>{translateUi(item.title)}</h3>
+          <p className="help-summary">{translateUi(item.summary)}</p>
           <ol>
             {item.steps.map((s, i) => (
-              <li key={i}>{s}</li>
+              <li key={i}>{translateUi(s)}</li>
             ))}
           </ol>
           {item.id === "ia" && <GoogleApiHelp />}
@@ -686,7 +680,7 @@ export function HelpDialog({
                     padding: "5px 0",
                   }}
                 >
-                  <dt>{command.label}</dt>
+                  <dt>{translateUi(command.label)}</dt>
                   <dd>
                     <kbd>{readShortcuts()[command.id] || "Sem atalho"}</kbd>
                   </dd>
@@ -696,7 +690,7 @@ export function HelpDialog({
           )}
           {item.tip && (
             <p className="help-tip">
-              <strong>Dica:</strong> {item.tip}
+              <strong>{translateUi("Dica:")}</strong> {translateUi(item.tip)}
             </p>
           )}
         </article>

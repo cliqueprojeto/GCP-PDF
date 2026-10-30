@@ -1,3 +1,5 @@
+import {localize} from '../shared/localize';
+import {resolveLocale,OCR_LANGUAGES} from '../shared/locale';
 import {app,BrowserWindow,ipcMain,dialog,Menu,shell,clipboard,nativeTheme,screen,session} from 'electron';
 import {join,basename,extname,resolve,dirname,isAbsolute} from 'node:path';
 import {readFile,mkdir,stat,mkdtemp,rm,writeFile} from 'node:fs/promises';
@@ -45,6 +47,9 @@ async function htmlToPdf(html:string){
 const readPdf=(path:string)=>readInputPdf(path,htmlToPdf);
 const rendererUrl=()=>pathToFileURL(join(app.getAppPath(),'dist','renderer')).href;
 function trusted(event:Electron.IpcMainInvokeEvent){if(event.senderFrame!==event.sender.mainFrame)throw new Error('Origem de ação não autorizada.');const url=event.sender.getURL();if(!(url.startsWith(rendererUrl())||(!app.isPackaged&&url.startsWith('http://127.0.0.1:'))))throw new Error('Origem inválida.');}
+function saveDialog(window:BrowserWindow,options:Electron.SaveDialogOptions){const locale=languages().locale;return dialog.showSaveDialog(window,{...options,title:options.title?localize(options.title,locale):undefined,filters:options.filters?.map(f=>({...f,name:localize(f.name,locale)}))});}
+function openDialog(window:BrowserWindow,options:Electron.OpenDialogOptions){const locale=languages().locale;return dialog.showOpenDialog(window,{...options,title:options.title?localize(options.title,locale):undefined,filters:options.filters?.map(f=>({...f,name:localize(f.name,locale)}))});}
+function languages(){const system=app.getPreferredSystemLanguages();return {language:settings.language,ocr:settings.ocrLanguage,locale:resolveLocale(settings.language,system),ocrLocale:resolveLocale(settings.ocrLanguage,system)};}
 function state(view:View):WorkspaceState{return {windowId:view.window.webContents.id,documents:view.ids.map(id=>store.info(id)),activeDocumentId:view.active,theme:settings.theme,quickActions:settings.quickActions};}
 function notify(){for(const view of views.values()){if(!view.window.isDestroyed()){view.window.webContents.send('gcp:workspace',state(view));view.window.setTitle((view.active?store.get(view.active).name+' — ':'')+'GCP-PDF');}}}
 function action(view:{window:BrowserWindow},name:string){if(!view.window.isDestroyed())view.window.webContents.send('gcp:action',name);}
@@ -62,9 +67,13 @@ async function save(view:View,id:string,saveAs=false){
   path=undefined;
  }
  if(store.signed(id)&&!changed&&path&&!saveAs){doc.savedRevision=doc.revision;notify();return path;}
- if(!path){const result=await dialog.showSaveDialog(view.window,{title:'Salvar PDF',defaultPath:doc.path??doc.name,filters:[{name:'Documento PDF',extensions:['pdf']}]});if(result.canceled||!result.filePath)return null;path=result.filePath;if(!path.toLowerCase().endsWith('.pdf'))path+='.pdf';}
+ if(!path){const result=await saveDialog(view.window,{title:saveAs?'Salvar como':'Salvar PDF',defaultPath:saveAs?join(dirname(doc.path??doc.name),basename(doc.name,extname(doc.name))+'_Copia.pdf'):doc.path??doc.name,filters:[{name:'Documento PDF',extensions:['pdf']}]});if(result.canceled||!result.filePath)return null;path=result.filePath;if(!path.toLowerCase().endsWith('.pdf'))path+='.pdf';}
  await refusesSignedOverwrite(protectedPath,path,changed||!!(protectedPath&&doc.path&&!await sameFilePath(protectedPath,doc.path)));
- const revision=doc.revision;await atomicWrite(path,await store.materialize(id));
+ const revision=doc.revision;
+ try{await atomicWrite(path,await store.materialize(id));}catch(error){
+  if(['EPERM','EACCES','EBUSY'].includes((error as NodeJS.ErrnoException).code??''))throw new Error('Não foi possível salvar neste arquivo. Ele pode estar aberto em outro programa ou a pasta não permite gravação. Feche o outro leitor ou use Salvar como para gravar uma cópia em outra pasta.',{cause:error});
+  throw error;
+ }
  doc.path=path;doc.name=basename(path);doc.savedRevision=revision;notify();return path;
 }
 type PromptRequest={title:string;message:string;detail?:string;buttons:string[];defaultId:number;cancelId:number;tone?:'question'|'danger'|'info'};
@@ -72,6 +81,7 @@ const prompts=new Map<string,{view:View;cancel:number;resolve:(index:number)=>vo
 /** Asks inside the app's own styled dialog instead of a native Windows message box. */
 function ask(view:View,request:PromptRequest):Promise<number>{
  if(view.window.isDestroyed())return Promise.resolve(request.cancelId);
+ const locale=languages().locale;request={...request,title:localize(request.title,locale),message:localize(request.message,locale),detail:request.detail?localize(request.detail,locale):undefined,buttons:request.buttons.map(button=>localize(button,locale))};
  const id=randomUUID();view.window.show();view.window.focus();
  return new Promise(resolve=>{prompts.set(id,{view,cancel:request.cancelId,resolve});view.window.webContents.send('gcp:prompt',{id,...request});});
 }
@@ -96,7 +106,7 @@ function createWindow(ids:string[]=[]){
 }
 function mainView(){return [...views.values()].find(view=>!view.window.isDestroyed())??createWindow();}
 async function openPaths(view:View,paths?:string[]){
- if(!paths){const result=await dialog.showOpenDialog(view.window,{title:'Abrir arquivos',properties:['openFile','multiSelections'],filters:[{name:'Documentos e imagens',extensions:INPUT_EXTENSIONS.map(e=>e.slice(1))},{name:'Todos os arquivos',extensions:['*']}]});if(result.canceled)return;paths=result.filePaths;}
+ if(!paths){const result=await openDialog(view.window,{title:'Abrir arquivos',properties:['openFile','multiSelections'],filters:[{name:'Documentos e imagens',extensions:INPUT_EXTENSIONS.map(e=>e.slice(1))},{name:'Todos os arquivos',extensions:['*']}]});if(result.canceled)return;paths=result.filePaths;}
  if(!Array.isArray(paths)||paths.length>200)throw new Error('Selecione até 200 arquivos por vez.');
  try{for(const [n,path] of paths.entries()){
   if(typeof path!=='string')throw new Error('Caminho de arquivo inválido.');
@@ -167,6 +177,8 @@ function addQuickFiles(quick:Quick,paths:string[]){
 }
 function registerIpc(){
  const handlers:Record<string,(view:View,...args:any[])=>unknown>={
+  moveDocumentTab:(view,id,beforeId)=>{own(view,id);if(beforeId!==undefined)own(view,beforeId);if(id===beforeId)return;const ids=view.ids.filter(item=>item!==id);ids.splice(beforeId===undefined?ids.length:ids.indexOf(beforeId),0,id);view.ids=ids;notify();},
+  setLanguage:async(_view,language,ocr)=>{await settings.setLanguage(language,ocr);const next=languages();for(const item of [...views.values(),...quicks.values()])if(!item.window.isDestroyed())item.window.webContents.send('gcp:language',next);return next;},
   getWorkspace:view=>state(view),getComparisonPdf:async(view,id)=>{own(view,id);return store.materialize(id);},setFullscreen:(view,enabled?:boolean)=>{const next=enabled??!view.window.isFullScreen();view.window.setFullScreen(next);return next;},
   answerPrompt:(view,id:string,index:number)=>{const prompt=prompts.get(id);if(!prompt||prompt.view!==view)return;prompts.delete(id);prompt.resolve(Number.isInteger(index)?index:prompt.cancel);},
   editSourceImage:async(view,id,page:string,input:{image:number;action:string;from?:Rect;to?:Rect;quarters?:number;dataUrl?:string})=>{
@@ -191,7 +203,7 @@ function registerIpc(){
    const written=String(result?.path??name).split(/[\\/]/).pop()!,path=join(engineRoot(),written);
    try{
     const data=await readFile(path),jpeg=/\.jpe?g$/i.test(written);
-    if(save){const target=await dialog.showSaveDialog(view.window,{title:'Salvar imagem',defaultPath:`imagem.${jpeg?'jpg':'png'}`,filters:[{name:'Imagem',extensions:[jpeg?'jpg':'png']}]});if(target.canceled||!target.filePath)return null;await atomicWrite(target.filePath,new Uint8Array(data));return target.filePath;}
+    if(save){const target=await saveDialog(view.window,{title:'Salvar imagem',defaultPath:`imagem.${jpeg?'jpg':'png'}`,filters:[{name:'Imagem',extensions:[jpeg?'jpg':'png']}]});if(target.canceled||!target.filePath)return null;await atomicWrite(target.filePath,new Uint8Array(data));return target.filePath;}
     return `data:image/${jpeg?'jpeg':'png'};base64,${data.toString('base64')}`;
    }finally{await rm(path,{force:true}).catch(()=>{});}
   },
@@ -266,7 +278,7 @@ function registerIpc(){
   /** Image field: the user picks a picture and it is shown in the field (Acrobat's "Importar ícone"). */
   setFieldImage:async(view,id,page:string,field:string)=>{
    if(typeof field!=='string'||!field)throw new Error('Campo inválido.');
-   const result=await dialog.showOpenDialog(view.window,{title:'Escolher imagem para o campo',properties:['openFile'],filters:[{name:'Imagem',extensions:['png','jpg','jpeg','gif','bmp','tif','tiff']}]});
+   const result=await openDialog(view.window,{title:'Escolher imagem para o campo',properties:['openFile'],filters:[{name:'Imagem',extensions:['png','jpg','jpeg','gif','bmp','tif','tiff']}]});
    if(result.canceled||!result.filePaths[0])return;
    if((await stat(result.filePaths[0])).size>20*1024*1024)throw new Error('Use uma imagem de até 20 MB.');
    const image=new Uint8Array(await readFile(result.filePaths[0])),extension=extname(result.filePaths[0]).toLowerCase();
@@ -280,10 +292,10 @@ function registerIpc(){
    if(answer===0)await shell.openExternal(target.href);
   },
   getFieldFormats:(view,id:string)=>{if(!view.ids.some(doc=>store.get(doc).model.pages.some(page=>page.base===id)))throw new Error('Esta versão do documento não pertence a esta janela.');return fieldFormats(store.base(id));},
-  getBase:(view,id:string)=>{if(!view.ids.some(doc=>store.get(doc).model.pages.some(page=>page.base===id)))throw new Error('Esta versão do documento não pertence a esta janela.');return store.base(id);},
+  getBase:(view,id:string)=>{if(!view.ids.some(doc=>store.get(doc).model.pages.some(page=>page.base===id)))throw new Error('Esta versão do documento não pertence a esta janela.');return store.viewerBase(id);},
   getAsset:(view,id:string)=>{if(!view.ids.some(doc=>store.get(doc).model.objects.some(o=>o.kind==='image'&&o.asset===id)))throw new Error('Esta imagem não pertence a esta janela.');return store.asset(id);},
   openFiles:(view,paths)=>openPaths(view,paths),
-  openFiscalXml:async view=>{const result=await dialog.showOpenDialog(view.window,{title:'Abrir XML de nota fiscal',properties:['openFile','multiSelections'],filters:[{name:'XML de nota fiscal (NF-e, NFC-e, NFS-e)',extensions:['xml']}]});if(result.canceled||!result.filePaths.length)return;await openPaths(view,result.filePaths);},
+  openFiscalXml:async view=>{const result=await openDialog(view.window,{title:'Abrir XML de nota fiscal',properties:['openFile','multiSelections'],filters:[{name:'XML de nota fiscal (NF-e, NFC-e, NFS-e)',extensions:['xml']}]});if(result.canceled||!result.filePaths.length)return;await openPaths(view,result.filePaths);},
   newDocument:async view=>activate(view,await store.blank()),
   activateDocument:(view,id)=>{own(view,id);activate(view,id);},
   closeDocument:closeTab,
@@ -301,7 +313,7 @@ function registerIpc(){
    const doc=own(view,id);
    if(!['pdf','image-pdf','docx','xlsx','pptx','png','txt'].includes(options?.format))throw new Error('Formato de exportação inválido.');
    const extension=options.format==='image-pdf'?'pdf':options.format;
-   const result=await dialog.showSaveDialog(view.window,{title:'Exportar documento',defaultPath:basename(doc.name,extname(doc.name))+(options.format==='image-pdf'?' (imagem)':'')+'.'+extension,filters:[{name:extension.toUpperCase(),extensions:[extension]}]});
+   const result=await saveDialog(view.window,{title:'Exportar documento',defaultPath:basename(doc.name,extname(doc.name))+(options.format==='image-pdf'?' (imagem)':'')+'.'+extension,filters:[{name:extension.toUpperCase(),extensions:[extension]}]});
    if(result.canceled||!result.filePath)return null;
    action(view,'progress:Preparando a exportação local…');
    try{
@@ -398,7 +410,7 @@ function registerIpc(){
   },
   exportFormData:async(view,id,format:'csv'|'xml'|'xfdf'|'txt')=>{
    const doc=own(view,id);if(!['csv','xml','xfdf','txt'].includes(format))throw new Error('Formato de dados inválido.');
-   const target=await dialog.showSaveDialog(view.window,{title:'Exportar dados do formulário',defaultPath:`${basename(doc.name,extname(doc.name))} - dados.${format}`,filters:[{name:format.toUpperCase(),extensions:[format]}]});
+   const target=await saveDialog(view.window,{title:'Exportar dados do formulário',defaultPath:`${basename(doc.name,extname(doc.name))} - dados.${format}`,filters:[{name:format.toUpperCase(),extensions:[format]}]});
    if(target.canceled||!target.filePath)return null;
    const out=await engine.onCopy(await store.materialize(id),async({doc:copy,output,call})=>{await call('doc_export_data',{doc:copy,path:output.replace(/\.pdf$/,'.'+format),what:format==='xfdf'?'all':'fields'});return output.replace(/\.pdf$/,'.'+format);});
    const bytes=await readFile(join(engineRoot(),out.result)).catch(()=>null);if(!bytes)throw new Error('O documento não tem campos de formulário com dados.');
@@ -408,7 +420,7 @@ function registerIpc(){
    const doc=own(view,id);
    if(!options?.openPassword&&!options?.permissionsPassword)throw new Error('Defina uma senha de abertura ou de permissões.');
    if(options.openPassword&&options.permissionsPassword&&options.openPassword===options.permissionsPassword)throw new Error('A senha de permissões precisa ser diferente da senha de abertura.');
-   const target=await dialog.showSaveDialog(view.window,{title:'Salvar PDF protegido',defaultPath:join(doc.path?dirname(doc.path):app.getPath('documents'),`${basename(doc.name,extname(doc.name))} (protegido).pdf`),filters:[{name:'Documento PDF',extensions:['pdf']}]});
+   const target=await saveDialog(view.window,{title:'Salvar PDF protegido',defaultPath:join(doc.path?dirname(doc.path):app.getPath('documents'),`${basename(doc.name,extname(doc.name))} (protegido).pdf`),filters:[{name:'Documento PDF',extensions:['pdf']}]});
    if(target.canceled||!target.filePath)return null;
    await refusesSignedOverwrite(store.signedSourcePath(id),target.filePath,true);
    action(view,'progress:Criptografando…');
@@ -434,7 +446,7 @@ function registerIpc(){
    return (found?.ids??[]).map((item:any)=>{const c=item.certificate??{};return {id:String(item.id),name:String(c.name??c.subject??'Certificado'),issuer:String(c.issuer??'').replace(/^.*CN=/,''),validTo:String(c.valid_to??''),icp:/ICP-Brasil/i.test(String(c.issuer??'')+String(c.subject??'')),kind:/\bA3\b/.test(String(c.subject??''))?'A3':/\bA1\b/.test(String(c.subject??''))?'A1':''};});
   },
   chooseCertificate:async(view):Promise<Certificate|null>=>{
-   const result=await dialog.showOpenDialog(view.window,{title:'Escolher certificado A1',properties:['openFile'],filters:[{name:'Certificado digital A1',extensions:['pfx','p12']}]});
+   const result=await openDialog(view.window,{title:'Escolher certificado A1',properties:['openFile'],filters:[{name:'Certificado digital A1',extensions:['pfx','p12']}]});
    if(result.canceled||!result.filePaths[0])return null;
    return certificateFiles.select(view.window.webContents.id,result.filePaths[0]);
   },
@@ -444,7 +456,7 @@ function registerIpc(){
    const fromFile=typeof certificate==='string'&&certificate.startsWith('file:');
    if(typeof certificate!=='string'||!(fromFile||process.platform==='win32'&&/^windows:[0-9a-f]{40,64}$/i.test(certificate)||process.platform==='darwin'&&/^keychain:.+/.test(certificate)))throw new Error('Escolha um certificado digital deste sistema ou um arquivo A1 (.pfx/.p12).');
    if(options.password!==undefined&&typeof options.password!=='string')throw new Error('A senha do certificado deve ser um texto.');
-   const target=await dialog.showSaveDialog(view.window,{title:'Salvar PDF assinado digitalmente',defaultPath:join(doc.path?dirname(doc.path):app.getPath('documents'),`${basename(doc.name,extname(doc.name))} (assinado).pdf`),filters:[{name:'Documento PDF',extensions:['pdf']}]});
+   const target=await saveDialog(view.window,{title:'Salvar PDF assinado digitalmente',defaultPath:join(doc.path?dirname(doc.path):app.getPath('documents'),`${basename(doc.name,extname(doc.name))} (assinado).pdf`),filters:[{name:'Documento PDF',extensions:['pdf']}]});
    if(target.canceled||!target.filePath)return null;
    const original=store.signedSourcePath(id),differentPath=!!(original&&doc.path&&!await sameFilePath(original,doc.path));
    await refusesSignedOverwrite(original,target.filePath,doc.revision!==doc.savedRevision||differentPath);
@@ -489,7 +501,7 @@ function registerIpc(){
   compressApply:async(view,id,options:CompressOptions,mode:'apply'|'save')=>{
    const doc=own(view,id),result=await compressDocument(id,options);
    if(mode==='apply'){try{await store.replaceDocument(id,result.bytes,doc.revision);}finally{notify();}return null;}
-   const stem=basename(doc.name,extname(doc.name)),target=await dialog.showSaveDialog(view.window,{title:'Salvar PDF comprimido',defaultPath:join(doc.path?dirname(doc.path):app.getPath('documents'),`${stem} (comprimido).pdf`),filters:[{name:'Documento PDF',extensions:['pdf']}]});
+   const stem=basename(doc.name,extname(doc.name)),target=await saveDialog(view.window,{title:'Salvar PDF comprimido',defaultPath:join(doc.path?dirname(doc.path):app.getPath('documents'),`${stem} (comprimido).pdf`),filters:[{name:'Documento PDF',extensions:['pdf']}]});
    if(target.canceled||!target.filePath)return null;await refusesSignedOverwrite(store.signedSourcePath(id),target.filePath,true);await atomicWrite(target.filePath,result.bytes);return target.filePath;
   },
   extractPages:async(view,id,pages:number[],mode:'tab'|'file'|'files')=>{
@@ -497,11 +509,11 @@ function registerIpc(){
    const output=await (async()=>{
     if(mode==='tab'){activate(view,store.extract(id,pages,`${stem} (páginas extraídas).pdf`));return 'tab';}
     if(mode==='file'){
-     const result=await dialog.showSaveDialog(view.window,{title:'Extrair páginas',defaultPath:`${stem} - páginas.pdf`,filters:[{name:'Documento PDF',extensions:['pdf']}]});if(result.canceled||!result.filePath)return null;
+     const result=await saveDialog(view.window,{title:'Extrair páginas',defaultPath:`${stem} - páginas.pdf`,filters:[{name:'Documento PDF',extensions:['pdf']}]});if(result.canceled||!result.filePath)return null;
      await refusesSignedOverwrite(store.signedSourcePath(id),result.filePath,true);
      const temp=store.extract(id,pages,'extraido.pdf');try{await atomicWrite(result.filePath,await store.materialize(temp));}finally{store.remove(temp);}return result.filePath;
     }
-    const result=await dialog.showOpenDialog(view.window,{title:'Pasta para as páginas',properties:['openDirectory','createDirectory']});if(result.canceled||!result.filePaths[0])return null;
+    const result=await openDialog(view.window,{title:'Pasta para as páginas',properties:['openDirectory','createDirectory']});if(result.canceled||!result.filePaths[0])return null;
     try{for(const [n,page] of [...pages].sort((a,b)=>a-b).entries()){action(view,`progress:Extraindo página ${n+1} de ${pages.length}…`);const temp=store.extract(id,[page],'p.pdf');try{await atomicWrite(await uniquePath(result.filePaths[0],`${stem} - página ${page+1}.pdf`),await store.materialize(temp));}finally{store.remove(temp);}}}finally{action(view,'progress:');}
     return result.filePaths[0];
    })();
@@ -514,7 +526,7 @@ function registerIpc(){
    return output==='tab'?null:output;
   },
   insertFromFile:async(view,id,index:number,revision:number)=>{
-   own(view,id);const result=await dialog.showOpenDialog(view.window,{title:'Inserir páginas de outro arquivo',properties:['openFile'],filters:[{name:'Documentos e imagens',extensions:INPUT_EXTENSIONS.map(e=>e.slice(1))}]});if(result.canceled||!result.filePaths[0])return;
+   own(view,id);const result=await openDialog(view.window,{title:'Inserir páginas de outro arquivo',properties:['openFile'],filters:[{name:'Documentos e imagens',extensions:INPUT_EXTENSIONS.map(e=>e.slice(1))}]});if(result.canceled||!result.filePaths[0])return;
    try{const count=await store.insertFile(id,await readPdf(result.filePaths[0]),index,revision);action(view,`notice:${count} página${count>1?'s inseridas':' inserida'}.`);}finally{notify();}
   },
   insertPaths:async(view,id,index:number,paths:string[],revision:number)=>{
@@ -525,14 +537,14 @@ function registerIpc(){
    action(view,`notice:${total} página${total>1?'s inseridas':' inserida'}.`);
   },
   replacePages:async(view,id,pages:number[],revision:number)=>{
-   own(view,id);const result=await dialog.showOpenDialog(view.window,{title:'Substituir pelas páginas de…',properties:['openFile'],filters:[{name:'Documentos e imagens',extensions:INPUT_EXTENSIONS.map(e=>e.slice(1))}]});if(result.canceled||!result.filePaths[0])return;
+   own(view,id);const result=await openDialog(view.window,{title:'Substituir pelas páginas de…',properties:['openFile'],filters:[{name:'Documentos e imagens',extensions:INPUT_EXTENSIONS.map(e=>e.slice(1))}]});if(result.canceled||!result.filePaths[0])return;
    try{const done=await store.replaceWith(id,pages,await readPdf(result.filePaths[0]),revision);action(view,`notice:${done.count} página${done.count>1?'s substituídas':' substituída'}${done.count<pages.length?` (o arquivo escolhido tem só ${done.available})`:''}.`);}finally{notify();}
   },
   splitDocument:async(view,id,input:{every?:number;maxMb?:number}|number)=>{
    const doc=own(view,id),options=typeof input==='number'?{every:input}:input??{};
    if(options.maxMb!==undefined&&!(Number.isFinite(options.maxMb)&&options.maxMb>0.05))throw new Error('Informe o tamanho máximo em MB.');
    if(options.maxMb===undefined&&!(Number.isInteger(options.every)&&options.every!>=1))throw new Error('Informe a quantidade de páginas por parte.');
-   const result=await dialog.showOpenDialog(view.window,{title:'Pasta para os arquivos divididos',properties:['openDirectory','createDirectory']});if(result.canceled||!result.filePaths[0])return null;
+   const result=await openDialog(view.window,{title:'Pasta para os arquivos divididos',properties:['openDirectory','createDirectory']});if(result.canceled||!result.filePaths[0])return null;
    const count=doc.model.pages.length,stem=basename(doc.name,extname(doc.name)),folder=result.filePaths[0];
    const render=async(pages:number[])=>{const temp=store.extract(id,pages,'parte.pdf');try{return await store.materialize(temp);}finally{store.remove(temp);}};
    const write=async(part:number,bytes:Uint8Array)=>atomicWrite(await uniquePath(folder,`${stem} - parte ${part}.pdf`),bytes);
@@ -554,7 +566,7 @@ function registerIpc(){
    }finally{action(view,'progress:');}
   },
   getSignatures:()=>settings.signatures(),saveSignature:(_view,input)=>settings.saveSignature(input),deleteSignature:(_view,id)=>settings.deleteSignature(id),
-  chooseImage:async view=>{const result=await dialog.showOpenDialog(view.window,{title:'Escolher imagem',properties:['openFile'],filters:[{name:'Imagem',extensions:['png','jpg','jpeg']}]});if(result.canceled)return null;const path=result.filePaths[0]!;if((await stat(path)).size>20*1024*1024)throw new Error('Use uma imagem de até 20 MB.');return {name:basename(path),dataUrl:`data:image/${extname(path).toLowerCase()==='.png'?'png':'jpeg'};base64,${(await readFile(path)).toString('base64')}`};},
+  chooseImage:async view=>{const result=await openDialog(view.window,{title:'Escolher imagem',properties:['openFile'],filters:[{name:'Imagem',extensions:['png','jpg','jpeg']}]});if(result.canceled)return null;const path=result.filePaths[0]!;if((await stat(path)).size>20*1024*1024)throw new Error('Use uma imagem de até 20 MB.');return {name:basename(path),dataUrl:`data:image/${extname(path).toLowerCase()==='.png'?'png':'jpeg'};base64,${(await readFile(path)).toString('base64')}`};},
   setTheme:async(_view,theme)=>{await settings.setTheme(theme);nativeTheme.themeSource=theme;notify();},
   listAiModels:async(_view,input)=>{const {config,key}=await aiTarget(input);return listModels(config,key);},
   probeAiModel:async(_view,input)=>{const {config,key}=await aiTarget(input);if(typeof input?.model!=='string'||!input.model.trim())throw new Error('Informe o modelo.');return probeModel({...config,model:input.model.trim()},key);},
@@ -590,11 +602,12 @@ function registerIpc(){
    if(selected.some(i=>!Number.isInteger(i)||i<0||i>=count))throw new Error('Seleção de páginas inválida.');
    const source=await store.materialize(id,false);
    const {createWorker}=await import('tesseract.js');await mkdir(join(app.getPath('userData'),'ocr-cache'),{recursive:true});
-   const worker=await createWorker('por',1,{langPath:join(assets(),'tessdata'),gzip:false,cachePath:join(app.getPath('userData'),'ocr-cache'),logger:()=>{}});
+   const ocrLocale=languages().ocrLocale;
+   const worker=await createWorker(OCR_LANGUAGES[ocrLocale],1,{langPath:join(assets(),'tessdata'),gzip:false,cachePath:join(app.getPath('userData'),'ocr-cache'),logger:()=>{}});
    try{
     const layers=[];
     for(let n=0;n<selected.length;n++){
-     action(view,`progress:Reconhecendo português: página ${n+1} de ${selected.length}…`);
+     action(view,`progress:Reconhecendo ${({'pt-BR':'português',en:'inglês',es:'espanhol'})[ocrLocale]}: página ${n+1} de ${selected.length}…`);
      const page=selected[n]!,image=await renderPdfPage(source,page,200);
      const result=await worker.recognize(Buffer.from(image.bytes),{},{blocks:true,text:true});
      const words:any[]=[];
@@ -654,8 +667,8 @@ function registerIpc(){
  };
  const quickHandlers:Record<string,(quick:Quick,...args:any[])=>unknown>={
   getQuickState:quick=>quick.state,
-  quickAddFiles:async quick=>{const result=await dialog.showOpenDialog(quick.window,{title:'Adicionar arquivos',properties:['openFile','multiSelections'],filters:[{name:'Documentos e imagens',extensions:INPUT_EXTENSIONS.map(e=>e.slice(1))}]});if(!result.canceled)addQuickFiles(quick,result.filePaths);},
-  quickChooseFolder:async quick=>{const result=await dialog.showOpenDialog(quick.window,{title:'Pasta de destino',properties:['openDirectory','createDirectory']});return result.canceled?null:result.filePaths[0]??null;},
+  quickAddFiles:async quick=>{const result=await openDialog(quick.window,{title:'Adicionar arquivos',properties:['openFile','multiSelections'],filters:[{name:'Documentos e imagens',extensions:INPUT_EXTENSIONS.map(e=>e.slice(1))}]});if(!result.canceled)addQuickFiles(quick,result.filePaths);},
+  quickChooseFolder:async quick=>{const result=await openDialog(quick.window,{title:'Pasta de destino',properties:['openDirectory','createDirectory']});return result.canceled?null:result.filePaths[0]??null;},
   quickReveal:(_quick,path:string)=>{if(typeof path!=='string'||!existsSync(path))throw new Error('O arquivo não foi encontrado.');shell.showItemInFolder(path);},
   quickOpen:async(_quick,paths:string[])=>{const view=mainView();view.window.show();view.window.focus();await openPaths(view,paths);},
   quickRun:async(quick,input:{files:{path:string;range:string}[];name:string;folder:string|null})=>{
@@ -677,6 +690,7 @@ function registerIpc(){
    }finally{progress('');}
   },
  };
+ ipcMain.handle('gcp:getLanguage',event=>{trusted(event);if(!views.has(event.sender.id)&&!quicks.has(event.sender.id))throw new Error('Origem inválida.');return languages();});
  for(const [method,handler] of Object.entries(handlers))ipcMain.handle('gcp:'+method,async(event,...args)=>{trusted(event);const view=views.get(event.sender.id);if(!view)throw new Error('Origem de ação não autorizada.');try{return await handler(view,...args);}catch(error){notify();throw new Error(error instanceof Error?error.message:'Não foi possível concluir a operação.');}});
  for(const [method,handler] of Object.entries(quickHandlers))ipcMain.handle('gcp:'+method,async(event,...args)=>{trusted(event);const quick=quicks.get(event.sender.id);if(!quick){if(method==='getQuickState')return null;throw new Error('Origem de ação não autorizada.');}try{return await handler(quick,...args);}catch(error){throw new Error(error instanceof Error?error.message:'Não foi possível concluir a operação.');}});
 }

@@ -1,3 +1,4 @@
+import {t as translateUi} from "./i18n";
 import React, { useState } from "react";
 import {
   RotateCcw, RotateCw, Trash2, FilePlus2, FileInput, Replace, Scissors, Hash, FileOutput, Plus, X, LoaderCircle, Check, Minimize2, Save, CheckSquare, Square,
@@ -39,11 +40,11 @@ export function OrganizeView({ doc, selection, setSelection, actions, onContextM
   };
   const gap = (index: number) => (
     <div className={`organize-gap ${drop === index ? "active" : ""}`} onDragOver={(e) => { if (e.dataTransfer.types.includes(PAGE_MIME)) { e.preventDefault(); setDrop(index); } }} onDragLeave={() => setDrop(null)} onDrop={(e) => dropAt(e, index)}>
-      <button title="Inserir página aqui" onClick={() => setInsertAt(insertAt === index ? null : index)}><Plus size={13} /></button>
+      <button title={translateUi("Inserir página aqui")} onClick={() => setInsertAt(insertAt === index ? null : index)}><Plus size={13} /></button>
       {insertAt === index && (
         <div className="organize-insert-menu">
-          <button onClick={() => { actions.blank(index); setInsertAt(null); }}><FilePlus2 size={14} /> Página em branco</button>
-          <button onClick={() => { actions.insertFile(index); setInsertAt(null); }}><FileInput size={14} /> De um arquivo…</button>
+          <button onClick={() => { actions.blank(index); setInsertAt(null); }}><FilePlus2 size={14} />{" "}{translateUi("Página em branco")}</button>
+          <button onClick={() => { actions.insertFile(index); setInsertAt(null); }}><FileInput size={14} />{" "}{translateUi("De um arquivo…")}</button>
         </div>
       )}
     </div>
@@ -51,37 +52,37 @@ export function OrganizeView({ doc, selection, setSelection, actions, onContextM
   return (
     <div className="organize">
       <aside className="organize-tools">
-        <div className="section-label">Opções de página</div>
+        <div className="section-label">{translateUi("Opções de página")}</div>
         <div className="organize-quick">
-          <button title="Girar à esquerda" disabled={none} onClick={() => actions.rotate(-90, chosen)}><RotateCcw size={17} /></button>
-          <button title="Girar à direita" disabled={none} onClick={() => actions.rotate(90, chosen)}><RotateCw size={17} /></button>
-          <button title="Excluir" disabled={none || chosen.length === doc.pageCount} onClick={() => actions.remove(chosen)}><Trash2 size={17} /></button>
+          <button title={translateUi("Girar à esquerda")} disabled={none} onClick={() => actions.rotate(-90, chosen)}><RotateCcw size={17} /></button>
+          <button title={translateUi("Girar à direita")} disabled={none} onClick={() => actions.rotate(90, chosen)}><RotateCw size={17} /></button>
+          <button title={translateUi("Excluir")} disabled={none || chosen.length === doc.pageCount} onClick={() => actions.remove(chosen)}><Trash2 size={17} /></button>
         </div>
-        <button className="organize-tool" onClick={() => actions.blank(chosen.length ? chosen.at(-1)! + 1 : doc.pageCount)}><FilePlus2 size={16} /> Inserir página em branco</button>
-        <button className="organize-tool" onClick={() => actions.insertFile(chosen.length ? chosen.at(-1)! + 1 : doc.pageCount)}><FileInput size={16} /> Inserir de arquivo</button>
-        <button className="organize-tool" disabled={none} onClick={actions.replace}><Replace size={16} /> Substituir páginas</button>
+        <button className="organize-tool" onClick={() => actions.blank(chosen.length ? chosen.at(-1)! + 1 : doc.pageCount)}><FilePlus2 size={16} />{" "}{translateUi("Inserir página em branco")}</button>
+        <button className="organize-tool" onClick={() => actions.insertFile(chosen.length ? chosen.at(-1)! + 1 : doc.pageCount)}><FileInput size={16} />{" "}{translateUi("Inserir de arquivo")}</button>
+        <button className="organize-tool" disabled={none} onClick={actions.replace}><Replace size={16} />{" "}{translateUi("Substituir páginas")}</button>
         <div className="organize-tool-group">
-          <button className="organize-tool" disabled={none} onClick={() => setExtractOpen(!extractOpen)}><FileOutput size={16} /> Extrair páginas</button>
+          <button className="organize-tool" disabled={none} onClick={() => setExtractOpen(!extractOpen)}><FileOutput size={16} />{" "}{translateUi("Extrair páginas")}</button>
           {extractOpen && !none && (
             <div className="organize-submenu">
-              <button onClick={() => { actions.extract("tab"); setExtractOpen(false); }}>Abrir em nova aba</button>
-              <button onClick={() => { actions.extract("file"); setExtractOpen(false); }}>Salvar em um único PDF…</button>
-              <button onClick={() => { actions.extract("files"); setExtractOpen(false); }}>Um PDF por página…</button>
+              <button onClick={() => { actions.extract("tab"); setExtractOpen(false); }}>{translateUi("Abrir em nova aba")}</button>
+              <button onClick={() => { actions.extract("file"); setExtractOpen(false); }}>{translateUi("Salvar em um único PDF…")}</button>
+              <button onClick={() => { actions.extract("files"); setExtractOpen(false); }}>{translateUi("Um PDF por página…")}</button>
             </div>
           )}
         </div>
-        <button className="organize-tool" onClick={actions.split}><Scissors size={16} /> Dividir documento</button>
-        <button className="organize-tool" onClick={actions.numbering}><Hash size={16} /> Numerar páginas</button>
-        <button className="organize-tool" onClick={actions.compress}><Minimize2 size={16} /> Comprimir PDF</button>
-        <p className="organize-help">Clique para selecionar, Ctrl para várias, Shift para um intervalo. Arraste as páginas para reordenar ou para outra janela.</p>
+        <button className="organize-tool" onClick={actions.split}><Scissors size={16} />{" "}{translateUi("Dividir documento")}</button>
+        <button className="organize-tool" onClick={actions.numbering}><Hash size={16} />{" "}{translateUi("Numerar páginas")}</button>
+        <button className="organize-tool" onClick={actions.compress}><Minimize2 size={16} />{" "}{translateUi("Comprimir PDF")}</button>
+        <p className="organize-help">{translateUi("Clique para selecionar, Ctrl para várias, Shift para um intervalo. Arraste as páginas para reordenar ou para outra janela.")}</p>
       </aside>
       <section className="organize-main">
         <div className="organize-bar">
-          <strong>Organizar páginas</strong>
-          <span>{doc.pageCount} página{doc.pageCount > 1 ? "s" : ""}{chosen.length ? ` · ${chosen.length} selecionada${chosen.length > 1 ? "s" : ""}` : ""}</span>
-          <button className="text-button" onClick={() => setSelection(chosen.length === doc.pageCount ? new Set() : new Set(doc.pages.map((_, i) => i)))}>{chosen.length === doc.pageCount ? <><Square size={14} /> Limpar seleção</> : <><CheckSquare size={14} /> Selecionar todas</>}</button>
-          <label className="slider-row">Tamanho<input type="range" min={110} max={300} value={size} onChange={(e) => setSize(Number(e.target.value))} /></label>
-          <button className="button secondary" onClick={actions.close}><X size={15} /> Fechar</button>
+          <strong>{translateUi("Organizar páginas")}</strong>
+          <span>{doc.pageCount}{" "}{translateUi("página")}{doc.pageCount > 1 ? translateUi("s") : ""}{chosen.length ? ` · ${chosen.length} selecionada${chosen.length > 1 ? "s" : ""}` : ""}</span>
+          <button className="text-button" onClick={() => setSelection(chosen.length === doc.pageCount ? new Set() : new Set(doc.pages.map((_, i) => i)))}>{chosen.length === doc.pageCount ? <><Square size={14} />{" "}{translateUi("Limpar seleção")}</> : <><CheckSquare size={14} />{" "}{translateUi("Selecionar todas")}</>}</button>
+          <label className="slider-row">{translateUi("Tamanho")}<input type="range" min={110} max={300} value={size} onChange={(e) => setSize(Number(e.target.value))} /></label>
+          <button className="button secondary" onClick={actions.close}><X size={15} />{" "}{translateUi("Fechar")}</button>
         </div>
         <div className="organize-grid" style={{ ["--card" as string]: `${size + 28}px` }}>
           {doc.pages.map((ref, index) => (
@@ -101,9 +102,9 @@ export function OrganizeView({ doc, selection, setSelection, actions, onContextM
                 <div className="organize-thumb"><PageThumb pageRef={ref} width={size} /></div>
                 <span className="organize-number">{index + 1}</span>
                 <div className="organize-card-actions" onClick={(e) => e.stopPropagation()}>
-                  <button title="Girar à esquerda" onClick={() => actions.rotate(-90, [index])}><RotateCcw size={14} /></button>
-                  <button title="Girar à direita" onClick={() => actions.rotate(90, [index])}><RotateCw size={14} /></button>
-                  <button title="Excluir página" disabled={doc.pageCount < 2} onClick={() => actions.remove([index])}><Trash2 size={14} /></button>
+                  <button title={translateUi("Girar à esquerda")} onClick={() => actions.rotate(-90, [index])}><RotateCcw size={14} /></button>
+                  <button title={translateUi("Girar à direita")} onClick={() => actions.rotate(90, [index])}><RotateCw size={14} /></button>
+                  <button title={translateUi("Excluir página")} disabled={doc.pageCount < 2} onClick={() => actions.remove([index])}><Trash2 size={14} /></button>
                 </div>
               </div>
             </React.Fragment>
@@ -146,35 +147,35 @@ export function NumberingDialog({ doc, selection, onClose, onApply }: { doc: Doc
     } finally { setBusy(false); }
   }
   return (
-    <Modal title="Numerar páginas" description="Os números entram como texto editável: você pode movê-los ou excluí-los depois." onClose={onClose} wide>
+    <Modal title={translateUi("Numerar páginas")} description={translateUi("Os números entram como texto editável: você pode movê-los ou excluí-los depois.")} onClose={onClose} wide>
       <div className="numbering">
         <div className="numbering-spots">
-          {(["tl", "tc", "tr", "bl", "bc", "br"] as Spot[]).map((s) => <button key={s} className={`spot ${s} ${spot === s ? "active" : ""}`} onClick={() => setSpot(s)} title="Posição">{spot === s && <span>{preview}</span>}</button>)}
+          {(["tl", "tc", "tr", "bl", "bc", "br"] as Spot[]).map((s) => <button key={s} className={`spot ${s} ${spot === s ? "active" : ""}`} onClick={() => setSpot(s)} title={translateUi("Posição")}>{spot === s && <span>{preview}</span>}</button>)}
         </div>
         <div className="numbering-form">
-          <label className="field">Formato<select value={format} onChange={(e) => setFormat(e.target.value)}>{FORMATS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}</select></label>
+          <label className="field">{translateUi("Formato")}<select value={format} onChange={(e) => setFormat(e.target.value)}>{FORMATS.map((f) => <option key={f.id} value={f.id}>{translateUi(f.label)}</option>)}</select></label>
           {format === "bates" && (
             <div className="field-row">
-              <label className="field">Prefixo<input value={prefix} onChange={(e) => setPrefix(e.target.value.slice(0, 30))} /></label>
-              <label className="field">Dígitos<input type="number" min={1} max={12} value={digits} onChange={(e) => setDigits(Math.max(1, Math.min(12, Number(e.target.value) || 6)))} /></label>
+              <label className="field">{translateUi("Prefixo")}<input value={prefix} onChange={(e) => setPrefix(e.target.value.slice(0, 30))} /></label>
+              <label className="field">{translateUi("Dígitos")}<input type="number" min={1} max={12} value={digits} onChange={(e) => setDigits(Math.max(1, Math.min(12, Number(e.target.value) || 6)))} /></label>
             </div>
           )}
           <div className="field-row">
-            <label className="field">Começar em<input type="number" min={0} value={start} onChange={(e) => setStart(Math.max(0, Number(e.target.value) || 0))} /></label>
-            <label className="field">Tamanho (pt)<input type="number" min={6} max={48} value={size} onChange={(e) => setSize(Math.max(6, Math.min(48, Number(e.target.value) || 10)))} /></label>
-            <label className="field">Margem (pt)<input type="number" min={6} max={120} value={margin} onChange={(e) => setMargin(Math.max(6, Math.min(120, Number(e.target.value) || 28)))} /></label>
-            <label className="field">Cor<input type="color" value={color} onChange={(e) => setColor(e.target.value)} /></label>
+            <label className="field">{translateUi("Começar em")}<input type="number" min={0} value={start} onChange={(e) => setStart(Math.max(0, Number(e.target.value) || 0))} /></label>
+            <label className="field">{translateUi("Tamanho (pt)")}<input type="number" min={6} max={48} value={size} onChange={(e) => setSize(Math.max(6, Math.min(48, Number(e.target.value) || 10)))} /></label>
+            <label className="field">{translateUi("Margem (pt)")}<input type="number" min={6} max={120} value={margin} onChange={(e) => setMargin(Math.max(6, Math.min(120, Number(e.target.value) || 28)))} /></label>
+            <label className="field">{translateUi("Cor")}<input type="color" value={color} onChange={(e) => setColor(e.target.value)} /></label>
           </div>
           <div className="field-row">
-            <label className="radio-inline"><input type="radio" checked={scope === "all"} onChange={() => setScope("all")} /> Todas as páginas</label>
-            <label className="radio-inline"><input type="radio" checked={scope === "selected"} disabled={!selection.length} onChange={() => setScope("selected")} /> Páginas selecionadas ({selection.length})</label>
+            <label className="radio-inline"><input type="radio" checked={scope === "all"} onChange={() => setScope("all")} />{" "}{translateUi("Todas as páginas")}</label>
+            <label className="radio-inline"><input type="radio" checked={scope === "selected"} disabled={!selection.length} onChange={() => setScope("selected")} />{" "}{translateUi("Páginas selecionadas (")}{selection.length})</label>
           </div>
-          <div className="numbering-preview">Exemplo: <strong>{preview}</strong></div>
+          <div className="numbering-preview">{translateUi("Exemplo:")}{" "}<strong>{preview}</strong></div>
         </div>
       </div>
       <div className="modal-footer">
-        <button className="button secondary" onClick={onClose}>Cancelar</button>
-        <button className="button primary" disabled={busy} onClick={() => void apply()}>{busy ? <LoaderCircle size={15} className="spin" /> : <Hash size={15} />} Numerar {pages.length} página{pages.length > 1 ? "s" : ""}</button>
+        <button className="button secondary" onClick={onClose}>{translateUi("Cancelar")}</button>
+        <button className="button primary" disabled={busy} onClick={() => void apply()}>{busy ? <LoaderCircle size={15} className="spin" /> : <Hash size={15} />}{" "}{translateUi("Numerar")}{" "}{pages.length}{" "}{translateUi("página")}{pages.length > 1 ? translateUi("s") : ""}</button>
       </div>
     </Modal>
   );
@@ -205,9 +206,9 @@ export function CompressDialog({ doc, onClose, onDone, onError }: { doc: Documen
       else if (path) { onDone("Cópia comprimida salva."); onClose(); }
     } catch (error) { onError(error); } finally { setBusy(""); }
   }
-  const toggle = (name: keyof typeof extras, label: string) => <label className="check-row"><input type="checkbox" checked={extras[name]} onChange={(e) => setExtras((x) => ({ ...x, [name]: e.target.checked }))} /> {label}</label>;
+  const toggle = (name: keyof typeof extras, label: string) => <label className="check-row"><input type="checkbox" checked={extras[name]} onChange={(e) => setExtras((x) => ({ ...x, [name]: e.target.checked }))} /> {translateUi(label)}</label>;
   return (
-    <Modal title="Comprimir PDF" description={doc.name} onClose={onClose} wide>
+    <Modal title={translateUi("Comprimir PDF")} description={doc.name} onClose={onClose} wide>
       <div className="compress">
         <div className="compress-levels">
           {LEVELS.map((item) => {
@@ -217,7 +218,7 @@ export function CompressDialog({ doc, onClose, onDone, onError }: { doc: Documen
                 <span className={`compress-gauge g-${item.id}`} />
                 <span className="compress-text"><strong>{item.title}</strong><small>{item.detail}</small></span>
                 <span className="compress-size" onClick={(e) => { e.stopPropagation(); if (!result) void measure(item.id); }}>
-                  {result === "busy" ? <LoaderCircle size={14} className="spin" /> : result ? <><b>{megabytes(result.size)}</b><em>{result.size >= result.original ? "já otimizado" : result.size > result.original * 0.99 ? "menos de 1% menor" : `${Math.round((1 - result.size / result.original) * 100)}% menor`}</em></> : <u>Calcular tamanho</u>}
+                  {result === "busy" ? <LoaderCircle size={14} className="spin" /> : result ? <><b>{megabytes(result.size)}</b><em>{result.size >= result.original ? translateUi("já otimizado") : result.size > result.original * 0.99 ? translateUi("menos de 1% menor") : `${Math.round((1 - result.size / result.original) * 100)}% menor`}</em></> : <u>{translateUi("Calcular tamanho")}</u>}
                 </span>
                 {level === item.id && <Check size={15} className="compress-check" />}
               </button>
@@ -225,18 +226,18 @@ export function CompressDialog({ doc, onClose, onDone, onError }: { doc: Documen
           })}
         </div>
         <div className="compress-extras">
-          <div className="section-label">Remover também</div>
+          <div className="section-label">{translateUi("Remover também")}</div>
           {toggle("metadata", "Informações e metadados do documento")}
           {toggle("bookmarks", "Marcadores (índice lateral)")}
           {toggle("attachments", "Anexos de arquivos")}
           {toggle("comments", "Comentários e campos de formulário")}
-          <p className="compress-note">Sempre aplicado: fontes e imagens duplicadas unificadas, objetos sem uso removidos, miniaturas internas descartadas e estruturas compactadas.</p>
+          <p className="compress-note">{translateUi("Sempre aplicado: fontes e imagens duplicadas unificadas, objetos sem uso removidos, miniaturas internas descartadas e estruturas compactadas.")}</p>
         </div>
       </div>
       <div className="modal-footer">
         <span className="compress-busy">{busy && <><LoaderCircle size={14} className="spin" /> {busy}</>}</span>
-        <button className="button secondary" disabled={!!busy} onClick={() => void run("save")}><Save size={15} /> Salvar cópia comprimida…</button>
-        <button className="button primary" disabled={!!busy} onClick={() => void run("apply")}><Minimize2 size={15} /> Comprimir este documento</button>
+        <button className="button secondary" disabled={!!busy} onClick={() => void run("save")}><Save size={15} />{" "}{translateUi("Salvar cópia comprimida…")}</button>
+        <button className="button primary" disabled={!!busy} onClick={() => void run("apply")}><Minimize2 size={15} />{" "}{translateUi("Comprimir este documento")}</button>
       </div>
     </Modal>
   );

@@ -1,3 +1,4 @@
+import {t as translateUi} from "./i18n";
 import React, { useEffect, useRef, useState } from "react";
 import { UpdateSettings } from "./Updates";
 import {
@@ -21,6 +22,7 @@ import {
   FolderCog,
   ScanText,
 } from "lucide-react";
+import {LanguageOptions} from "./LanguageOptions";
 import QRCode from "qrcode";
 import {
   HOME_ACTIONS,
@@ -98,18 +100,18 @@ export function Modal({
         className={`modal ${wide ? "modal-wide" : ""}`}
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-label={translateUi(title)}
       >
         <div className="modal-heading">
           <div>
-            <h2>{title}</h2>
-            {description && <p>{description}</p>}
+            <h2>{translateUi(title)}</h2>
+            {description && <p>{translateUi(description)}</p>}
           </div>
           <button
             className="icon-button"
             onClick={onClose}
-            title="Fechar"
-            aria-label="Fechar janela"
+            title={translateUi("Fechar")}
+            aria-label={translateUi("Fechar janela")}
           >
             <X size={19} />
           </button>
@@ -164,7 +166,7 @@ export function ExportDialog({
     },
   ];
   return (
-    <Modal title="Exportar documento" description={name} onClose={onClose} wide>
+    <Modal title={translateUi("Exportar documento")} description={name} onClose={onClose} wide>
       <div className="format-grid">
         {formats.map((f) => (
           <button
@@ -173,7 +175,7 @@ export function ExportDialog({
             onClick={() => setFormat(f.id)}
           >
             {f.icon}
-            <strong>{f.title}</strong>
+            <strong>{translateUi(f.title)}</strong>
             <span>{f.extension}</span>
             {format === f.id && <Check className="format-check" size={15} />}
           </button>
@@ -181,7 +183,7 @@ export function ExportDialog({
       </div>
       {["docx", "pptx"].includes(format) && (
         <section className="form-section">
-          <h3>Como deseja preservar o documento?</h3>
+          <h3>{translateUi("Como deseja preservar o documento?")}</h3>
           <label className="radio-card">
             <input
               type="radio"
@@ -191,13 +193,13 @@ export function ExportDialog({
             <span>
               <strong>
                 {format === "docx"
-                  ? "Layout preservado e editável"
-                  : "Conteúdo editável"}
+                  ? translateUi("Layout preservado e editável")
+                  : translateUi("Conteúdo editável")}
               </strong>
               <small>
                 {format === "docx"
-                  ? "Mantém fundos, tabelas, ícones e imagens exatamente como no PDF; os textos ficam editáveis, com as fontes, cores e tamanhos originais."
-                  : "Reconstrói textos, posições e elementos compatíveis. Revise documentos complexos após converter."}
+                  ? translateUi("Mantém fundos, tabelas, ícones e imagens exatamente como no PDF; os textos ficam editáveis, com as fontes, cores e tamanhos originais.")
+                  : translateUi("Reconstrói textos, posições e elementos compatíveis. Revise documentos complexos após converter.")}
               </small>
             </span>
           </label>
@@ -208,54 +210,36 @@ export function ExportDialog({
               onChange={() => setMode("fidelity")}
             />
             <span>
-              <strong>Aparência original</strong>
-              <small>
-                Cada página vira uma imagem de alta resolução. Preserva o
-                visual, mas o texto não será editável.
-              </small>
+              <strong>{translateUi("Aparência original")}</strong>
+              <small>{" "}{translateUi("Cada página vira uma imagem de alta resolução. Preserva o visual, mas o texto não será editável.")}{" "}</small>
             </span>
           </label>
         </section>
       )}
       {(format === "image-pdf" || format === "png" || mode === "fidelity") && (
-        <label className="field">
-          Resolução
-          <select value={dpi} onChange={(e) => setDpi(Number(e.target.value))}>
-            <option value={150}>150 dpi — arquivo menor</option>
-            <option value={300}>300 dpi — alta qualidade</option>
+        <label className="field">{" "}{translateUi("Resolução")}{" "}<select value={dpi} onChange={(e) => setDpi(Number(e.target.value))}>
+            <option value={150}>{translateUi("150 dpi — arquivo menor")}</option>
+            <option value={300}>{translateUi("300 dpi — alta qualidade")}</option>
           </select>
         </label>
       )}
-      <p className="muted" style={{ fontSize: 11 }}>
-        Para converter um XML fiscal em PDF, use a aba Converter → XML fiscal
-        para PDF. O arquivo XML original é mantido.
-      </p>
+      <p className="muted" style={{ fontSize: 11 }}>{" "}{translateUi("Para converter um XML fiscal em PDF, use a aba Converter → XML fiscal para PDF. O arquivo XML original é mantido.")}{" "}</p>
       {format === "image-pdf" && (
         <div className="info-note">
           <ShieldCheck size={20} />
-          <p>
-            O PDF exportado conterá imagens das páginas, sem texto selecionável.
-            Isso não impede OCR ou alterações com outros programas.
-          </p>
+          <p>{" "}{translateUi("O PDF exportado conterá imagens das páginas, sem texto selecionável. Isso não impede OCR ou alterações com outros programas.")}{" "}</p>
         </div>
       )}
       {format === "xlsx" && (
         <div className="info-note">
           <Table2 size={20} />
-          <p>
-            A conversão identifica linhas e colunas do texto. Documentos
-            digitalizados precisam de OCR antes da exportação. Revise fórmulas e
-            a organização final.
-          </p>
+          <p>{" "}{translateUi("A conversão identifica linhas e colunas do texto. Documentos digitalizados precisam de OCR antes da exportação. Revise fórmulas e a organização final.")}{" "}</p>
         </div>
       )}
       {format === "png" && (
         <div className="info-note">
           <ImageIcon size={20} />
-          <p>
-            Esta opção exporta a primeira página. Para todas as páginas, use PDF
-            de imagens.
-          </p>
+          <p>{" "}{translateUi("Esta opção exporta a primeira página. Para todas as páginas, use PDF de imagens.")}{" "}</p>
         </div>
       )}
       {error && (
@@ -265,15 +249,12 @@ export function ExportDialog({
       )}
       <div className="modal-footer">
         <span className="privacy-caption">
-          <ShieldCheck size={14} /> Conversão local, sem enviar arquivos
-        </span>
+          <ShieldCheck size={14} />{" "}{translateUi("Conversão local, sem enviar arquivos")}{" "}</span>
         <button
           className="button secondary"
           onClick={onClose}
           disabled={pending}
-        >
-          Cancelar
-        </button>
+        >{" "}{translateUi("Cancelar")}{" "}</button>
         <button
           className="button primary"
           disabled={pending}
@@ -294,7 +275,7 @@ export function ExportDialog({
           ) : (
             <ArrowUpRight size={17} />
           )}{" "}
-          {pending ? "Convertendo…" : "Exportar arquivo"}
+          {pending ? translateUi("Convertendo…") : translateUi("Exportar arquivo")}
         </button>
       </div>
     </Modal>
@@ -328,7 +309,7 @@ function SignatureCanvas({
       width={900}
       height={300}
       className="signature-draw"
-      aria-label="Área para desenhar sua assinatura"
+      aria-label={translateUi("Área para desenhar sua assinatura")}
       onPointerDown={(e) => {
         active.current = true;
         last.current = point(e);
@@ -374,16 +355,14 @@ export function SignatureDialog({
     [error, setError] = useState("");
   return (
     <Modal
-      title="Nova assinatura"
-      description="Salve com um nome e reutilize em qualquer documento."
+      title={translateUi("Nova assinatura")}
+      description={translateUi("Salve com um nome e reutilize em qualquer documento.")}
       onClose={onClose}
     >
-      <label className="field">
-        Nome da assinatura
-        <input
+      <label className="field">{" "}{translateUi("Nome da assinatura")}{" "}<input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Ex.: Bruno — assinatura completa"
+          placeholder={translateUi("Ex.: Bruno — assinatura completa")}
           maxLength={100}
         />
       </label>
@@ -395,8 +374,7 @@ export function SignatureDialog({
             setData("");
           }}
         >
-          <PenLine size={16} /> Desenhar
-        </button>
+          <PenLine size={16} />{" "}{translateUi("Desenhar")}{" "}</button>
         <button
           className={method === "image" ? "selected" : ""}
           onClick={() => {
@@ -404,8 +382,7 @@ export function SignatureDialog({
             setData("");
           }}
         >
-          <Upload size={16} /> Enviar imagem
-        </button>
+          <Upload size={16} />{" "}{translateUi("Enviar imagem")}{" "}</button>
       </div>
       {method === "draw" ? (
         <>
@@ -414,8 +391,7 @@ export function SignatureDialog({
             className="text-button"
             onClick={() => setClear((x) => x + 1)}
           >
-            <RotateCcw size={14} /> Limpar desenho
-          </button>
+            <RotateCcw size={14} />{" "}{translateUi("Limpar desenho")}{" "}</button>
         </>
       ) : (
         <div className="signature-upload">
@@ -438,19 +414,15 @@ export function SignatureDialog({
               }
             }}
           >
-            {data ? "Trocar imagem" : "Escolher imagem PNG ou JPEG"}
+            {data ? translateUi("Trocar imagem") : translateUi("Escolher imagem PNG ou JPEG")}
           </button>
-          <p>Use uma imagem com fundo transparente para melhor resultado.</p>
+          <p>{translateUi("Use uma imagem com fundo transparente para melhor resultado.")}</p>
         </div>
       )}
       {error && <p className="inline-error">{error}</p>}
       <div className="modal-footer">
-        <span className="privacy-caption">
-          A assinatura fica neste computador.
-        </span>
-        <button className="button secondary" onClick={onClose}>
-          Cancelar
-        </button>
+        <span className="privacy-caption">{" "}{translateUi("A assinatura fica neste computador.")}{" "}</span>
+        <button className="button secondary" onClick={onClose}>{" "}{translateUi("Cancelar")}{" "}</button>
         <button
           className="button primary"
           disabled={!name.trim() || !data || busy}
@@ -475,9 +447,7 @@ export function SignatureDialog({
             <LoaderCircle size={16} className="spin" />
           ) : (
             <Check size={16} />
-          )}{" "}
-          Salvar assinatura
-        </button>
+          )}{" "}{" "}{translateUi("Salvar assinatura")}{" "}</button>
       </div>
     </Modal>
   );
@@ -524,8 +494,8 @@ export function SettingsDialog({
     config && setConfig({ ...config, [name]: value });
   return (
     <Modal
-      title="Configurações"
-      description="Seu espaço de trabalho, do seu jeito."
+      title={translateUi("Configurações")}
+      description={translateUi("Seu espaço de trabalho, do seu jeito.")}
       onClose={onClose}
       wide
     >
@@ -534,28 +504,25 @@ export function SettingsDialog({
           className={tab === "general" ? "active" : ""}
           onClick={() => setTab("general")}
         >
-          <FolderCog size={17} /> Aplicativo
-        </button>
+          <FolderCog size={17} />{" "}{translateUi("Aplicativo")}{" "}</button>
         <button
           className={tab === "ai" ? "active" : ""}
           onClick={() => setTab("ai")}
         >
-          <KeyRound size={17} /> Inteligência artificial
-        </button>
+          <KeyRound size={17} />{" "}{translateUi("Inteligência artificial")}{" "}</button>
         <button
           className={tab === "shortcuts" ? "active" : ""}
           onClick={() => setTab("shortcuts")}
-        >
-          Atalhos e Início
-        </button>
+        >{" "}{translateUi("Atalhos e Início")}{" "}</button>
       </div>
       {tab === "shortcuts" ? (
         <ShortcutPreferences />
       ) : tab === "general" ? (
         <>
-          <UpdateSettings onFound={(info) => { onUpdateFound?.(info); }} />
+          <LanguageOptions />
+            <UpdateSettings onFound={(info) => { onUpdateFound?.(info); }} />
           <section className="form-section">
-            <h3>Aparência</h3>
+            <h3>{translateUi("Aparência")}</h3>
             <div className="theme-options">
               <button
                 className={theme === "light" ? "selected" : ""}
@@ -565,9 +532,7 @@ export function SettingsDialog({
                   <i />
                   <i />
                   <i />
-                </div>
-                Tema claro
-              </button>
+                </div>{" "}{translateUi("Tema claro")}{" "}</button>
               <button
                 className={theme === "dark" ? "selected" : ""}
                 onClick={() => onTheme("dark")}
@@ -576,14 +541,12 @@ export function SettingsDialog({
                   <i />
                   <i />
                   <i />
-                </div>
-                Tema escuro
-              </button>
+                </div>{" "}{translateUi("Tema escuro")}{" "}</button>
             </div>
           </section>
           {onLabels && (
             <section className="form-section">
-              <h3>Rótulos da barra de ferramentas</h3>
+              <h3>{translateUi("Rótulos da barra de ferramentas")}</h3>
               <div className="segmented">
                 {(
                   [
@@ -597,20 +560,15 @@ export function SettingsDialog({
                     className={labels === value ? "selected" : ""}
                     onClick={() => onLabels(value)}
                   >
-                    {label}
+                    {translateUi(label)}
                   </button>
                 ))}
               </div>
             </section>
           )}
           <section className="form-section">
-            <h3>Ações rápidas nos arquivos</h3>
-            <p className="muted">
-              “Converter para PDF” e “Combinar em um PDF” (PDF, imagens, Word,
-              Excel, PowerPoint…) no menu de contexto. Windows 11: “Mostrar mais opções”.
-              Linux: menu GCP-PDF ou “Scripts › GCP-PDF”, conforme o gerenciador de arquivos.
-              macOS: Finder › Ações Rápidas ou Serviços. Pode ser necessário reabrir o gerenciador de arquivos.
-            </p>
+            <h3>{translateUi("Ações rápidas nos arquivos")}</h3>
+            <p className="muted">{" "}{translateUi("“Converter para PDF” e “Combinar em um PDF” (PDF, imagens, Word, Excel, PowerPoint…) no menu de contexto. Windows 11: “Mostrar mais opções”. Linux: menu GCP-PDF ou “Scripts › GCP-PDF”, conforme o gerenciador de arquivos. macOS: Finder › Ações Rápidas ou Serviços. Pode ser necessário reabrir o gerenciador de arquivos.")}{" "}</p>
             <label className="switch-row">
               <input
                 type="checkbox"
@@ -635,25 +593,20 @@ export function SettingsDialog({
               />
               <span style={{ fontSize: 12, lineHeight: 1.45, fontWeight: 400 }}>
                 {quickActions
-                  ? "Ativadas — instaladas automaticamente ao abrir o GCP-PDF"
-                  : "Desativadas"}
+                  ? translateUi("Ativadas — instaladas automaticamente ao abrir o GCP-PDF")
+                  : translateUi("Desativadas")}
               </span>
             </label>
           </section>
           <div className="info-note">
             <ShieldCheck size={21} />
-            <p>
-              Seus PDFs, assinaturas e configurações ficam neste computador. Não
-              há cadastro, sincronização ou envio automático de documentos.
-            </p>
+            <p>{" "}{translateUi("Seus PDFs, assinaturas e configurações ficam neste computador. Não há cadastro, sincronização ou envio automático de documentos.")}{" "}</p>
           </div>
         </>
       ) : config ? (
         <>
           <GoogleApiHelp />
-          <label className="field">
-            Provedor
-            <select
+          <label className="field">{" "}{translateUi("Provedor")}{" "}<select
               value={config.provider}
               onChange={(e) => {
                 setConfig({
@@ -671,72 +624,62 @@ export function SettingsDialog({
                 setKey("");
               }}
             >
-              <option value="gemini">Google AI Studio / Gemini</option>
-              <option value="openai">OpenAI</option>
-              <option value="compatible">API compatível com OpenAI</option>
+              <option value="gemini">{translateUi("Google AI Studio / Gemini")}</option>
+              <option value="openai">{translateUi("OpenAI")}</option>
+              <option value="compatible">{translateUi("API compatível com OpenAI")}</option>
             </select>
           </label>
-          <label className="field">
-            Modelo
-            <input
+          <label className="field">{" "}{translateUi("Modelo")}{" "}<input
               value={config.model}
               list="gcp-ai-models"
               onChange={(e) => field("model", e.target.value)}
-              placeholder="Nome do modelo disponível na sua conta"
+              placeholder={translateUi("Nome do modelo disponível na sua conta")}
             />
             <datalist id="gcp-ai-models">{models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}</datalist>
-            <small>{models.length ? `${models.length} modelos disponíveis para a sua chave — escolha na lista ou digite.` : "Use “Ver modelos” para listar os que a sua chave pode usar."}</small>
+            <small>{models.length ? `${models.length} modelos disponíveis para a sua chave — escolha na lista ou digite.` : translateUi("Use “Ver modelos” para listar os que a sua chave pode usar.")}</small>
           </label>
           <div className="button-row ai-model-tools">
-            <button className="button secondary" disabled={busy} onClick={() => void aiTool(async (input) => { const list = await window.gcp.listAiModels(input); setModels(list); setMessage(list.length ? `${list.length} modelos encontrados. Escolha um na lista do campo Modelo.` : "A chave não tem modelos de texto disponíveis."); })}>Ver modelos</button>
-            <button className="button secondary" disabled={busy || !config.model.trim()} onClick={() => void aiTool(async (input) => { const r = await window.gcp.probeAiModel({ ...input, model: config.model }); if (r.ok) setMessage(`O modelo ${config.model} respondeu: está funcionando com a sua chave.`); else setError(r.message ?? "O modelo não respondeu."); })}>Testar modelo</button>
-            <button className="button primary" disabled={busy} title="Chave com faturamento: escolhe o modelo mais completo. Chave gratuita: testa do mais leve ao mais completo e escolhe o primeiro que responder" onClick={() => void aiTool(async (input) => {
+            <button className="button secondary" disabled={busy} onClick={() => void aiTool(async (input) => { const list = await window.gcp.listAiModels(input); setModels(list); setMessage(list.length ? `${list.length} modelos encontrados. Escolha um na lista do campo Modelo.` : "A chave não tem modelos de texto disponíveis."); })}>{translateUi("Ver modelos")}</button>
+            <button className="button secondary" disabled={busy || !config.model.trim()} onClick={() => void aiTool(async (input) => { const r = await window.gcp.probeAiModel({ ...input, model: config.model }); if (r.ok) setMessage(`O modelo ${config.model} respondeu: está funcionando com a sua chave.`); else setError(r.message ?? "O modelo não respondeu."); })}>{translateUi("Testar modelo")}</button>
+            <button className="button primary" disabled={busy} title={translateUi("Chave com faturamento: escolhe o modelo mais completo. Chave gratuita: testa do mais leve ao mais completo e escolhe o primeiro que responder")} onClick={() => void aiTool(async (input) => {
               const r = await window.gcp.findFreeAiModel(input);
               if (r.model) { const saved = await window.gcp.saveAiConfig({ ...config, model: r.model, key: key || undefined }); setConfig(saved); setKey(""); setMessage(r.paid ? `Sua chave tem faturamento ativo: escolhemos o modelo mais completo, ${r.model}, e ele já foi salvo.` : `Pronto: o modelo ${r.model} funciona com a sua chave gratuita e já foi salvo.`); }
               else setError(`Nenhum modelo respondeu com esta chave agora. ${r.tried[0]?.message ?? ""} Se a cota diária gratuita acabou, tente amanhã; ou ative o faturamento no Google AI Studio.`);
-            })}>Encontrar melhor modelo</button>
+            })}>{translateUi("Encontrar melhor modelo")}</button>
           </div>
-          <label className="field">
-            Chave de API
-            <input
+          <label className="field">{" "}{translateUi("Chave de API")}{" "}<input
               type="password"
               autoComplete="off"
               value={key}
               onChange={(e) => setKey(e.target.value)}
               placeholder={
                 config.hasKey
-                  ? "Chave salva — preencha apenas para substituir"
-                  : "Cole sua chave de API"
+                  ? translateUi("Chave salva — preencha apenas para substituir")
+                  : translateUi("Cole sua chave de API")
               }
             />
             <small>
               {config.hasKey
-                ? "Uma chave está configurada. Ela não é exibida aqui."
-                : "A chave é armazenada com proteção do sistema operacional quando disponível."}
+                ? translateUi("Uma chave está configurada. Ela não é exibida aqui.")
+                : translateUi("A chave é armazenada com proteção do sistema operacional quando disponível.")}
             </small>
           </label>
-          <label className="field">
-            Endereço da API
-            <input
+          <label className="field">{" "}{translateUi("Endereço da API")}{" "}<input
               value={config.baseUrl}
               onChange={(e) => field("baseUrl", e.target.value)}
               placeholder={
                 config.provider === "gemini"
-                  ? "https://generativelanguage.googleapis.com"
+                  ? translateUi("https://generativelanguage.googleapis.com")
                   : config.provider === "openai"
-                    ? "https://api.openai.com/v1"
-                    : "https://servidor.exemplo/v1"
+                    ? translateUi("https://api.openai.com/v1")
+                    : translateUi("https://servidor.exemplo/v1")
               }
             />
-            <small>Use o endereço correspondente ao provedor escolhido.</small>
+            <small>{translateUi("Use o endereço correspondente ao provedor escolhido.")}</small>
           </label>
           <div className="info-note">
             <ShieldCheck size={20} />
-            <p>
-              Somente ao clicar em “Enviar pergunta” o texto do documento será
-              enviado ao provedor configurado. A cobrança e os limites seguem
-              sua conta de API.
-            </p>
+            <p>{" "}{translateUi("Somente ao clicar em “Enviar pergunta” o texto do documento será enviado ao provedor configurado. A cobrança e os limites seguem sua conta de API.")}{" "}</p>
           </div>
           <div className="button-row">
             <button
@@ -764,15 +707,12 @@ export function SettingsDialog({
                 <LoaderCircle className="spin" size={16} />
               ) : (
                 <Check size={16} />
-              )}{" "}
-              Salvar configuração
-            </button>
+              )}{" "}{" "}{translateUi("Salvar configuração")}{" "}</button>
           </div>
         </>
       ) : (
         <div className="dialog-loading">
-          <LoaderCircle className="spin" /> Carregando configurações…
-        </div>
+          <LoaderCircle className="spin" />{" "}{translateUi("Carregando configurações…")}{" "}</div>
       )}
       {message && (
         <p className="inline-success" role="status">
@@ -799,8 +739,8 @@ export function SupportDialog({ onClose }: { onClose: () => void }) {
   }, []);
   return (
     <Modal
-      title="Apoie o projeto"
-      description="Sua contribuição ajuda a manter o GCP-PDF aberto e em evolução."
+      title={translateUi("Apoie o projeto")}
+      description={translateUi("Sua contribuição ajuda a manter o GCP-PDF aberto e em evolução.")}
       onClose={onClose}
       wide
     >
@@ -809,18 +749,17 @@ export function SupportDialog({ onClose }: { onClose: () => void }) {
           <FileText size={23} />
         </div>
         <div>
-          <strong>Desenvolvido por Bruno Albertini</strong>
+          <strong>{translateUi("Desenvolvido por Bruno Albertini")}</strong>
           <button
             className="text-button"
             onClick={() => window.gcp.openExternal(SITE)}
-          >
-            Gestão Cultural Pro <ArrowUpRight size={14} />
+          >{" "}{translateUi("Gestão Cultural Pro")}{" "}<ArrowUpRight size={14} />
           </button>
         </div>
       </div>
       <div className="support-grid">
         <section className="support-card">
-          <span className="eyebrow">PIX · BRASIL</span>
+          <span className="eyebrow">{translateUi("PIX · BRASIL")}</span>
           {qr ? (
             <img
               className="pix-qr"
@@ -830,7 +769,7 @@ export function SupportDialog({ onClose }: { onClose: () => void }) {
           ) : (
             <div className="pix-qr" />
           )}
-          <p>Escaneie com o aplicativo do seu banco.</p>
+          <p>{translateUi("Escaneie com o aplicativo do seu banco.")}</p>
           <button
             className="button primary full"
             onClick={async () => {
@@ -840,36 +779,31 @@ export function SupportDialog({ onClose }: { onClose: () => void }) {
             }}
           >
             {copied ? <Check size={17} /> : <Copy size={17} />}{" "}
-            {copied ? "PIX copiado" : "Copiar PIX"}
+            {copied ? translateUi("PIX copiado") : translateUi("Copiar PIX")}
           </button>
           <details>
-            <summary>Ver código PIX</summary>
+            <summary>{translateUi("Ver código PIX")}</summary>
             <code className="pix-code">{PIX}</code>
           </details>
         </section>
         <section className="support-card">
-          <span className="eyebrow">STRIPE · INTERNACIONAL</span>
+          <span className="eyebrow">{translateUi("STRIPE · INTERNACIONAL")}</span>
           <div className="support-heart">
             <Heart size={34} />
           </div>
-          <h3>Faça parte dessa construção</h3>
-          <p>Contribua com qualquer valor pelo checkout seguro do Stripe.</p>
+          <h3>{translateUi("Faça parte dessa construção")}</h3>
+          <p>{translateUi("Contribua com qualquer valor pelo checkout seguro do Stripe.")}</p>
           <button
             className="button secondary full"
             onClick={() => window.gcp.openExternal(STRIPE)}
-          >
-            Contribuir via Stripe <ArrowUpRight size={17} />
+          >{" "}{translateUi("Contribuir via Stripe")}{" "}<ArrowUpRight size={17} />
           </button>
           <button
             className="text-button"
             onClick={() => window.gcp.copyText(STRIPE)}
           >
-            <Copy size={14} /> Copiar link do Stripe
-          </button>
-          <p className="support-disclaimer">
-            O apoio é voluntário. As funções do aplicativo estão disponíveis sem
-            contribuição.
-          </p>
+            <Copy size={14} />{" "}{translateUi("Copiar link do Stripe")}{" "}</button>
+          <p className="support-disclaimer">{" "}{translateUi("O apoio é voluntário. As funções do aplicativo estão disponíveis sem contribuição.")}{" "}</p>
         </section>
       </div>
     </Modal>
@@ -923,12 +857,12 @@ export function PromptDialog({
         <div className="prompt-buttons">
           {prompt.buttons.map((label, index) => (
             <button
-              key={label}
+              key={translateUi(label)}
               data-index={index}
               className={`button ${index === prompt.defaultId ? "primary" : index === prompt.cancelId ? "ghost" : "secondary"}`}
               onClick={() => onAnswer(index)}
             >
-              {label}
+              {translateUi(label)}
             </button>
           ))}
         </div>
@@ -943,28 +877,20 @@ export function GoogleApiHelp() {
       className="form-section"
       style={{ fontSize: 12, lineHeight: 1.55 }}
     >
-      <h3>Obter uma chave Google AI Studio</h3>
+      <h3>{translateUi("Obter uma chave Google AI Studio")}</h3>
       <ol>
-        <li>Abra o Google AI Studio e entre com sua conta Google.</li>
-        <li>
-          Em API Keys, escolha Criar chave de API e selecione ou crie um
-          projeto.
-        </li>
-        <li>Copie a chave e cole no campo Chave de API do GCP-PDF.</li>
-        <li>Escolha um modelo disponível na conta e salve a configuração.</li>
+        <li>{translateUi("Abra o Google AI Studio e entre com sua conta Google.")}</li>
+        <li>{" "}{translateUi("Em API Keys, escolha Criar chave de API e selecione ou crie um projeto.")}{" "}</li>
+        <li>{translateUi("Copie a chave e cole no campo Chave de API do GCP-PDF.")}</li>
+        <li>{translateUi("Escolha um modelo disponível na conta e salve a configuração.")}</li>
       </ol>
-      <p>
-        Criar a chave não tem custo. O uso gratuito depende dos modelos, cotas,
-        região e elegibilidade da conta; ativar faturamento pode gerar
-        cobranças.
-      </p>
+      <p>{" "}{translateUi("Criar a chave não tem custo. O uso gratuito depende dos modelos, cotas, região e elegibilidade da conta; ativar faturamento pode gerar cobranças.")}{" "}</p>
       <button
         className="text-button"
         onClick={() =>
           void window.gcp.openExternal("https://aistudio.google.com/apikey")
         }
-      >
-        Abrir Google AI Studio <ArrowUpRight size={13} />
+      >{" "}{translateUi("Abrir Google AI Studio")}{" "}<ArrowUpRight size={13} />
       </button>
     </section>
   );
@@ -999,11 +925,8 @@ function ShortcutPreferences() {
   return (
     <div>
       <section className="form-section">
-        <h3>Ferramentas da aba Início</h3>
-        <p className="muted">
-          Escolha os atalhos e sua ordem. As ações de arquivo, seleção e zoom
-          permanecem fixas.
-        </p>
+        <h3>{translateUi("Ferramentas da aba Início")}</h3>
+        <p className="muted">{" "}{translateUi("Escolha os atalhos e sua ordem. As ações de arquivo, seleção e zoom permanecem fixas.")}{" "}</p>
         <div
           style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}
         >
@@ -1038,7 +961,7 @@ function ShortcutPreferences() {
                       )
                     }
                   />
-                  {item.label}
+                  {translateUi(item.label)}
                 </label>
                 {index >= 0 && (
                   <>
@@ -1081,25 +1004,18 @@ function ShortcutPreferences() {
         <button
           className="text-button"
           onClick={() => homeChange([...DEFAULT_HOME_ACTIONS])}
-        >
-          Restaurar Início padrão
-        </button>
+        >{" "}{translateUi("Restaurar Início padrão")}{" "}</button>
       </section>
       <section className="form-section">
-        <h3>Atalhos do teclado</h3>
-        <p className="muted">
-          Clique em uma combinação e pressione o novo atalho. As alterações
-          ficam salvas neste computador. Ao digitar em texto ou formulários,
-          Delete e os atalhos de edição atuam no campo. F11 também alterna a
-          tela cheia; Esc encerra a ferramenta atual.
-        </p>
+        <h3>{translateUi("Atalhos do teclado")}</h3>
+        <p className="muted">{" "}{translateUi("Clique em uma combinação e pressione o novo atalho. As alterações ficam salvas neste computador. Ao digitar em texto ou formulários, Delete e os atalhos de edição atuam no campo. F11 também alterna a tela cheia; Esc encerra a ferramenta atual.")}{" "}</p>
         <table
           style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}
         >
           <thead>
             <tr>
-              <th align="left">Ação e contexto</th>
-              <th align="left">Combinação</th>
+              <th align="left">{translateUi("Ação e contexto")}</th>
+              <th align="left">{translateUi("Combinação")}</th>
               <th />
             </tr>
           </thead>
@@ -1112,9 +1028,9 @@ function ShortcutPreferences() {
                     borderBottom: "1px solid var(--border,#e5e1ef)",
                   }}
                 >
-                  {command.label}
+                  {translateUi(command.label)}
                   <small style={{ display: "block", opacity: 0.65 }}>
-                    {command.scope}
+                    {translateUi(command.scope)}
                   </small>
                 </td>
                 <td style={{ width: 160 }}>
@@ -1154,9 +1070,7 @@ function ShortcutPreferences() {
                     className="text-button"
                     aria-label={"Limpar atalho de " + command.label}
                     onClick={() => change(command.id, "")}
-                  >
-                    Limpar
-                  </button>
+                  >{" "}{translateUi("Limpar")}{" "}</button>
                 </td>
               </tr>
             ))}
@@ -1170,9 +1084,7 @@ function ShortcutPreferences() {
             setMessage("Atalhos padrão restaurados.");
             setError("");
           }}
-        >
-          Restaurar atalhos padrão
-        </button>
+        >{" "}{translateUi("Restaurar atalhos padrão")}{" "}</button>
       </section>
       {error && (
         <p className="inline-error" role="alert">

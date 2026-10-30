@@ -1,8 +1,8 @@
+import {useLocale,t as translateUi} from "./i18n";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { MessageSquare, Trash2, X, Pencil, MoreHorizontal, Reply, Highlighter, Square, PenLine, Type, Stamp, FileText } from "lucide-react";
-import type { NoteReply, PageObject, PageRef } from "../shared/types";
-import { loadPage, pdfjs } from "./pdf";
+import type { NoteReply, PageObject, PageRef, PdfAnnotation } from "../shared/types";
 import { measureLabel } from "../shared/geometry";
 
 export type PdfNote = Extract<PageObject, { kind: "note" }>;
@@ -27,18 +27,18 @@ function Entry({ author, createdAt, text, onEdit, onDelete }: { author: string; 
         <small>{when(createdAt)}</small>
         {(onEdit || onDelete) && (
           <span className="note-menu">
-            <button className="icon-button" title="Mais opções" onClick={(e) => { e.stopPropagation(); setMenu(!menu); }}><MoreHorizontal size={14} /></button>
+            <button className="icon-button" title={translateUi("Mais opções")} onClick={(e) => { e.stopPropagation(); setMenu(!menu); }}><MoreHorizontal size={14} /></button>
             {menu && (
               <span className="dropdown-menu note-menu-list" onPointerDown={(e) => e.stopPropagation()}>
-                {onEdit && <button onClick={() => { setEditing(true); setValue(text); setMenu(false); }}><Pencil size={13} /> Editar</button>}
-                {onDelete && <button className="danger" onClick={() => { setMenu(false); onDelete(); }}><Trash2 size={13} /> Excluir</button>}
+                {onEdit && <button onClick={() => { setEditing(true); setValue(text); setMenu(false); }}><Pencil size={13} />{" "}{translateUi("Editar")}</button>}
+                {onDelete && <button className="danger" onClick={() => { setMenu(false); onDelete(); }}><Trash2 size={13} />{" "}{translateUi("Excluir")}</button>}
               </span>
             )}
           </span>
         )}
       </div>
       {editing ? (
-        <Composer initial={value} label="Salvar" onCancel={() => setEditing(false)} onSubmit={(t) => { onEdit?.(t); setEditing(false); }} />
+        <Composer initial={value} label={translateUi("Salvar")} onCancel={() => setEditing(false)} onSubmit={(t) => { onEdit?.(t); setEditing(false); }} />
       ) : <p className="note-text">{text}</p>}
     </div>
   );
@@ -52,8 +52,8 @@ function Composer({ initial = "", label = "Publicar", placeholder = "Adicionar c
     <div className="note-composer" onPointerDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
       <textarea ref={area} value={value} maxLength={20000} placeholder={placeholder} onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(); } if (e.key === "Escape") onCancel?.(); }} />
       <div className="note-composer-actions">
-        {onCancel && <button className="text-button" onClick={onCancel}>Cancelar</button>}
-        <button className="button primary small" disabled={!value.trim()} onClick={submit}>{label}</button>
+        {onCancel && <button className="text-button" onClick={onCancel}>{translateUi("Cancelar")}</button>}
+        <button className="button primary small" disabled={!value.trim()} onClick={submit}>{translateUi(label)}</button>
       </div>
     </div>
   );
@@ -62,13 +62,13 @@ function Composer({ initial = "", label = "Publicar", placeholder = "Adicionar c
 export function NoteThread({ note, onChange, onDelete, compact = false }: { note: PdfNote; onChange: (note: PdfNote) => void; onDelete: () => void; compact?: boolean }) {
   const [replying, setReplying] = useState(false), author = commentAuthor();
   const replies = note.replies ?? [];
-  if (!note.text) return <Composer placeholder="Escreva seu comentário…" onSubmit={(text) => onChange({ ...note, text, author: note.author || author })} onCancel={onDelete} />;
+  if (!note.text) return <Composer placeholder={translateUi("Escreva seu comentário…")} onSubmit={(text) => onChange({ ...note, text, author: note.author || author })} onCancel={onDelete} />;
   return (
     <div className="note-thread">
       <Entry author={note.author} createdAt={note.createdAt} text={note.text} onEdit={(text) => onChange({ ...note, text })} onDelete={onDelete} />
       {replies.map((r) => <div key={r.id} className="note-reply"><Entry author={r.author} createdAt={r.createdAt} text={r.text} onEdit={(text) => onChange({ ...note, replies: replies.map((x) => (x.id === r.id ? { ...x, text } : x)) })} onDelete={() => onChange({ ...note, replies: replies.filter((x) => x.id !== r.id) })} /></div>)}
-      {replying ? <Composer placeholder="Responder…" label="Responder" onCancel={() => setReplying(false)} onSubmit={(text) => { const reply: NoteReply = { id: uid(), author, text, createdAt: new Date().toISOString() }; onChange({ ...note, replies: [...replies, reply] }); setReplying(false); }} />
-        : !compact || replies.length < 50 ? <button className="text-button note-reply-button" onClick={() => setReplying(true)}><Reply size={13} /> Responder</button> : null}
+      {replying ? <Composer placeholder={translateUi("Responder…")} label={translateUi("Responder")} onCancel={() => setReplying(false)} onSubmit={(text) => { const reply: NoteReply = { id: uid(), author, text, createdAt: new Date().toISOString() }; onChange({ ...note, replies: [...replies, reply] }); setReplying(false); }} />
+        : !compact || replies.length < 50 ? <button className="text-button note-reply-button" onClick={() => setReplying(true)}><Reply size={13} />{" "}{translateUi("Responder")}</button> : null}
     </div>
   );
 }
@@ -104,45 +104,27 @@ export function NoteBubble({ note, onChange, onDelete, onClose }: { note: PdfNot
   }, [note.id]);
   return createPortal(
     <div ref={box} className="note-bubble" style={{ left: at?.left ?? -9999, top: at?.top ?? -9999 }} onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
-      <button className="icon-button note-bubble-close" title="Fechar (Esc)" onClick={onClose}><X size={13} /></button>
+      <button className="icon-button note-bubble-close" title={translateUi("Fechar (Esc)")} onClick={onClose}><X size={13} /></button>
       <NoteThread note={note} onChange={onChange} onDelete={onDelete} compact />
     </div>,
     document.body,
   );
 }
 
-interface DocAnnotation { page: number; type: string; author: string; text: string; date: string }
+export const annotationLabel = (type: string) => translateUi(({Text:"Comentário",Highlight:"Destaque",Underline:"Sublinhado",StrikeOut:"Tachado",Squiggly:"Sublinhado ondulado",Square:"Retângulo",Circle:"Oval",Ink:"Desenho",Stamp:"Carimbo",Line:"Linha",Polygon:"Polígono",PolyLine:"Linhas conectadas"} as Record<string,string>)[type] ?? "Anotação");
 const KIND: Record<string, { label: string; icon: React.ReactNode }> = {
   markup: { label: "Destaque", icon: <Highlighter size={13} /> }, shape: { label: "Forma", icon: <Square size={13} /> }, ink: { label: "Desenho", icon: <PenLine size={13} /> },
   text: { label: "Caixa de texto", icon: <Type size={13} /> }, image: { label: "Imagem ou carimbo", icon: <Stamp size={13} /> },
 };
 /** Comments panel in Acrobat's manner: add box, threads grouped by page, other markups, and comments already in the PDF. */
-export function CommentsPanel({ objects, pages, currentPage, openNote, onOpen, onCreate, onUpdate, onDelete, onSelectObject, onClose }: {
+export function CommentsPanel({ annotations, onOpenAnnotation, onDeleteAnnotation, objects, pages, currentPage, openNote, onOpen, onCreate, onUpdate, onDelete, onSelectObject, onClose }: {
+  annotations: PdfAnnotation[]; onOpenAnnotation:(a:PdfAnnotation)=>void; onDeleteAnnotation:(a:PdfAnnotation)=>void;
   objects: PageObject[]; pages: PageRef[]; currentPage: number; openNote: string | null; onOpen: (note: PdfNote) => void; onCreate: (text: string) => void;
   onUpdate: (note: PdfNote) => void; onDelete: (id: string) => void; onSelectObject: (object: PageObject) => void; onClose: () => void;
 }) {
-  const [author, setAuthor] = useState(commentAuthor()), [filter, setFilter] = useState(""), [foreign, setForeign] = useState<DocAnnotation[]>([]);
+  const [author, setAuthor] = useState(commentAuthor()), [filter, setFilter] = useState("");
+  const locale=useLocale();
   const pageNumber = (id: string) => pages.findIndex((p) => p.id === id) + 1;
-  // Comments other programs left in the PDF (Acrobat, Foxit…): listed read-only, they stay in the file.
-  useEffect(() => {
-    let alive = true;
-    void (async () => {
-      const found: DocAnnotation[] = [];
-      for (const [index, ref] of pages.entries()) {
-        if (index > 400) break;
-        const page = await loadPage(ref);
-        for (const a of (await page.getAnnotations({ intent: "display" })) as any[]) {
-          if (a.annotationType === pdfjs.AnnotationType.WIDGET || a.annotationType === pdfjs.AnnotationType.LINK || a.annotationType === pdfjs.AnnotationType.POPUP) continue;
-          const text = a.contentsObj?.str ?? a.contents ?? "";
-          if (/^GCP-PDF:/.test(a.annotationName ?? "") ) continue;
-          if (!text && !a.titleObj?.str) continue;
-          found.push({ page: index + 1, type: a.subtype ?? "Anotação", author: a.titleObj?.str ?? "", text, date: a.modificationDate ?? "" });
-        }
-      }
-      if (alive) setForeign(found);
-    })().catch(() => {});
-    return () => { alive = false; };
-  }, [pages]);
   const notes = objects.filter((o): o is PdfNote => o.kind === "note");
   const marks = objects.filter((o) => o.kind !== "note");
   const q = filter.trim().toLowerCase(), match = (t: string) => !q || t.toLowerCase().includes(q);
@@ -156,21 +138,21 @@ export function CommentsPanel({ objects, pages, currentPage, openNote, onOpen, o
       </article>);
     }
     for (const mark of marks) { const k = KIND[mark.kind]; if (!k || !match(k.label)) continue; add(pageNumber(mark.page), <button key={mark.id} className="note-mark" onClick={() => onSelectObject(mark)}>{k.icon}<span>{mark.kind === "shape" && mark.measure ? `Medida: ${measureLabel(mark)?.text ?? ""}` : k.label}{mark.kind === "text" && "text" in mark ? `: ${String(mark.text).slice(0, 60)}` : ""}</span></button>); }
-    for (const [i, a] of foreign.entries()) { if (!match(a.text + a.author)) continue; add(a.page, <div key={"f" + i} className="note-card foreign"><div className="note-entry-head"><span className="note-avatar">{initial(a.author || a.type)}</span><strong>{a.author || a.type}</strong><small>{a.type}</small></div><p className="note-text">{a.text}</p></div>); }
+    for (const a of annotations) { if (!match(a.text + a.author + annotationLabel(a.subtype))) continue; add(pageNumber(a.page), <article key={a.page+":"+a.index} className="note-card foreign"><button className="native-comment-link" onClick={() => onOpenAnnotation(a)}><span className="note-entry-head"><MessageSquare size={15}/><strong>{a.author || annotationLabel(a.subtype)}</strong><small>{annotationLabel(a.subtype)}</small></span><span className="note-text">{a.text || annotationLabel(a.subtype)}</span></button><button className="text-button" onClick={() => onDeleteAnnotation(a)}><Trash2 size={13}/>{" "}{translateUi("Excluir anotação")}</button></article>); }
     return [...map.entries()].sort((a, b) => a[0] - b[0]);
-  }, [objects, foreign, filter, openNote, pages]);
-  const total = notes.length + marks.length + foreign.length;
+  }, [objects, annotations, filter, openNote, pages, locale]);
+  const total = notes.length + marks.length + annotations.length;
   return (
-    <aside className="comments-panel" aria-label="Comentários">
-      <header><MessageSquare size={17} /><strong>Comentários {total}</strong><button className="icon-button" title="Fechar" onClick={onClose}><X size={15} /></button></header>
-      <Composer key={currentPage} autoFocus={false} placeholder={`Adicionar comentário na página ${currentPage + 1}`} onSubmit={onCreate} />
+    <aside className="comments-panel" aria-label={translateUi("Comentários")}>
+      <header><MessageSquare size={17} /><strong>{translateUi("Comentários")}{" "}{total}</strong><button className="icon-button" title={translateUi("Fechar")} onClick={onClose}><X size={15} /></button></header>
+      <Composer key={currentPage} autoFocus={false} placeholder={translateUi("Adicionar comentário na página {page}",{page:currentPage+1})} onSubmit={onCreate} />
       <div className="comments-tools">
-        <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filtrar comentários" />
-        <label title="Nome que aparece nos seus comentários">Seu nome <input value={author} onChange={(e) => { setAuthor(e.target.value); try { localStorage.setItem("gcp.author", e.target.value.trim() || "Você"); } catch {} }} /></label>
+        <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={translateUi("Filtrar comentários")} />
+        <label title={translateUi("Nome que aparece nos seus comentários")}>{translateUi("Seu nome")}{" "}<input value={author} onChange={(e) => { setAuthor(e.target.value); try { localStorage.setItem("gcp.author", e.target.value.trim() || "Você"); } catch {} }} /></label>
       </div>
-      {!byPage.length && <p className="comments-empty"><FileText size={22} />Use <b>Comentário › Adicionar comentário</b> e clique na página onde quer a nota, ou escreva acima. As notas ficam no PDF salvo e abrem no Adobe com as respostas.</p>}
+      {!byPage.length && <p className="comments-empty"><FileText size={22} />{translateUi("Use")}{" "}<b>{translateUi("Comentário › Adicionar comentário")}</b>{" "}{translateUi("e clique na página onde quer a nota, ou escreva acima. As notas ficam no PDF salvo e abrem no Adobe com as respostas.")}</p>}
       {byPage.map(([page, nodes]) => (
-        <section key={page} className="comments-page"><h4>Página {page} <small>{nodes.length}</small></h4>{nodes}</section>
+        <section key={page} className="comments-page"><h4>{translateUi("Página")}{" "}{page} <small>{nodes.length}</small></h4>{nodes}</section>
       ))}
     </aside>
   );

@@ -1,11 +1,12 @@
+import {readAnnotations,deleteAnnotation} from './pdf-annotations';
 import {randomUUID} from 'node:crypto';
 import {PDFDocument, ParseSpeeds, PDFName, PDFDict} from 'pdf-lib';
 import type {DocumentMetadata, DocumentInfo, FieldValue, PageObject, PageRef, PdfOperation} from '../shared/types';
-import {blankPdf, createBlankPdf, materialize, readPdfNotes} from './pdf-engine';
+import {blankPdf, createBlankPdf, materialize, readPdfNotes, noteOverlayBase} from './pdf-engine';
 
 /** An immutable source PDF. Documents only reference its pages, so bases are shared freely
  * between documents and history entries and are dropped once nothing references them. */
-interface Base {bytes: Uint8Array; pages: {width: number; height: number; rotation: number}[]; xfa?: boolean; signed?: boolean; notes?: Awaited<ReturnType<typeof readPdfNotes>>}
+interface Base {viewer?:Promise<Uint8Array>;annotations:ReturnType<typeof readAnnotations>;bytes: Uint8Array; pages: {width: number; height: number; rotation: number}[]; xfa?: boolean; signed?: boolean; notes?: Awaited<ReturnType<typeof readPdfNotes>>}
 /** `fields` holds form values typed by the user, written into the PDF form when it is materialized. */
 interface Model {pages: PageRef[]; objects: PageObject[]; fields?: Record<string, FieldValue>; metadata?: Partial<DocumentMetadata>}
 type HistoryGroup = {id: string; documents: string[]};
@@ -24,7 +25,7 @@ async function inspect(bytes: Uint8Array): Promise<Base> {
  const xfa = !!doc.catalog.lookupMaybe(PDFName.of('AcroForm'), PDFDict)?.get(PDFName.of('XFA'));
  // Signed: any /Sig field with a value. Such files must never be rewritten (the signature covers exact bytes).
  const signed = doc.getForm().getFields().some(field => { const v = field.acroField.dict.lookup(PDFName.of('V')); return field.acroField.dict.get(PDFName.of('FT'))?.toString() === '/Sig' && v instanceof PDFDict; });
- return {bytes, xfa, signed, notes:await readPdfNotes(bytes,doc), pages: doc.getPages().map(page => { const box = page.getCropBox(); return {width: box.width, height: box.height, rotation: ((page.getRotation().angle % 360) + 360) % 360}; })};
+ return {bytes, xfa, signed, annotations:readAnnotations(doc), notes:await readPdfNotes(bytes,doc), pages: doc.getPages().map(page => { const box = page.getCropBox(); return {width: box.width, height: box.height, rotation: ((page.getRotation().angle % 360) + 360) % 360}; })};
 }
 function finite(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value); }
 const HEX = /^#[\da-f]{6}$/i;
@@ -74,11 +75,12 @@ export class DocumentStore {
  get(id: string): Stored { const doc = this.docs.get(id); if (!doc) throw new Error('Este documento não está mais aberto.'); return doc; }
  all() { return [...this.docs.values()]; }
  base(id: string): Uint8Array { const base = this.bases.get(id); if (!base) throw new Error('Esta versão do documento não está mais disponível.'); return base.bytes; }
+ viewerBase(id:string){const base=this.baseInfo(id);return base.notes?.length?(base.viewer??=noteOverlayBase(base.bytes)):Promise.resolve(base.bytes);}
  asset(id: string): string { const asset = this.assets.get(id); if (asset === undefined) throw new Error('Esta imagem não está mais disponível.'); return asset; }
  info(id: string): DocumentInfo {
   const {past, future, model, signedOriginPath, ...doc} = this.get(id);
   const {notice, ...visible} = doc;
-  return {...visible, pageCount: model.pages.length, pages: model.pages, objects: model.objects, fields: model.fields ?? {}, canUndo: past.length > 0, canRedo: future.length > 0};
+  return {...visible, annotations:model.pages.flatMap(ref=>(this.bases.get(ref.base)?.annotations[ref.src]??[]).map(a=>({...a,page:ref.id}))), pageCount: model.pages.length, pages: model.pages, objects: model.objects, fields: model.fields ?? {}, canUndo: past.length > 0, canRedo: future.length > 0};
  }
  /** Size of a page as displayed (crop box, after native and extra rotation). */
  pageSize(ref: PageRef) { const page = this.bases.get(ref.base)!.pages[ref.src]!, turned = (page.rotation + ref.rotate) % 180 !== 0; return turned ? {width: page.height, height: page.width} : {width: page.width, height: page.height}; }
@@ -213,6 +215,13 @@ export class DocumentStore {
      model = {pages: [...pages.slice(0, op.index), ref, ...pages.slice(op.index)], objects};
      break;
     }
+    case 'delete-annotation': {
+     const ref=pages.find(p=>p.id===op.page);
+     if(!ref||!Number.isInteger(op.index))throw new Error('A anotação selecionada é inválida.');
+     const base=await this.addBase(await deleteAnnotation(this.base(ref.base),ref.src,op.index));
+     model={...doc.model,pages:pages.map(p=>p.id===ref.id?{...p,base}:p)};
+     break;
+    }
     case 'reorder': {
      const order = selected(op.order, pages.length);
      if (order.length !== pages.length) throw new Error('A nova ordem precisa conter todas as páginas exatamente uma vez.');
@@ -279,7 +288,8 @@ export class DocumentStore {
  async swapBase(id: string, oldBase: string, bytes: Uint8Array, revision: number) {
   // A text edit rewrites content streams only; page boxes and count are those of the source.
   const known = this.bases.get(oldBase), base = randomUUID();
-  if (known) this.bases.set(base, {bytes: new Uint8Array(bytes), pages: known.pages, signed: known.signed}); else this.bases.set(base, await inspect(new Uint8Array(bytes)));
+  this.bases.set(base, await inspect(new Uint8Array(bytes)));
+  if(known?.signed)this.bases.get(base)!.signed=true;
   return this.serial(async () => {
    const doc = this.check(id, revision);
    if (this.bases.get(base)!.pages.length !== this.bases.get(oldBase)?.pages.length) throw new Error('A edição alterou inesperadamente a quantidade de páginas. O original foi preservado.');

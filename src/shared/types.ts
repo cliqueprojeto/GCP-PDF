@@ -1,3 +1,4 @@
+import type {LanguagePreference,LanguageSettings} from './locale';
 /** A page of an open document: page `src` (zero based) of the immutable PDF `base`, plus an extra
  * clockwise rotation. Page structure edits only rewrite these references, so they are instant. */
 export interface PageRef {id:string;base:string;src:number;rotate:number}
@@ -17,7 +18,9 @@ export type PageObject={id:string;page:string}&(
  |{kind:'note';x:number;y:number;width:number;height:number;text:string;author:string;createdAt:string;color:string;replies?:NoteReply[]}
  |{kind:'markup';style:'highlight'|'underline'|'strike';rects:Rect[];color:string;opacity:number}
 );
+export interface PdfAnnotation {page:string;index:number;subtype:string;author:string;text:string;rect:Rect}
 export type PdfOperation =
+ | {type:'delete-annotation';page:string;index:number}
  | {type:'rotate';pages:number[];degrees:number}
  | {type:'delete';pages:number[]}
  | {type:'blank';index:number}
@@ -29,7 +32,7 @@ export type PdfOperation =
  | {type:'set-metadata';values:Partial<DocumentMetadata>}
  | {type:'add-objects';objects:PageObject[]};
 export type FieldValue=string|boolean|string[];
-export interface DocumentInfo {id:string;name:string;path?:string;revision:number;savedRevision:number;pageCount:number;pages:PageRef[];objects:PageObject[];fields:Record<string,FieldValue>;canUndo:boolean;canRedo:boolean}
+export interface DocumentInfo {annotations:PdfAnnotation[];id:string;name:string;path?:string;revision:number;savedRevision:number;pageCount:number;pages:PageRef[];objects:PageObject[];fields:Record<string,FieldValue>;canUndo:boolean;canRedo:boolean}
 /** Field properties, as in Acrobat's Properties dialog (appearance, options, format). */
 export interface FieldProps {name?:string;tooltip?:string;required?:boolean;read_only?:boolean;multiline?:boolean;font_size?:number;align?:'left'|'center'|'right';check_style?:'check'|'circle'|'cross'|'diamond'|'square'|'star';appearance?:{border?:string;fill?:string;text_color?:string;width?:number;style?:'solid'|'dashed'|'beveled'|'inset'|'underline'};format?:'none'|'date'|'currency'|'number'|'cpf'|'cnpj'|'cep'|'phone';options?:string[];caption?:string;action?:{type:'none'}|{type:'url';url:string}|{type:'page';page:number}|{type:'reset'}|{type:'print'}|{type:'submit';url:string}}
 /** Description fields of the PDF (Info dictionary), editable under Revisar > Propriedades. */
@@ -66,6 +69,10 @@ export interface SignOptions {certificate:string;password?:string;page:string|nu
 export interface QuickFile {path:string;name:string;pages?:number;error?:string}
 export interface QuickState {action:'combine'|'convert';files:QuickFile[];theme:'light'|'dark'}
 export interface GcpBridge {
+ moveDocumentTab(id:string,beforeId?:string):Promise<void>;
+ onLanguage(listener:(settings:LanguageSettings)=>void):()=>void;
+ getLanguage():Promise<LanguageSettings>;
+ setLanguage(language:LanguagePreference,ocr:LanguagePreference):Promise<LanguageSettings>;
  getWorkspace():Promise<WorkspaceState>;
  onWorkspace(listener:(state:WorkspaceState)=>void):()=>void;
  onAction(listener:(action:string)=>void):()=>void;

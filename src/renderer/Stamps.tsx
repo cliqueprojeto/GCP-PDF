@@ -1,3 +1,4 @@
+import {t as translateUi} from "./i18n";
 import React, { useEffect, useMemo, useState } from "react";
 import { Stamp, Save, Trash2, Plus } from "lucide-react";
 import { Modal } from "./Dialogs";
@@ -87,14 +88,14 @@ export function StampDialog({ onClose, onApply }: { onClose: () => void; onApply
   const persist = (list: StampTemplate[]) => { setCustom(list); try { localStorage.setItem("gcp.stamps", JSON.stringify(list)); } catch {} };
   const groups = [...new Set(STAMPS.map((s) => s.group))];
   return (
-    <Modal title="Carimbos" description="Escolha um modelo, edite os textos e clique na página para aplicar. Depois é possível mover e redimensionar." onClose={onClose} wide>
+    <Modal title={translateUi("Carimbos")} description={translateUi("Escolha um modelo, edite os textos e clique na página para aplicar. Depois é possível mover e redimensionar.")} onClose={onClose} wide>
       <div className="stamps">
         <div className="stamp-gallery">
-          {custom.length > 0 && <div className="section-label">Meus carimbos</div>}
+          {custom.length > 0 && <div className="section-label">{translateUi("Meus carimbos")}</div>}
           {custom.map((t) => (
             <div key={t.id} className={`stamp-item ${current.id === t.id ? "selected" : ""}`}>
               <button onClick={() => pick(t)}><Preview t={t} name={name} /></button>
-              <button className="stamp-delete" title="Excluir carimbo" onClick={() => persist(custom.filter((c) => c.id !== t.id))}><Trash2 size={13} /></button>
+              <button className="stamp-delete" title={translateUi("Excluir carimbo")} onClick={() => persist(custom.filter((c) => c.id !== t.id))}><Trash2 size={13} /></button>
             </div>
           ))}
           {groups.map((g) => (
@@ -108,22 +109,22 @@ export function StampDialog({ onClose, onApply }: { onClose: () => void; onApply
           <div className="stamp-stage"><Preview t={editing} name={name} /></div>
           {lines.map((line, i) => (
             <div key={i} className="stamp-line">
-              <label className="field">{i === 0 ? "Título" : `Linha ${i + 1}`}<input value={line} onChange={(e) => setLines(lines.map((l, j) => (j === i ? e.target.value : l)))} /></label>
-              {i > 0 && <button className="icon-button" title="Remover linha" onClick={() => setLines(lines.filter((_, j) => j !== i))}><Trash2 size={14} /></button>}
+              <label className="field">{i === 0 ? translateUi("Título") : `Linha ${i + 1}`}<input value={line} onChange={(e) => setLines(lines.map((l, j) => (j === i ? e.target.value : l)))} /></label>
+              {i > 0 && <button className="icon-button" title={translateUi("Remover linha")} onClick={() => setLines(lines.filter((_, j) => j !== i))}><Trash2 size={14} /></button>}
             </div>
           ))}
-          {lines.length < lineLimit && <button className="text-button" onClick={() => setLines([...lines, ""])}><Plus size={14} /> Adicionar linha</button>}
-          <label className="field">Opacidade · {Math.round(opacity * 100)}%<input type="range" min={10} max={100} step={5} value={Math.round(opacity * 100)} onChange={(e) => setOpacity(Number(e.target.value) / 100)} /></label>
+          {lines.length < lineLimit && <button className="text-button" onClick={() => setLines([...lines, ""])}><Plus size={14} />{" "}{translateUi("Adicionar linha")}</button>}
+          <label className="field">{translateUi("Opacidade ·")}{" "}{Math.round(opacity * 100)}%<input type="range" min={10} max={100} step={5} value={Math.round(opacity * 100)} onChange={(e) => setOpacity(Number(e.target.value) / 100)} /></label>
           <div className="field-row">
-            <label className="field">Seu nome ({"{nome}"})<input value={name} onChange={(e) => setName(e.target.value)} placeholder="Quem carimba" /></label>
-            <label className="field">Cor<input type="color" value={color} onChange={(e) => setColor(e.target.value)} /></label>
+            <label className="field">{translateUi("Seu nome (")}{translateUi("{nome}")})<input value={name} onChange={(e) => setName(e.target.value)} placeholder={translateUi("Quem carimba")} /></label>
+            <label className="field">{translateUi("Cor")}<input type="color" value={color} onChange={(e) => setColor(e.target.value)} /></label>
           </div>
-          <p className="compress-note">{"{data}"} e {"{hora}"} são preenchidos com o momento em que o carimbo é aplicado.</p>
+          <p className="compress-note">{translateUi("{data}")}{" "}{translateUi("e")}{" "}{translateUi("{hora}")}{" "}{translateUi("são preenchidos com o momento em que o carimbo é aplicado.")}</p>
         </aside>
       </div>
       <div className="modal-footer">
-        <button className="button secondary" onClick={() => persist([{ ...editing, id: `meu-${Date.now()}`, group: "Meus carimbos" }, ...custom])}><Save size={15} /> Salvar em Meus carimbos</button>
-        <button className="button primary" onClick={() => void stampPng(editing, name).then((url) => onApply(url, fillTokens(lines[0] ?? "Carimbo", name)))}><Stamp size={15} /> Aplicar na página</button>
+        <button className="button secondary" onClick={() => persist([{ ...editing, id: `meu-${Date.now()}`, group: "Meus carimbos" }, ...custom])}><Save size={15} />{" "}{translateUi("Salvar em Meus carimbos")}</button>
+        <button className="button primary" onClick={() => void stampPng(editing, name).then((url) => onApply(url, fillTokens(lines[0] ?? "Carimbo", name)))}><Stamp size={15} />{" "}{translateUi("Aplicar na página")}</button>
       </div>
     </Modal>
   );

@@ -1,3 +1,4 @@
+import {t as translateUi} from "./i18n";
 import React, { useEffect, useRef, useState } from "react";
 import { RotateCcw, RotateCw, FlipHorizontal2, FlipVertical2, Crop, Eraser, Undo2, Check } from "lucide-react";
 import { Modal } from "./Dialogs";
@@ -50,39 +51,39 @@ export function ImageEditor({ src, onClose, onApply }: { src: string; onClose: (
   }
   const box = drag && { left: `${Math.min(drag.x0, drag.x1) * 100}%`, top: `${Math.min(drag.y0, drag.y1) * 100}%`, width: `${Math.abs(drag.x1 - drag.x0) * 100}%`, height: `${Math.abs(drag.y1 - drag.y0) * 100}%` };
   const slider = (label: string, key: "brightness" | "contrast" | "saturation" | "opacity", min: number, max: number) => (
-    <label className="field">{label} · {a[key]}%<input type="range" min={min} max={max} value={a[key]} onChange={(e) => set({ [key]: Number(e.target.value) } as Partial<Adjust>)} /></label>
+    <label className="field">{translateUi(label)} · {a[key]}%<input type="range" min={min} max={max} value={a[key]} onChange={(e) => set({ [key]: Number(e.target.value) } as Partial<Adjust>)} /></label>
   );
   return (
-    <Modal title="Editar imagem" description="Os ajustes geram uma nova imagem no PDF; desfaça com Ctrl+Z." onClose={onClose} wide>
+    <Modal title={translateUi("Editar imagem")} description={translateUi("Os ajustes geram uma nova imagem no PDF; desfaça com Ctrl+Z.")} onClose={onClose} wide>
       <div className="image-editor">
         <div className="image-stage checker" ref={stage}>
           <div className="image-frame" onPointerDown={(e) => { if (!cropping) return; e.currentTarget.setPointerCapture(e.pointerId); const p = point(e); setDrag({ x0: p.x, y0: p.y, x1: p.x, y1: p.y }); }} onPointerMove={(e) => { if (drag) { const p = point(e); setDrag({ ...drag, x1: p.x, y1: p.y }); } }} onPointerUp={() => cropping && drag && finishCrop()} style={{ cursor: cropping ? "crosshair" : "default" }}>
             <canvas ref={preview} />
             {box && <div className="crop-box" style={box} />}
           </div>
-          {cropping && <p className="image-hint">Arraste sobre a imagem para escolher a área a manter.</p>}
+          {cropping && <p className="image-hint">{translateUi("Arraste sobre a imagem para escolher a área a manter.")}</p>}
         </div>
         <aside className="image-tools">
           <div className="image-actions">
-            <button className="icon-button" title="Girar à esquerda" onClick={() => set({ rotate: (a.rotate + 270) % 360 })}><RotateCcw size={16} /></button>
-            <button className="icon-button" title="Girar à direita" onClick={() => set({ rotate: (a.rotate + 90) % 360 })}><RotateCw size={16} /></button>
-            <button className="icon-button" title="Espelhar na horizontal" onClick={() => set({ flipX: !a.flipX })}><FlipHorizontal2 size={16} /></button>
-            <button className="icon-button" title="Espelhar na vertical" onClick={() => set({ flipY: !a.flipY })}><FlipVertical2 size={16} /></button>
-            <button className={`icon-button ${cropping ? "active" : ""}`} title="Recortar" onClick={() => { setCropping(!cropping); setDrag(null); }}><Crop size={16} /></button>
-            <button className={`icon-button ${a.whiteToAlpha ? "active" : ""}`} title="Remover fundo branco" onClick={() => set({ whiteToAlpha: !a.whiteToAlpha })}><Eraser size={16} /></button>
-            <button className="icon-button" title="Restaurar original" onClick={() => { setA(START); setCropping(false); }}><Undo2 size={16} /></button>
+            <button className="icon-button" title={translateUi("Girar à esquerda")} onClick={() => set({ rotate: (a.rotate + 270) % 360 })}><RotateCcw size={16} /></button>
+            <button className="icon-button" title={translateUi("Girar à direita")} onClick={() => set({ rotate: (a.rotate + 90) % 360 })}><RotateCw size={16} /></button>
+            <button className="icon-button" title={translateUi("Espelhar na horizontal")} onClick={() => set({ flipX: !a.flipX })}><FlipHorizontal2 size={16} /></button>
+            <button className="icon-button" title={translateUi("Espelhar na vertical")} onClick={() => set({ flipY: !a.flipY })}><FlipVertical2 size={16} /></button>
+            <button className={`icon-button ${cropping ? "active" : ""}`} title={translateUi("Recortar")} onClick={() => { setCropping(!cropping); setDrag(null); }}><Crop size={16} /></button>
+            <button className={`icon-button ${a.whiteToAlpha ? "active" : ""}`} title={translateUi("Remover fundo branco")} onClick={() => set({ whiteToAlpha: !a.whiteToAlpha })}><Eraser size={16} /></button>
+            <button className="icon-button" title={translateUi("Restaurar original")} onClick={() => { setA(START); setCropping(false); }}><Undo2 size={16} /></button>
           </div>
-          <div className="segmented small">{FILTERS.map(([value, label]) => <button key={value} className={a.filter === value ? "selected" : ""} onClick={() => set({ filter: value })}>{label}</button>)}</div>
+          <div className="segmented small">{FILTERS.map(([value, label]) => <button key={value} className={a.filter === value ? "selected" : ""} onClick={() => set({ filter: value })}>{translateUi(label)}</button>)}</div>
           {slider("Brilho", "brightness", 20, 200)}
           {slider("Contraste", "contrast", 20, 200)}
           {slider("Saturação", "saturation", 0, 200)}
           {slider("Opacidade", "opacity", 10, 100)}
-          {a.crop && <button className="text-button" onClick={() => set({ crop: null })}>Desfazer recorte</button>}
+          {a.crop && <button className="text-button" onClick={() => set({ crop: null })}>{translateUi("Desfazer recorte")}</button>}
         </aside>
       </div>
       <div className="modal-footer">
-        <button className="button secondary" onClick={onClose}>Cancelar</button>
-        <button className="button primary" disabled={!image} onClick={() => { if (!image) return; const out = render(image, a, 4000); onApply(out.toDataURL("image/png"), out.width / out.height); }}><Check size={15} /> Aplicar à imagem</button>
+        <button className="button secondary" onClick={onClose}>{translateUi("Cancelar")}</button>
+        <button className="button primary" disabled={!image} onClick={() => { if (!image) return; const out = render(image, a, 4000); onApply(out.toDataURL("image/png"), out.width / out.height); }}><Check size={15} />{" "}{translateUi("Aplicar à imagem")}</button>
       </div>
     </Modal>
   );

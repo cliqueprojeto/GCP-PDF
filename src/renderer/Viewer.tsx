@@ -6,6 +6,7 @@ import type { Style, Tool } from "./editor";
 
 export interface ViewerHandle { scrollToPage: (index: number, top?: number | null) => void; readingTop: () => number; fitWidth: () => number | null; fitPage: () => number | null }
 interface Props {
+  onDeleteAnnotation:(a:import("../shared/types").PdfAnnotation)=>void;
   doc: DocumentInfo;
   scale: number;
   tool: Tool;
@@ -97,6 +98,8 @@ export const Viewer = forwardRef<ViewerHandle, Props>(function Viewer(props, han
           return (
             <PageView
               key={ref.id}
+              annotations={doc.annotations.filter(a=>a.page===ref.id)}
+              onDeleteAnnotation={props.onDeleteAnnotation}
               docId={doc.id}
               pageRef={ref}
               index={index}

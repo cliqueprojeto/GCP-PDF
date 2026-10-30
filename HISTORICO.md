@@ -1,5 +1,22 @@
 # Histórico de versões do GCP-PDF
 
+## 0.4.1 — 30/10/2026
+
+- Destaques, sublinhados, tachados, desenhos e formas padrão são salvos como anotações nativas do PDF, preservadas ao reabrir e reconhecidas por outros leitores.
+- Anotações de outros editores podem ser selecionadas e excluídas na página ou pelo painel Comentários, com suporte a desfazer e refazer.
+- Clicar em um comentário leva à página correspondente e abre o balão no documento, inclusive para comentários de outros leitores.
+- Novo botão Salvar como na barra de ferramentas e no localizador, com Ctrl+Shift+S e sugestão de nome para criar uma cópia separada.
+- Mensagem em português explica quando um PDF está bloqueado por outro programa e orienta salvar uma cópia em outra pasta.
+- Interface em português brasileiro, inglês e espanhol, com detecção do idioma do sistema e PT-BR como padrão para idiomas não reconhecidos.
+- OCR local em português, inglês e espanhol, com modelos incluídos na instalação e seleção independente do idioma do aplicativo.
+- Abas podem ser reorganizadas por arraste; a aba ativa ganhou mais destaque e o nome completo do arquivo aparece ao passar o mouse.
+- Card Aberto nesta janela alinhado à borda direita da lista de Arquivos recentes.
+- A verificação de atualizações ao abrir o aplicativo passa a ser o padrão; preferências já escolhidas continuam disponíveis.
+- Proteção por senha revisada: abertura, impressão, edição e cópia verificadas separadamente nos três modos de criptografia. O diálogo exige o preenchimento de cada senha habilitada.
+- Exclusão de anotações externas preserva os marcadores, metadados e campos de formulário do documento.
+- Menus nativos acompanham a escolha de português, inglês ou espanhol.
+
+
 ## 0.4.0 — 30/10/2026
 
 - Destaques, sublinhados, tachados, desenhos e formas padrão são salvos como anotações nativas do PDF, preservadas ao reabrir e reconhecidas por outros leitores.

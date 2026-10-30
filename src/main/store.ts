@@ -219,7 +219,8 @@ export class DocumentStore {
      const ref=pages.find(p=>p.id===op.page);
      if(!ref||!Number.isInteger(op.index))throw new Error('A anotação selecionada é inválida.');
      const base=await this.addBase(await deleteAnnotation(this.base(ref.base),ref.src,op.index));
-     model={...doc.model,pages:pages.map(p=>p.id===ref.id?{...p,base}:p)};
+     // Keep the source catalog for its other pages. A duplicate of the selected source page retains the old base.
+     model={...doc.model,pages:pages.map(p=>p.base===ref.base&&(p.src!==ref.src||p.id===ref.id)?{...p,base}:p)};
      break;
     }
     case 'reorder': {

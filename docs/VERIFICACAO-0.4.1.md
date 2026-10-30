@@ -1,18 +1,18 @@
-# Verificação da versão 0.4.0
+# Verificação da versão 0.4.1
 
 Validação local em Windows x64, em 30/10/2026. Amostras sintéticas, perfis de teste separados e certificado temporário; nenhum PDF original do usuário foi alterado.
 
 ## Anotações e salvamento
 
-- A suíte automática passou com 95 testes aprovados, zero falhas e um teste Unix ignorado no Windows. Typecheck e compilação aprovados.
-- PDF.js independente reconheceu os destaques, sublinhados, tachados, tinta, formas padrão e aparências das formas especiais como anotações PDF. Reabertura, exclusão, desfazer/refazer, geometria relativa ao crop box, respostas/popups e preservação de anotações não selecionadas foram verificadas.
+- A suíte automática passou com 96 testes aprovados, zero falhas e um teste Unix ignorado no Windows. Typecheck e compilação aprovados.
+- PDF.js independente reconheceu os destaques, sublinhados, tachados, tinta, formas padrão e aparências das formas especiais como anotações PDF. Reabertura, exclusão, desfazer/refazer, geometria relativa ao crop box, respostas/popups e preservação de anotações não selecionadas foram verificadas. Um caso adicional confirmou a preservação do catálogo, título, autor, marcadores e campos de formulário ao excluir uma anotação na segunda página.
 - O teste real do Electron confirmou: comentário externo leva à segunda página, balão visível, exclusão/desfazer e botão Salvar como criam uma cópia sem modificar o original.
 - Notas próprias são exibidas pela camada editável; suas aparências antigas são omitidas apenas na cópia de visualização, preservando os bytes da fonte e evitando ícones remanescentes após excluir.
 
 ## Idiomas, OCR, abas e início
 
 - Detecção de variantes de português, inglês e espanhol e fallback PT-BR para idioma desconhecido verificados. Preferência explícita tem prioridade sobre o sistema.
-- Troca de idioma pela interface e três amostras de OCR passaram: português com “participação”, inglês com “education” e espanhol com “colaboración”.
+- Troca de idioma pela interface, menus nativos e três amostras de OCR passaram: português com “participação”, inglês com “education” e espanhol com “colaboración”.
 - O executável Windows empacotado foi executado com os três modelos locais: todos produziram texto pesquisável a partir de PDFs que continham somente uma imagem.
 - Reordenação das abas por arraste, nome completo no tooltip, identificação da aba ativa e alinhamento das bordas do card inicial com Arquivos recentes verificados no Electron real.
 - O perfil novo apresentou verificação de atualizações ao iniciar. Preferências existentes não são sobrescritas.

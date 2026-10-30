@@ -51,6 +51,20 @@ test('deletion affects only the selected page instance and rejects non-annotatio
  assert.equal(store.info(id).annotations.filter(a=>a.page===info.pages[1]!.id).length,2);
 });
 
+test('deleting an annotation preserves the single-source catalog, metadata, bookmarks and form fields',async()=>{
+ const source=await PDFDocument.load(await fixture());source.setTitle('Projeto cultural — revisão');source.setAuthor('Equipe de revisão');
+ const field=source.getForm().createTextField('Projeto');field.setText('Cultura');field.addToPage(source.getPage(0),{x:30,y:30,width:120,height:24});
+ const outline=source.context.register(source.context.obj({Type:'Outlines',Count:1}));
+ const item=source.context.register(source.context.obj({Title:PDFHexString.fromText('Segunda página'),Parent:outline,Dest:[source.getPage(1).ref,'Fit']}));
+ source.context.lookup(outline,PDFDict).set(PDFName.of('First'),item);source.context.lookup(outline,PDFDict).set(PDFName.of('Last'),item);source.catalog.set(PDFName.of('Outlines'),outline);
+ const original=await source.save(),store=new DocumentStore(),id=await store.add(original,'projeto.pdf'),before=store.info(id);
+ await store.apply(id,{type:'delete-annotation',page:before.pages[1]!.id,index:0},before.revision);
+ const saved=await PDFDocument.load(await store.materialize(id));
+ assert.equal(saved.getTitle(),'Projeto cultural — revisão');assert.equal(saved.getAuthor(),'Equipe de revisão');
+ assert.equal(saved.getForm().getTextField('Projeto').getText(),'Cultura');assert.ok(saved.catalog.get(PDFName.of('Outlines')));
+ assert.equal(new Set(store.info(id).pages.map(p=>p.base)).size,1);
+});
+
 test('GCP markups and drawings remain native annotations in independent PDF.js after save/reopen',async()=>{
  const store=new DocumentStore(),id=await store.blank(),page=store.info(id).pages[0]!.id;
  const objects:any[]=[

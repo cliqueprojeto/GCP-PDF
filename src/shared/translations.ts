@@ -3547,5 +3547,45 @@ export const translations:Record<string,readonly [string,string]> = {
   "Salvar como cópia": [
     "Save as copy",
     "Guardar como copia"
+  ],
+  "Nova janela": [
+    "New window",
+    "Nueva ventana"
+  ],
+  "Exibir": [
+    "View",
+    "Ver"
+  ],
+  "Fechar aba": [
+    "Close tab",
+    "Cerrar pestaña"
+  ],
+  "Sair": [
+    "Quit",
+    "Salir"
+  ],
+  "Recarregar interface": [
+    "Reload interface",
+    "Recargar interfaz"
+  ],
+  "Ferramentas de desenvolvimento": [
+    "Developer tools",
+    "Herramientas de desarrollo"
+  ],
+  "Ajuda": [
+    "Help",
+    "Ayuda"
+  ],
+  "Anotação": [
+    "Annotation",
+    "Anotación"
+  ],
+  "Carimbo": [
+    "Stamp",
+    "Sello"
+  ],
+  "Sublinhado ondulado": [
+    "Squiggly underline",
+    "Subrayado ondulado"
   ]
 };

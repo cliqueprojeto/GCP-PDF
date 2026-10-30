@@ -31,6 +31,7 @@ try{
  for(const [lang] of cases){
   await page.locator('.form-section select').filter({has:page.locator('option[value="en"]')}).first().selectOption(lang);
   await page.waitForFunction(lang=>document.documentElement.lang===lang,lang);
+  const nativeLabel=await app.evaluate(({Menu})=>Menu.getApplicationMenu().items[0].label);assert.equal(nativeLabel,lang==='en'?'File':lang==='es'?'Archivo':'Arquivo');
   const heading=lang==='en'?'Settings':lang==='es'?'Configuración':'Configurações';assert.match(await page.locator('.modal-heading h2').innerText(),new RegExp(heading));
   await page.screenshot({path:`evidence/language-tabs/interface-${lang}.png`});
  }

@@ -41,3 +41,11 @@ Os pacotes Linux e macOS são compilados e testados pelo workflow Instaladores L
 - `node scripts/smoke-language-tabs.mjs`
 - `npm run pack:dir`
 - `node scripts/smoke-packaged.mjs release/win-unpacked/GCP-PDF.exe windows`
+
+## Resultado final da distribuição
+
+Workflow [41137017365](https://github.com/cliqueprojeto/GCP-PDF/actions/runs/41137017365), executado na tag `v0.4.1` / commit `c106a39fe560aabdbcd4a50c9eae021fca45ef43`, concluído com sucesso: Linux x64, macOS arm64, macOS x64 e publicação dos anexos. Os pacotes foram instalados/extraídos e executados na CI; OCR nos três idiomas e assinatura com identidade temporária passaram.
+
+A [release 0.4.1](https://github.com/cliqueprojeto/GCP-PDF/releases/tag/v0.4.1) é pública e está marcada como versão mais recente, com 11 anexos: instalador e portátil Windows; DEB, RPM e AppImage Linux; DMG e ZIP para Mac Intel e Apple Silicon; manifesto de atualização e lista de SHA-256 Unix. Tamanhos e hashes dos arquivos Windows conferem com os arquivos locais; os sete hashes Unix conferem com `SHA256SUMS-linux-macOS.txt` e com os digests da API do GitHub.
+
+O cliente empacotado consultou a publicação real, simulando uma versão instalada 0.3.7: detectou 0.4.1 pelo manifesto público, recebeu as notas em PT-BR e não precisou da API autenticada. A primeira abertura após atualizar também mostrou as 13 notas em PT-BR. A regressão de preservação do catálogo foi conferida no executável 0.4.1 pelo fluxo público de abrir, excluir anotação e Salvar como.

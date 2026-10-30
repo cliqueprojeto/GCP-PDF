@@ -60,6 +60,9 @@ export function releaseBases(keep: Set<string>) {
 /** Unrotated crop-box size and the page's own /Rotate. */
 export interface PageGeometry { width: number; height: number; rotation: number }
 const geometry = new Map<string, PageGeometry>();
+/** Last size seen for each page id: an edit gives the page a new source whose size is still being read, and
+ * falling back to a default size would jump the whole column (and the reading position) for a moment. */
+const lastSeen = new Map<string, PageGeometry>();
 export function pageGeometry(ref: Pick<PageRef, "base" | "src">) { return geometry.get(`${ref.base}:${ref.src}`); }
 /** Resolves the geometry of every page so the continuous view can lay out all pages up front. */
 export function usePageGeometry(refs: PageRef[]) {
@@ -83,7 +86,11 @@ export function usePageGeometry(refs: PageRef[]) {
     })();
     return () => { alive = false; };
   }, [key]);
-  return (ref: PageRef): PageGeometry => pageGeometry(ref) ?? pageGeometry(refs[0]!) ?? { width: 595.28, height: 841.89, rotation: 0 };
+  return (ref: PageRef): PageGeometry => {
+    const known = pageGeometry(ref);
+    if (known) { lastSeen.set(ref.id, known); return known; }
+    return lastSeen.get(ref.id) ?? pageGeometry(refs[0]!) ?? { width: 595.28, height: 841.89, rotation: 0 };
+  };
 }
 export const totalRotation = (ref: PageRef, g: PageGeometry) => (((g.rotation + ref.rotate) % 360) + 360) % 360;
 export function displaySize(g: PageGeometry, rotation: number, scale: number) {

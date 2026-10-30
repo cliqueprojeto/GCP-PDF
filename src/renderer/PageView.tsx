@@ -51,7 +51,7 @@ type Drag =
   | { kind: "resize"; start: Point; id: string; handle: string; from: Rect; to: Rect }
   | { kind: "create"; start: Point; current: Point; points: Point[] }
   | { kind: "area"; start: Point; current: Point }
-  | { kind: "source"; start: Point; dx: number; dy: number; target: { kind: "text" | "image"; index: number; rect: Rect } }
+  | { kind: "source"; start: Point; dx: number; dy: number; target: { kind: "text" | "image"; index: number; rect: Rect }; ghost?: string }
   | { kind: "source-resize"; start: Point; index: number; handle: string; from: Rect; to: Rect };
 const FONTS: Record<string, string> = { sans: "Helvetica, Arial, sans-serif", serif: '"Times New Roman", Times, serif', mono: '"Courier New", Courier, monospace' };
 const HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
@@ -158,6 +158,9 @@ export function PageView(props: Props) {
   const [near, setNear] = useState(false), [rendered, setRendered] = useState(false), [drag, setDrag] = useState<Drag | null>(null);
   const [ghost, setGhost] = useState<Point | null>(null), [pickedImage, setPickedImage] = useState<number | null>(null), [imageMenu, setImageMenu] = useState<{ x: number; y: number; index: number; rect: Rect } | null>(null);
   const [source, setSource] = useState<SourceObjects | null>(null), [engineBusy, setEngineBusy] = useState(false);
+  // A dropped picture stays where it was dropped until the engine returns the page's new objects.
+  const [dropped, setDropped] = useState<{ generation: number; index: number; dx: number; dy: number; ghost?: string } | null>(null);
+  useEffect(() => setDropped(null), [source]);
   const display = displaySize(geometry, rotation, scale);
   const size = { width: geometry.width, height: geometry.height };
   useEffect(() => {
@@ -227,6 +230,16 @@ export function PageView(props: Props) {
   function pagePoint(e: { clientX: number; clientY: number }): Point {
     const rect = outer.current!.getBoundingClientRect();
     return toPage(e.clientX - rect.left, e.clientY - rect.top, size, rotation, scale);
+  }
+  /** The rendered pixels of an area of the page, shown under the pointer while a picture is dragged. */
+  function snapshot(rect: Rect): string | undefined {
+    const c = canvas.current;
+    if (!c || !rendered || rotation % 360) return undefined;
+    const ratio = c.width / display.width, at = fromPage(rect.x, rect.y, size, rotation, scale);
+    const w = Math.max(1, Math.round(rect.width * scale * ratio)), h = Math.max(1, Math.round(rect.height * scale * ratio)), out = document.createElement("canvas");
+    out.width = w; out.height = h;
+    out.getContext("2d")!.drawImage(c, Math.round(at.x * ratio), Math.round(at.y * ratio), w, h, 0, 0, w, h);
+    return out.toDataURL();
   }
   function sample(rect: Rect): { background: string; color: string } {
     const c = canvas.current, ctx = c?.getContext("2d");
@@ -379,7 +392,7 @@ export function PageView(props: Props) {
         setPickedImage(index); props.onSourceSelect(null);
         const handle = target.dataset.srcHandle;
         if (handle) { setDrag({ kind: "source-resize", start: point, index, handle, from: image.rect, to: image.rect }); return; }
-        setDrag({ kind: "source", start: point, dx: 0, dy: 0, target: { kind: "image", index, rect: image.rect } });
+        setDrag({ kind: "source", start: point, dx: 0, dy: 0, target: { kind: "image", index, rect: image.rect }, ghost: snapshot(image.rect) });
       }
       return;
     }
@@ -453,7 +466,8 @@ export function PageView(props: Props) {
     else if (d.kind === "source" && (Math.abs(d.dx) > 1 || Math.abs(d.dy) > 1) && source) {
       setEngineBusy(true);
       props.onSourceSelect(null);
-      void window.gcp.moveSourceObjects(props.docId, pageRef.id, { generation: source.generation, objects: [{ kind: d.target.kind, index: d.target.index }], dx: d.dx, dy: d.dy }).catch(props.onError).finally(() => setEngineBusy(false));
+      if (d.target.kind === "image") setDropped({ generation: source.generation, index: d.target.index, dx: d.dx, dy: d.dy, ...(d.ghost ? { ghost: d.ghost } : {}) });
+      void window.gcp.moveSourceObjects(props.docId, pageRef.id, { generation: source.generation, objects: [{ kind: d.target.kind, index: d.target.index }], dx: d.dx, dy: d.dy }).catch((error) => { setDropped(null); props.onError(error); }).finally(() => setEngineBusy(false));
     }
   }
   /** One action from the image menu on an original picture, applied by the engine and undoable. */
@@ -525,12 +539,13 @@ export function PageView(props: Props) {
           <>
             {/* Editar texto / Editar imagens limit what can be picked; Editar tudo shows both. */}
             {(tool.mode ?? "all") !== "text" && source.images.map((image) => {
-              const moving = drag?.kind === "source" && drag.target.kind === "image" && drag.target.index === image.index;
+              const moving = drag?.kind === "source" && drag.target.kind === "image" && drag.target.index === image.index ? drag : dropped?.index === image.index && dropped.generation === source.generation ? dropped : null;
               const sizing = drag?.kind === "source-resize" && drag.index === image.index ? drag.to : null, r = sizing ?? image.rect, picked = pickedImage === image.index;
               return (
                 <div key={"i" + image.index} className={`source-box image ${picked ? "picked" : ""}`} data-source={`image:${image.index}`} title="Arraste para mover · duplo clique para editar · botão direito para mais opções"
                   onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setPickedImage(image.index); setImageMenu({ x: e.clientX, y: e.clientY, index: image.index, rect: image.rect }); }}
-                  style={{ left: r.x + (moving ? drag.dx : 0), top: r.y + (moving ? drag.dy : 0), width: r.width, height: r.height, ["--handle" as string]: `${8 / scale}px` }}>
+                  style={{ left: r.x + (moving?.dx ?? 0), top: r.y + (moving?.dy ?? 0), width: r.width, height: r.height, ["--handle" as string]: `${8 / scale}px` }}>
+                  {moving?.ghost && <img className="source-ghost" src={moving.ghost} alt="" draggable={false} />}
                   {picked && HANDLES.map((h) => <span key={h} className={`handle ${h}`} data-src-handle={h} />)}
                 </div>
               );

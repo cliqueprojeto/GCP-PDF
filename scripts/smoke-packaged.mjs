@@ -20,7 +20,7 @@ try{
  const input=join(root,'Documento cultural.pdf');await writeFile(input,await pdf.save());
  const env={...process.env,GCP_PDF_TEST_MODE:'1',GCP_PDF_DATA_DIR:join(root,'profile')};delete env.ELECTRON_RUN_AS_NODE;
  app=await electron.launch({executablePath:resolve(executable),args:[input],env,timeout:90_000});
- const page=await app.firstWindow();page.on('pageerror',error=>errors.push(error.message));
+ const page=await app.firstWindow();page.on('pageerror',error=>errors.push(error.stack??error.message));
  await page.waitForFunction(async()=>!!window.gcp&&(await window.gcp.getWorkspace()).documents.length===1,{},{timeout:60_000});
  const packaged=await app.evaluate(({app})=>({packaged:app.isPackaged,arch:process.arch,platform:process.platform}));
  check('aplicativo empacotado e arquitetura nativa',packaged.packaged&&packaged.arch===process.arch&&packaged.platform===process.platform);

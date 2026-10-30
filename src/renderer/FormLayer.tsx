@@ -38,23 +38,24 @@ interface Widget { id: string; fieldName: string; checkBox?: boolean; radioButto
 /** Interactive AcroForm fields (including XFA forms converted on open). Typed values are sent to the
  * document model and written into the PDF form when it is saved or exported. */
 export interface ButtonAction { field: string; image: boolean; url?: string; page?: number; reset?: boolean; print?: boolean }
-export function FormLayer({ pageRef, rotation, scale, values, interactive, onChange, onFieldMenu, onButton }: { pageRef: PageRef; rotation: number; scale: number; values: Record<string, FieldValue>; interactive: boolean; onChange: (values: Record<string, FieldValue>) => void; onFieldMenu?: (name: string, type: string) => void; onButton?: (action: ButtonAction) => void }) {
+export function FormLayer({ pageRef, rotation, scale, values, interactive, onChange, onFieldMenu, onButton, onError }: { pageRef: PageRef; rotation: number; scale: number; values: Record<string, FieldValue>; interactive: boolean; onChange: (values: Record<string, FieldValue>) => void; onFieldMenu?: (name: string, type: string) => void; onButton?: (action: ButtonAction) => void; onError:(error:unknown)=>void }) {
   const div = useRef<HTMLDivElement>(null), widgets = useRef(new Map<string, Widget>()), latest = useRef(values), pending = useRef<Record<string, FieldValue>>({}), timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   latest.current = values;
-  const buttons = useRef<any[]>([]), [, refresh] = React.useReducer((n: number) => n + 1, 0);
+  const [buttonView,setButtonView]=React.useState<{buttons:any[];transform:number[]}|null>(null);
   const masks = useRef<Record<string, FieldFormat>>({}), images = useRef<Set<string>>(new Set()), pushes = useRef(new Map<string, any>());
   useEffect(() => { let alive = true; void window.gcp.getImageFields(pageRef.base).then((list) => { if (alive) images.current = new Set(list); }).catch(() => {}); return () => { alive = false; }; }, [pageRef.base]);
   useEffect(() => { let alive = true; void formatsOf(pageRef.base).then((f) => { if (alive) masks.current = f; }); return () => { alive = false; }; }, [pageRef.base]);
   useEffect(() => {
     let dead = false;
+    setButtonView(null);
     void (async () => {
       const page = await loadPage(pageRef);
       const annotations = (await page.getAnnotations({ intent: "display" })).filter((a: any) => a.annotationType === pdfjs.AnnotationType.WIDGET && a.fieldName);
-      buttons.current = (annotations as any[]).filter((a) => a.pushButton);
       if (dead || !div.current) return;
       div.current.replaceChildren();
       if (!annotations.length) return;
       const doc = await loadBase(pageRef.base), storage = doc.annotationStorage;
+      if(dead||!div.current)return;
       widgets.current = new Map(annotations.map((a: any) => [a.id, a as Widget]));
       pushes.current = new Map((annotations as any[]).filter((a) => a.pushButton).map((a) => [a.id, a]));
       for (const a of annotations as any[]) {
@@ -62,13 +63,13 @@ export function FormLayer({ pageRef, rotation, scale, values, interactive, onCha
         if (value === undefined) continue;
         storage.setValue(a.id, { value: a.checkBox ? value === true : a.radioButton ? value === a.buttonValue : value });
       }
-      const viewport = page.getViewport({ scale, rotation }).clone({ dontFlip: true });
+      const pageViewport=page.getViewport({scale,rotation}),viewport=pageViewport.clone({dontFlip:true});
       div.current.style.setProperty("--scale-factor", String(scale));
       div.current.style.setProperty("--total-scale-factor", String(scale));
       const layer = new pdfjs.AnnotationLayer({ div: div.current, page, viewport, accessibilityManager: null, annotationCanvasMap: null, annotationEditorUIManager: null, structTreeLayer: null, commentManager: null, linkService, annotationStorage: storage } as any);
       await layer.render({ viewport, div: div.current, annotations, page, linkService: linkService as any, annotationStorage: storage, renderForms: true, enableScripting: false, imageResourcesPath: "" } as any);
-      refresh();
-    })().catch(() => {});
+      if(!dead)setButtonView({buttons:(annotations as any[]).filter(a=>a.pushButton),transform:pageViewport.transform});
+    })().catch(error=>{if(!dead)onError(error);});
     return () => { dead = true; };
   }, [pageRef.base, pageRef.src, rotation, scale]);
   function read(event: React.SyntheticEvent) {
@@ -102,16 +103,14 @@ export function FormLayer({ pageRef, rotation, scale, values, interactive, onCha
     const any = widget as Widget & { fieldType?: string; combo?: boolean; pushButton?: boolean };
     onFieldMenu(widget.fieldName, widget.checkBox ? "checkbox" : widget.radioButton ? "radio" : any.fieldType === "Ch" ? "combo" : any.fieldType === "Btn" ? "button" : any.fieldType === "Sig" ? "signature" : "text");
   }} />;
-  <ButtonLayer buttons={buttons.current} pageRef={pageRef} rotation={rotation} scale={scale} interactive={interactive} isImage={(name) => images.current.has(name)} onButton={onButton} />
+  <ButtonLayer buttons={buttonView?.buttons??[]} transform={buttonView?.transform??null} interactive={interactive} isImage={(name) => images.current.has(name)} onButton={onButton} />
   </>;
 }
 
 /** Push buttons and image fields as real, clickable buttons (pdf.js only draws them), with a pressed effect. */
-function ButtonLayer({ buttons, pageRef, rotation, scale, interactive, isImage, onButton }: { buttons: any[]; pageRef: PageRef; rotation: number; scale: number; interactive: boolean; isImage: (name: string) => boolean; onButton?: (action: ButtonAction) => void }) {
-  const [view, setView] = React.useState<{ transform: number[] } | null>(null);
-  useEffect(() => { let alive = true; void loadPage(pageRef).then((p) => { if (alive) setView({ transform: p.getViewport({ scale, rotation }).transform }); }); return () => { alive = false; }; }, [pageRef.base, pageRef.src, rotation, scale]);
-  if (!view || !onButton || !buttons.length) return null;
-  const [a, b, c, d, e, f] = view.transform as [number, number, number, number, number, number];
+function ButtonLayer({ buttons, transform, interactive, isImage, onButton }: { buttons: any[]; transform:number[]|null; interactive: boolean; isImage: (name: string) => boolean; onButton?: (action: ButtonAction) => void }) {
+  if (!transform || !onButton || !buttons.length) return null;
+  const [a, b, c, d, e, f] = transform as [number, number, number, number, number, number];
   const at = (x: number, y: number) => ({ x: a * x + c * y + e, y: b * x + d * y + f });
   return (
     <div className={`button-layer ${interactive ? "" : "passive"}`}>

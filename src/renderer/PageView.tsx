@@ -508,7 +508,7 @@ export function PageView(props: Props) {
     >
       <canvas ref={canvas} style={{ width: display.width, height: display.height }} />
       <div ref={textLayer} className="textLayer" />
-      {near && <FormLayer pageRef={pageRef} rotation={rotation} scale={scale} values={props.fields} interactive={tool.kind === "select"} onChange={props.onFields} onFieldMenu={(name, type) => props.onFieldMenu?.(pageRef.id, name, type)} onButton={(action) => props.onFormButton?.(pageRef.id, action)} />}
+      {near && <FormLayer pageRef={pageRef} rotation={rotation} scale={scale} values={props.fields} interactive={tool.kind === "select"} onChange={props.onFields} onFieldMenu={(name, type) => props.onFieldMenu?.(pageRef.id, name, type)} onButton={(action) => props.onFormButton?.(pageRef.id, action)} onError={props.onError} />}
       <div className="page-overlay" style={{ width: size.width, height: size.height, transform: pageTransform(size, rotation, scale) }}>
         <svg className="overlay-vectors" width={size.width} height={size.height} viewBox={`0 0 ${size.width} ${size.height}`}>
           {preview.map((o) => <VectorView key={o.id} o={o} />)}

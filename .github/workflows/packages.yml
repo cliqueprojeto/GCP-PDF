@@ -50,6 +50,14 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Formulários e troca de documentos
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run -a node scripts/smoke-form-lifecycle.mjs
+          else
+            node scripts/smoke-form-lifecycle.mjs
+          fi
       - name: Empacotar
         run: npx --no-install electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never
       - name: Instalar e testar DEB, AppImage e RPM

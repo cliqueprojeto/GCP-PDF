@@ -1,0 +1,32 @@
+# Build e dependências
+node_modules/
+dist/
+release/
+*.log
+
+# Arquivos reais do usuário usados em testes e capturas de tela (dados pessoais)
+.cache/
+evidence/
+assets/installer/*-preview.png
+
+# Segredos: chaves de API de IA, tokens, certificados, variáveis de ambiente
+# (o app guarda as chaves criptografadas no perfil do Windows, nunca no projeto)
+.env
+.env.*
+*.env
+preferences.json
+*secret*
+*token*
+*.key
+*.pem
+*.pfx
+*.p12
+*.p7b
+*.cer
+*.crt
+*.jks
+*.keystore
+.npmrc
+
+# Notas internas de desenvolvimento (ficam só neste computador)
+HANDOFF.md

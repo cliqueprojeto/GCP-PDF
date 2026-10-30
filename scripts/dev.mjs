@@ -1,0 +1,14 @@
+import {createServer} from 'vite';
+import react from '@vitejs/plugin-react';
+import {build} from 'esbuild';
+import {spawn} from 'node:child_process';
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url);
+import {contextIcons} from './icons.mjs';
+await contextIcons();
+await build({entryPoints:['src/main/index.ts'],outfile:'dist/main/index.cjs',platform:'node',format:'cjs',packages:'external',bundle:true,target:'node24'});
+await build({entryPoints:['src/main/preload.ts'],outfile:'dist/main/preload.cjs',platform:'node',format:'cjs',external:['electron'],bundle:true,target:'node24'});
+const server=await createServer({plugins:[react()],server:{host:'127.0.0.1',port:5178,strictPort:true}});await server.listen();
+const env={...process.env,VITE_DEV_SERVER_URL:'http://127.0.0.1:5178'};delete env.ELECTRON_RUN_AS_NODE;
+const child=spawn(require('electron'),['.'],{env,stdio:'inherit',windowsHide:true});
+child.on('exit',async code=>{await server.close();process.exit(code||0);});

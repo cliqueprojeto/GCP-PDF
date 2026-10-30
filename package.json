@@ -1,0 +1,140 @@
+{
+  "name": "gcp-pdf",
+  "version": "0.3.6",
+  "description": "Editor e leitor de PDFs local em português brasileiro",
+  "author": "Bruno Albertini | Gestão Cultural Pro",
+  "private": true,
+  "license": "UNLICENSED",
+  "main": "dist/main/index.cjs",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "node scripts/build.mjs",
+    "start": "electron .",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "pack:win": "npm run build && electron-builder --win --x64",
+    "publicar": "node scripts/publicar.mjs",
+    "pack:dir": "npm run build && electron-builder --win --x64 --dir",
+    "pack:linux": "npm run build && electron-builder --linux deb --x64",
+    "pack:mac": "npm run build && electron-builder --mac --x64 --arm64",
+    "postinstall": "node node_modules/electron/install.js"
+  },
+  "dependencies": {
+    "@fontsource/inter": "5.3.0",
+    "@napi-rs/canvas": "1.0.13",
+    "@pdf-lib/fontkit": "1.1.1",
+    "@xmldom/xmldom": "0.9.12",
+    "bwip-js": "4.11.4",
+    "docx": "9.15.0",
+    "exceljs": "4.4.0",
+    "lucide-react": "1.64.0",
+    "mammoth": "1.11.0",
+    "pdf-lib": "1.17.1",
+    "pdfjs-dist": "6.4.299",
+    "pptxgenjs": "4.0.1",
+    "qrcode": "1.5.4",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "tesseract.js": "7.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "@types/qrcode": "1.5.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0",
+    "esbuild": "0.28.2",
+    "playwright-core": "1.64.1",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vite": "8.3.5"
+  },
+  "build": {
+    "appId": "br.com.gestaoculturalpro.pdf",
+    "productName": "GCP-PDF",
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*",
+      "!assets/installer/*-preview.png",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/*.node",
+      "**/*.wasm",
+      "assets/pdfcraft/**",
+      "assets/context/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "artifactName": "GCP-PDF-${version}-${arch}.${ext}",
+      "signAndEditExecutable": true
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "GCP-PDF",
+      "language": "1046",
+      "include": "scripts/installer.nsh",
+      "artifactName": "GCP-PDF-Instalador-${version}-${arch}.${ext}",
+      "installerIcon": "assets/installer/installer.ico",
+      "uninstallerIcon": "assets/installer/installer.ico",
+      "installerHeaderIcon": "assets/installer/installer.ico",
+      "installerSidebar": "assets/installer/sidebar.bmp",
+      "uninstallerSidebar": "assets/installer/sidebar.bmp",
+      "installerHeader": "assets/installer/header.bmp",
+      "createStartMenuShortcut": true,
+      "menuCategory": "Gestão Cultural Pro",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "portable": {
+      "artifactName": "GCP-PDF-Portatil-${version}-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "deb"
+      ],
+      "category": "Office",
+      "icon": "assets/icon.png",
+      "maintainer": "Bruno Albertini"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.productivity",
+      "icon": "assets/icon.png",
+      "hardenedRuntime": true
+    },
+    "fileAssociations": [
+      {
+        "ext": "pdf",
+        "name": "Documento PDF",
+        "role": "Editor"
+      }
+    ]
+  }
+}

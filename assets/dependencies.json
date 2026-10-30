@@ -1,0 +1,72 @@
+[
+  {
+    "name": "electron",
+    "version": "45.1.0",
+    "license": "MIT"
+  },
+  {
+    "name": "react",
+    "version": "19.3.1",
+    "license": "MIT"
+  },
+  {
+    "name": "react-dom",
+    "version": "19.3.1",
+    "license": "MIT"
+  },
+  {
+    "name": "pdfjs-dist",
+    "version": "6.4.299",
+    "license": "Apache-2.0"
+  },
+  {
+    "name": "pdf-lib",
+    "version": "1.17.1",
+    "license": "MIT"
+  },
+  {
+    "name": "@pdf-lib/fontkit",
+    "version": "1.1.1",
+    "license": "MIT"
+  },
+  {
+    "name": "lucide-react",
+    "version": "1.64.0",
+    "license": "ISC"
+  },
+  {
+    "name": "docx",
+    "version": "9.15.0",
+    "license": "MIT"
+  },
+  {
+    "name": "exceljs",
+    "version": "4.4.0",
+    "license": "MIT"
+  },
+  {
+    "name": "pptxgenjs",
+    "version": "4.0.1",
+    "license": "MIT"
+  },
+  {
+    "name": "tesseract.js",
+    "version": "7.0.0",
+    "license": "Apache-2.0"
+  },
+  {
+    "name": "@napi-rs/canvas",
+    "version": "1.0.13",
+    "license": "MIT"
+  },
+  {
+    "name": "qrcode",
+    "version": "1.5.4",
+    "license": "MIT"
+  },
+  {
+    "name": "@fontsource/inter",
+    "version": "5.3.0",
+    "license": "OFL-1.1"
+  }
+]

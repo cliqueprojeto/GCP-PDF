@@ -242,6 +242,10 @@ async function drawObjects(doc: PDFDocument, page: PDFPage, objects: PageObject[
       case 'note': {
         const anchor=at({x:o.x,y:o.y+o.height});
         const annotation=doc.context.obj({Type:'Annot',Subtype:'Text',Rect:[anchor.x,anchor.y,anchor.x+o.width,anchor.y+o.height],Contents:PDFHexString.fromText(o.text),T:PDFHexString.fromText(o.author),NM:PDFString.of('GCP-PDF:note:'+o.id),M:PDFString.of('D:'+o.createdAt.replace(/[^0-9]/g,'').slice(0,14)+'Z'),Name:'Comment',Open:false,C:[parseInt(o.color.slice(1,3),16)/255,parseInt(o.color.slice(3,5),16)/255,parseInt(o.color.slice(5,7),16)/255],F:28});
+        // The commented passage travels in private keys (other readers ignore them) so the comment
+        // reopens tied to its words instead of floating loose on the page.
+        if(o.quote)annotation.set(PDFName.of('GCPQuote'),PDFHexString.fromText(o.quote));
+        if(o.anchor?.length)annotation.set(PDFName.of('GCPAnchor'),doc.context.obj(o.anchor.flatMap(r=>{const a=at({x:r.x,y:r.y}),b=at({x:r.x+r.width,y:r.y+r.height});return [a.x,a.y,b.x,b.y];})));
         const parent=doc.context.register(annotation);
         page.node.addAnnot(parent);
         // Replies are separate notes "in reply to" the first (IRT + RT /R), the structure Acrobat shows as a thread.
@@ -288,7 +292,7 @@ async function drawObjects(doc: PDFDocument, page: PDFPage, objects: PageObject[
       case 'markup': {
         const quads=o.rects.flatMap(r=>{const tl=at({x:r.x,y:r.y}),tr=at({x:r.x+r.width,y:r.y}),bl=at({x:r.x,y:r.y+r.height}),br=at({x:r.x+r.width,y:r.y+r.height});return [tl.x,tl.y,tr.x,tr.y,bl.x,bl.y,br.x,br.y];});
         const xs=quads.filter((_,i)=>i%2===0),ys=quads.filter((_,i)=>i%2===1);
-        page.node.addAnnot(doc.context.register(doc.context.obj({Type:'Annot',Subtype:{highlight:'Highlight',underline:'Underline',strike:'StrikeOut'}[o.style],Rect:[Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)],QuadPoints:quads,C:[parseInt(o.color.slice(1,3),16)/255,parseInt(o.color.slice(3,5),16)/255,parseInt(o.color.slice(5,7),16)/255],CA:o.opacity,F:4,NM:PDFString.of('GCP-PDF:markup:'+o.id)})));
+        page.node.addAnnot(doc.context.register(doc.context.obj({Type:'Annot',Subtype:{highlight:'Highlight',underline:'Underline',strike:'StrikeOut',squiggly:'Squiggly'}[o.style],Rect:[Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)],QuadPoints:quads,C:[parseInt(o.color.slice(1,3),16)/255,parseInt(o.color.slice(3,5),16)/255,parseInt(o.color.slice(5,7),16)/255],CA:o.opacity,F:4,NM:PDFString.of('GCP-PDF:markup:'+o.id)})));
         break;
       }
     }
@@ -371,6 +375,14 @@ function removeOwnedNotes(doc:PDFDocument,pages:PDFPage[]){
 }
 export async function noteOverlayBase(bytes:Uint8Array){const doc=await load(bytes);removeOwnedNotes(doc,doc.getPages());return save(doc);}
 
+/** The passage a GCP-PDF note comments (private GCPQuote/GCPAnchor keys), back in page top-left points. */
+function anchorOf(dict:PDFDict,box:{x:number;y:number;height:number}):{quote?:string;anchor?:{x:number;y:number;width:number;height:number}[]}{
+ const quote=dict.get(PDFName.of('GCPQuote')),list=dict.lookupMaybe(PDFName.of('GCPAnchor'),PDFArray);
+ const values=list?.asArray().map(v=>v instanceof PDFNumber?v.asNumber():NaN)??[];
+ const anchor:{x:number;y:number;width:number;height:number}[]=[];
+ if(values.length%4===0&&values.every(Number.isFinite))for(let i=0;i<values.length;i+=4){const [x1,y1,x2,y2]=values.slice(i,i+4) as [number,number,number,number];anchor.push({x:Math.min(x1,x2)-box.x,y:box.y+box.height-Math.max(y1,y2),width:Math.abs(x2-x1),height:Math.abs(y2-y1)});}
+ return {...(quote instanceof PDFString||quote instanceof PDFHexString?{quote:quote.decodeText()}:{}),...(anchor.length?{anchor}:{})};
+}
 /** Reads only notes owned by GCP-PDF. Other applications' annotations stay untouched. */
 export async function readPdfNotes(bytes:Uint8Array,existing?:PDFDocument):Promise<({page:number}&Omit<Extract<PageObject,{kind:'note'}>,'page'>)[]> {
  const doc=existing??await load(bytes),notes:({page:number}&Omit<Extract<PageObject,{kind:'note'}>,'page'>)[]=[];
@@ -379,7 +391,7 @@ export async function readPdfNotes(bytes:Uint8Array,existing?:PDFDocument):Promi
  const when=(m:string)=>{const date=m.replace(/^D:/,'');return /^\d{14}/.test(date)?`${date.slice(0,4)}-${date.slice(4,6)}-${date.slice(6,8)}T${date.slice(8,10)}:${date.slice(10,12)}:${date.slice(12,14)}.000Z`:new Date(0).toISOString();};
  for(const [index,page] of doc.getPages().entries()){
   const annots=page.node.Annots();if(!annots)continue;const box=page.getCropBox();
-  for(let i=0;i<annots.size();i++){const dict=doc.context.lookup(annots.get(i));if(!(dict instanceof PDFDict)||dict.get(PDFName.of('Subtype'))?.toString()!=='/Text')continue;const nm=text(dict,'NM');if(nm.startsWith('GCP-PDF:reply:')){const parent=dict.get(PDFName.of('IRT'));if(parent)replies.push({parent:parent.toString(),reply:{id:nm.slice('GCP-PDF:reply:'.length),author:text(dict,'T'),text:text(dict,'Contents'),createdAt:when(text(dict,'M'))}});continue;}if(!nm.startsWith('GCP-PDF:note:'))continue;const rect=dict.lookupMaybe(PDFName.of('Rect'),PDFArray);if(!rect||rect.size()!==4)continue;const coords=rect.asArray().map(v=>v instanceof PDFNumber?v.asNumber():NaN);if(!coords.every(Number.isFinite))continue;const [left,bottom,right,top]=coords as [number,number,number,number];const colors=dict.lookupMaybe(PDFName.of('C'),PDFArray)?.asArray().map(v=>v instanceof PDFNumber?v.asNumber():0)??[1,.8,0];const color='#'+colors.slice(0,3).map(v=>Math.round(Math.max(0,Math.min(1,v))*255).toString(16).padStart(2,'0')).join('');const date=text(dict,'M').replace(/^D:/,'');const createdAt=/^\d{14}/.test(date)?`${date.slice(0,4)}-${date.slice(4,6)}-${date.slice(6,8)}T${date.slice(8,10)}:${date.slice(10,12)}:${date.slice(12,14)}.000Z`:new Date(0).toISOString();refs.set(annots.get(i).toString(),notes.length);notes.push({kind:'note',id:nm.slice('GCP-PDF:note:'.length),page:index,x:left-box.x,y:box.y+box.height-top,width:right-left,height:top-bottom,text:text(dict,'Contents'),author:text(dict,'T'),createdAt,color});}
+  for(let i=0;i<annots.size();i++){const dict=doc.context.lookup(annots.get(i));if(!(dict instanceof PDFDict)||dict.get(PDFName.of('Subtype'))?.toString()!=='/Text')continue;const nm=text(dict,'NM');if(nm.startsWith('GCP-PDF:reply:')){const parent=dict.get(PDFName.of('IRT'));if(parent)replies.push({parent:parent.toString(),reply:{id:nm.slice('GCP-PDF:reply:'.length),author:text(dict,'T'),text:text(dict,'Contents'),createdAt:when(text(dict,'M'))}});continue;}if(!nm.startsWith('GCP-PDF:note:'))continue;const rect=dict.lookupMaybe(PDFName.of('Rect'),PDFArray);if(!rect||rect.size()!==4)continue;const coords=rect.asArray().map(v=>v instanceof PDFNumber?v.asNumber():NaN);if(!coords.every(Number.isFinite))continue;const [left,bottom,right,top]=coords as [number,number,number,number];const colors=dict.lookupMaybe(PDFName.of('C'),PDFArray)?.asArray().map(v=>v instanceof PDFNumber?v.asNumber():0)??[1,.8,0];const color='#'+colors.slice(0,3).map(v=>Math.round(Math.max(0,Math.min(1,v))*255).toString(16).padStart(2,'0')).join('');const date=text(dict,'M').replace(/^D:/,'');const createdAt=/^\d{14}/.test(date)?`${date.slice(0,4)}-${date.slice(4,6)}-${date.slice(6,8)}T${date.slice(8,10)}:${date.slice(10,12)}:${date.slice(12,14)}.000Z`:new Date(0).toISOString();refs.set(annots.get(i).toString(),notes.length);notes.push({kind:'note',id:nm.slice('GCP-PDF:note:'.length),page:index,x:left-box.x,y:box.y+box.height-top,width:right-left,height:top-bottom,text:text(dict,'Contents'),author:text(dict,'T'),createdAt,color,...anchorOf(dict,box)});}
  }
  for(const {parent,reply} of replies){const at=refs.get(parent);if(at!==undefined)(notes[at]!.replies??=[]).push(reply);}
  return notes;

@@ -54,11 +54,16 @@ Os demais formatos Office além de `.docx`, `.xlsx` e `.txt` podem exigir LibreO
 - Página inicial com arquivos recentes, busca e documentos abertos em abas; abas reorganizáveis e destacáveis em outra janela (inclusive arrastando a aba para baixo).
 - Pesquisa no documento direto na barra superior ou no painel, com navegação entre resultados; marcadores (criados à mão ou a partir dos títulos) e miniaturas das páginas.
 - Painel Propriedades à direita, aberto e fechado por você, deslizando sobre a borda sem empurrar a página; o botão avisa quando há opções para o item selecionado.
-- Livros EPUB no modo Livro: fontes, tamanho, entrelinha, margens, temas claro/sépia/noturno, uma ou duas páginas, efeitos de virar página, passagem automática com tempo ajustável, sumário, notas de rodapé em janela e retomada de onde parou.
+- Livros EPUB no modo Livro: fontes, tamanho, altura da linha, alinhamento (do livro, à esquerda, justificado ou centralizado), margens, temas claro/sépia/noturno, uma ou duas páginas ou rolagem contínua para cima e para baixo, efeitos de virar página com velocidade ajustável, passagem ou rolagem automática com tempo, sumário, notas de rodapé em janela e retomada exatamente no trecho onde parou.
+- No livro, ao selecionar um trecho aparecem as ações: nota, copiar, traduzir, sinônimos, pesquisar no livro, sublinhar, marcador e destaque em quatro cores; painel com todos os destaques, notas e marcadores; pesquisa no livro inteiro; tempo restante estimado no capítulo e no livro pelo seu ritmo de leitura.
+- Livros sem sumário: o botão "Mapear capítulos" monta o sumário pelos títulos do texto. Livros e quadrinhos aparecem nos arquivos recentes com a porcentagem lida.
+- Quadrinhos e mangás (CBZ, CBR e CB7): uma ou duas páginas (capa sozinha) ou rolagem vertical, leitura de mangá da direita para a esquerda, zoom pelos botões, Ctrl + roda do mouse ou duplo clique, ferramenta mão para mover a página ampliada, ajuste à página, à largura ou tamanho original, passagem automática e retomada da página.
 
 ### Comentar e revisar
-- Comentários em balões com respostas, editar e excluir; os ícones ficam na margem, ao lado do texto, e podem ser arrastados.
-- Destaque, sublinhado e tachado de texto aplicados assim que você seleciona o trecho (a ferramenta continua ativa), salvos como anotações padrão reconhecidas por outros leitores.
+- Comentários em balões com respostas, editar e excluir; os ícones ficam na margem, ao lado do texto, e podem ser arrastados. Uma seta liga o balão ao comentário, mesmo quando você arrasta o balão para o lado.
+- Comentários presos ao texto: selecione um trecho, clique com o botão direito e escolha "Adicionar nota ao texto". O trecho fica marcado na página, aparece resumido no balão e no painel Comentários, e o clique no painel leva direto a ele.
+- Botão direito sobre o texto selecionado: copiar, selecionar tudo na página, destacar, sublinhar, tachar, sublinhado ondulado, nota ao texto, marcador, sinônimos e traduzir. O painel mostra o trecho de cada destaque, inclusive dos feitos em outros programas.
+- Destaque, sublinhado, tachado e sublinhado ondulado de texto aplicados assim que você seleciona o trecho (a ferramenta continua ativa), salvos como anotações padrão reconhecidas por outros leitores.
 - Sinônimos e tradução (português, inglês e espanhol) pelo botão direito sobre o texto ou na aba Revisar, com dicionários abertos que funcionam sem internet; idiomas padrão em Configurações.
 - Caixas de texto, carimbos (com fundo sólido e "Efeito batido" de carimbo de borracha), formas, desenho à mão livre e medidas de distância, perímetro e área em centímetros.
 - Copiar, recortar, colar e duplicar formas, desenhos, caixas de texto, imagens e carimbos (Ctrl+C, Ctrl+X, Ctrl+V, Ctrl+D ou botão direito).

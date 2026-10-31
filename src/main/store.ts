@@ -37,7 +37,11 @@ function parseObject(raw: PageObject, pages: Set<string>, assets: Map<string, st
  const box = (o: {x: unknown; y: unknown; width: unknown; height: unknown}) => { if (![o.x, o.y, o.width, o.height].every(finite) || (o.width as number) < 0 || (o.height as number) < 0) fail(); };
  const opacity = (v: unknown) => { if (!finite(v) || v < 0.05 || v > 1) fail(); return v as number; };
  switch (raw.kind) {
-  case 'note': box(raw); if(typeof raw.text!=='string'||raw.text.length>20000||typeof raw.author!=='string'||raw.author.length>120||typeof raw.createdAt!=='string'||!Number.isFinite(Date.parse(raw.createdAt))||!HEX.test(raw.color)) fail(); if(raw.replies!==undefined&&(!Array.isArray(raw.replies)||raw.replies.length>500||raw.replies.some((r:any)=>!r||typeof r.id!=='string'||typeof r.text!=='string'||r.text.length>20000||typeof r.author!=='string'||r.author.length>120||typeof r.createdAt!=='string'||!Number.isFinite(Date.parse(r.createdAt)))))fail(); return {...raw};
+  case 'note': box(raw); if(typeof raw.text!=='string'||raw.text.length>20000||typeof raw.author!=='string'||raw.author.length>120||typeof raw.createdAt!=='string'||!Number.isFinite(Date.parse(raw.createdAt))||!HEX.test(raw.color)) fail(); if(raw.replies!==undefined&&(!Array.isArray(raw.replies)||raw.replies.length>500||raw.replies.some((r:any)=>!r||typeof r.id!=='string'||typeof r.text!=='string'||r.text.length>20000||typeof r.author!=='string'||r.author.length>120||typeof r.createdAt!=='string'||!Number.isFinite(Date.parse(r.createdAt)))))fail();
+   // The commented passage: its words and line boxes, checked like any other geometry.
+   if((raw.quote!==undefined&&(typeof raw.quote!=='string'||raw.quote.length>20000))||(raw.anchor!==undefined&&(!Array.isArray(raw.anchor)||raw.anchor.length>2000)))fail();
+   for(const r of raw.anchor??[])box(r);
+   return {...raw,...(raw.anchor?{anchor:raw.anchor.map(r=>({x:r.x,y:r.y,width:r.width,height:r.height}))}:{})};
   case 'text': box(raw); if (typeof raw.text !== 'string' || raw.text.length > MAX_OBJECT_TEXT || !finite(raw.size) || raw.size < 4 || raw.size > 400 || !HEX.test(raw.color) || typeof raw.font !== 'string' || !raw.font.trim() || raw.font.length > 120 || !['left', 'center', 'right'].includes(raw.align) || !finite(raw.rotation)) fail();
    return {id: raw.id, page: raw.page, kind: 'text', x: raw.x, y: raw.y, width: raw.width, height: raw.height, text: raw.text, size: raw.size, color: raw.color, font: raw.font, bold: !!raw.bold, italic: !!raw.italic, align: raw.align, rotation: raw.rotation};
   case 'image': box(raw); if (!assets.has(raw.asset) || !finite(raw.rotation)) fail();
@@ -46,9 +50,9 @@ function parseObject(raw: PageObject, pages: Set<string>, assets: Map<string, st
    return {id: raw.id, page: raw.page, kind: 'shape', shape: raw.shape, x: raw.x, y: raw.y, width: raw.width, height: raw.height, points: raw.points?.map(point), stroke: raw.stroke, fill: raw.fill, strokeWidth: raw.strokeWidth, opacity: opacity(raw.opacity), ...(raw.measure ? {measure: raw.measure} : {})};
   case 'ink': if (!Array.isArray(raw.points) || raw.points.length < 2 || raw.points.length > 20_000 || !HEX.test(raw.stroke) || !finite(raw.strokeWidth) || raw.strokeWidth <= 0 || raw.strokeWidth > 72) fail();
    return {id: raw.id, page: raw.page, kind: 'ink', points: raw.points.map(point), stroke: raw.stroke, strokeWidth: raw.strokeWidth, opacity: opacity(raw.opacity)};
-  case 'markup': if (!['highlight', 'underline', 'strike'].includes(raw.style) || !Array.isArray(raw.rects) || !raw.rects.length || raw.rects.length > 2000 || !HEX.test(raw.color)) fail();
+  case 'markup': if (!['highlight', 'underline', 'strike', 'squiggly'].includes(raw.style) || !Array.isArray(raw.rects) || !raw.rects.length || raw.rects.length > 2000 || !HEX.test(raw.color) || (raw.text !== undefined && (typeof raw.text !== 'string' || raw.text.length > 20000))) fail();
    for (const r of raw.rects) box(r);
-   return {id: raw.id, page: raw.page, kind: 'markup', style: raw.style, rects: raw.rects.map(r => ({x: r.x, y: r.y, width: r.width, height: r.height})), color: raw.color, opacity: opacity(raw.opacity)};
+   return {id: raw.id, page: raw.page, kind: 'markup', style: raw.style, rects: raw.rects.map(r => ({x: r.x, y: r.y, width: r.width, height: r.height})), color: raw.color, opacity: opacity(raw.opacity), ...(raw.text ? {text: raw.text} : {})};
   default: return fail();
  }
 }

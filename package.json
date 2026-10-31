@@ -1,6 +1,6 @@
 {
   "name": "gcp-pdf",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Editor e leitor de PDFs local em português brasileiro",
   "author": "Bruno Albertini | Gestão Cultural Pro",
   "private": true,
@@ -33,6 +33,7 @@
     "docx": "9.15.0",
     "exceljs": "4.4.0",
     "fflate": "0.8.3",
+    "libarchive-wasm": "1.2.0",
     "lucide-react": "1.64.0",
     "mammoth": "1.11.0",
     "pdf-lib": "1.17.1",
@@ -162,6 +163,24 @@
         "ext": "epub",
         "mimeType": "application/epub+zip",
         "name": "Livro digital EPUB",
+        "role": "Viewer"
+      },
+      {
+        "ext": "cbz",
+        "mimeType": "application/vnd.comicbook+zip",
+        "name": "Quadrinho CBZ",
+        "role": "Viewer"
+      },
+      {
+        "ext": "cbr",
+        "mimeType": "application/vnd.comicbook-rar",
+        "name": "Quadrinho CBR",
+        "role": "Viewer"
+      },
+      {
+        "ext": "cb7",
+        "mimeType": "application/x-cb7",
+        "name": "Quadrinho CB7",
         "role": "Viewer"
       }
     ]

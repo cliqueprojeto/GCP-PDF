@@ -6,7 +6,7 @@ import {posix} from 'node:path';
 /** Opens an EPUB for the reader. Book content is untrusted: scripts, frames, forms, event handlers and
  * outside resources are removed here, images and fonts are inlined as data URLs, and every id is
  * prefixed per chapter so the whole book can live in one sandboxed document. */
-export interface ParsedBook {id:string;title:string;author:string;language:string;cover?:string;toc:{title:string;chapter:number;anchor?:string;level:number}[];chapters:number;html:string;css:string}
+export interface ParsedBook {id:string;title:string;author:string;language:string;cover?:string;toc:{title:string;chapter:number;anchor?:string;level:number}[];chapters:number;html:string;css:string;tocGenerated?:boolean}
 
 const MAX_TOTAL=400*1024*1024;
 const MEDIA:Record<string,string>={jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',gif:'image/gif',webp:'image/webp',svg:'image/svg+xml',ttf:'font/ttf',otf:'font/otf',woff:'font/woff',woff2:'font/woff2'};
@@ -83,7 +83,8 @@ export function readBook(bytes:Uint8Array):ParsedBook {
   const walk=(node:any,level:number)=>{for(const point of Array.from(node.childNodes as ArrayLike<any>).filter((n:any)=>n.localName==='navPoint')){const label=point.getElementsByTagName('text')[0]?.textContent?.trim()??'',src=point.getElementsByTagName('content')[0]?.getAttribute('src');const where=src?target(ncx.href,src):undefined;if(where&&label)toc.push({title:label,level,...where});walk(point,level+1);}};
   const map=doc.getElementsByTagName('navMap')[0];if(map)walk(map,1);
  }
- if(!toc.length)spine.forEach((s,i)=>toc.push({title:`Capítulo ${i+1}`,chapter:i,level:1}));
+ const tocGenerated=!toc.length;
+ if(tocGenerated)spine.forEach((s,i)=>toc.push({title:`Capítulo ${i+1}`,chapter:i,level:1}));
  const coverItem=[...manifest.values()].find(m=>/cover-image/.test(m.props))??manifest.get(Array.from(opf.getElementsByTagName('meta')).find(m=>m.getAttribute('name')==='cover')?.getAttribute('content')??'');
  const identifier=first('dc:identifier');
  return {
@@ -92,6 +93,6 @@ export function readBook(bytes:Uint8Array):ParsedBook {
   ...(coverItem&&/^image\//.test(coverItem.type)&&dataUrl(coverItem.href)?{cover:dataUrl(coverItem.href)!}:{}),
   // The reader embeds this CSS in a <style> element: "<" never appears raw, so a stylesheet cannot
   // close the element and inject markup past the sanitizer. \3C is the same character for CSS.
-  toc,chapters:spine.length,html:sections.join('\n'),css:css.join('\n').replace(/</g,'\\3C '),
+  toc,...(tocGenerated?{tocGenerated}:{}),chapters:spine.length,html:sections.join('\n'),css:css.join('\n').replace(/</g,'\\3C '),
  };
 }

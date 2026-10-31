@@ -24,6 +24,7 @@ import {EditorBlockReader} from './editor-blocks';
 import {Dictionaries} from './dictionary';
 import {analyzeEpub,toEpub} from './epub';
 import {readBook,type ParsedBook} from './epub-reader';
+import {readComic,COMIC_EXTENSIONS,type ParsedComic} from './comics';
 import {CertificateFiles} from './certificate-files';
 import {installUnixIntegration,type DesktopOptions} from './desktop-integration';
 import {privateDirectory} from './pdfcraft-sidecar';
@@ -38,10 +39,11 @@ const fontCache=()=>join(app.getPath('userData'),'font-catalog.json');
 const editorBlockReader=new EditorBlockReader();
 const dictionaries=new Dictionaries(()=>join(assets(),'dictionaries'));
 /** EPUB files the user opened, by an opaque token: the renderer never names paths to read. */
-const books=new Map<string,{path:string;parsed?:ParsedBook}>();
-const BOOK_EXTENSIONS=['.epub'];
+const books=new Map<string,{path:string;parsed?:ParsedBook;comic?:ParsedComic}>();
+const BOOK_EXTENSIONS=['.epub',...COMIC_EXTENSIONS];
 const OPENABLE=[...INPUT_EXTENSIONS,...BOOK_EXTENSIONS];
-function openBook(view:View,path:string){const token=randomUUID();books.set(token,{path});if(books.size>20)books.delete(books.keys().next().value!);action(view,'book:'+token);}
+/** EPUB opens in the book reader, comic archives in the comic reader; only the last few stay in memory. */
+function openBook(view:View,path:string){const token=randomUUID();books.set(token,{path});if(books.size>20)books.delete(books.keys().next().value!);for(const [key,entry] of [...books].slice(0,-3))if(entry.comic)books.set(key,{path:entry.path});action(view,(COMIC_EXTENSIONS.includes(extname(path).toLowerCase())?'comic:':'book:')+token);}
 const store=new DocumentStore(async(family,bold,italic)=>{const face=await faceFor(family,bold,italic,fontCache());return face?new Uint8Array(await readFile(face.file)):undefined;}),settings=new Settings();
 type View={window:BrowserWindow;ids:string[];active?:string;allowClose:boolean};
 type Quick={window:BrowserWindow;state:QuickState};
@@ -170,7 +172,7 @@ function createWindow(ids:string[]=[]){
 }
 function mainView(){return [...views.values()].find(view=>!view.window.isDestroyed())??createWindow();}
 async function openPaths(view:View,paths?:string[]){
- if(!paths){const result=await openDialog(view.window,{title:'Abrir arquivos',properties:['openFile','multiSelections'],filters:[{name:'Documentos, imagens e livros',extensions:OPENABLE.map(e=>e.slice(1))},{name:'Livro digital EPUB',extensions:['epub']},{name:'Todos os arquivos',extensions:['*']}]});if(result.canceled)return;paths=result.filePaths;}
+ if(!paths){const result=await openDialog(view.window,{title:'Abrir arquivos',properties:['openFile','multiSelections'],filters:[{name:'Documentos, imagens e livros',extensions:OPENABLE.map(e=>e.slice(1))},{name:'Livro digital EPUB',extensions:['epub']},{name:'Quadrinhos e mangás (CBZ, CBR, CB7)',extensions:COMIC_EXTENSIONS.map(e=>e.slice(1))},{name:'Todos os arquivos',extensions:['*']}]});if(result.canceled)return;paths=result.filePaths;}
  if(!Array.isArray(paths)||paths.length>200)throw new Error('Selecione até 200 arquivos por vez.');
  try{for(const [n,path] of paths.entries()){
   if(typeof path!=='string')throw new Error('Caminho de arquivo inválido.');
@@ -387,14 +389,25 @@ function registerIpc(){
    try{await atomicWrite(path,await toEpub(await store.materialize(id),options,message=>action(view,'progress:'+message)));return path;}finally{action(view,'progress:');}
   },
   openBookFile:async(view,path?:string)=>{
-   if(path===undefined){const result=await openDialog(view.window,{title:'Abrir livro digital',properties:['openFile'],filters:[{name:'Livro digital EPUB',extensions:['epub']}]});if(result.canceled||!result.filePaths[0])return;path=result.filePaths[0];}
-   if(typeof path!=='string'||extname(path).toLowerCase()!=='.epub')throw new Error('Escolha um arquivo EPUB.');
+   if(path===undefined){const result=await openDialog(view.window,{title:'Abrir livro ou quadrinho',properties:['openFile'],filters:[{name:'Livros e quadrinhos',extensions:BOOK_EXTENSIONS.map(e=>e.slice(1))},{name:'Livro digital EPUB',extensions:['epub']},{name:'Quadrinhos e mangás (CBZ, CBR, CB7)',extensions:COMIC_EXTENSIONS.map(e=>e.slice(1))}]});if(result.canceled||!result.filePaths[0])return;path=result.filePaths[0];}
+   if(typeof path!=='string'||!BOOK_EXTENSIONS.includes(extname(path).toLowerCase()))throw new Error('Escolha um arquivo EPUB, CBZ, CBR ou CB7.');
    openBook(view,path);
   },
   readBook:async(_view,token:string)=>{
    const entry=typeof token==='string'?books.get(token):undefined;if(!entry)throw new Error('O livro não está mais disponível. Abra o arquivo de novo.');
    if(!entry.parsed){const info=await stat(entry.path);if(info.size>300*1024*1024)throw new Error('Abra um livro de até 300 MB.');entry.parsed=readBook(new Uint8Array(await readFile(entry.path)));}
-   return {...entry.parsed,token,name:basename(entry.path)};
+   return {...entry.parsed,token,name:basename(entry.path),path:entry.path};
+  },
+  readComic:async(_view,token:string)=>{
+   const entry=typeof token==='string'?books.get(token):undefined;if(!entry)throw new Error('O quadrinho não está mais disponível. Abra o arquivo de novo.');
+   if(!entry.comic){const info=await stat(entry.path);if(info.size>1024*1024*1024)throw new Error('Abra um quadrinho de até 1 GB.');entry.comic=await readComic(new Uint8Array(await readFile(entry.path)),basename(entry.path));}
+   const {id,title,names}=entry.comic;
+   return {token,id,title,names,name:basename(entry.path),path:entry.path};
+  },
+  comicPage:async(_view,token:string,index:number)=>{
+   const page=typeof token==='string'&&Number.isInteger(index)?books.get(token)?.comic?.pages[index]:undefined;
+   if(!page)throw new Error('Esta página do quadrinho não está disponível.');
+   return {type:page.type,data:page.data};
   },
   exportDocument:async(view,id,options:ExportOptions)=>{
    const doc=own(view,id);

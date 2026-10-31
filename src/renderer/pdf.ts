@@ -3,7 +3,7 @@ import * as pdfjs from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import "pdfjs-dist/web/pdf_viewer.css";
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
-import type { PageRef } from "../shared/types";
+import type { PageRef, Rect } from "../shared/types";
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 export { pdfjs };
 
@@ -54,6 +54,7 @@ export function releaseBases(keep: Set<string>) {
     if (keep.has(id)) continue;
     documents.delete(id);
     for (const key of pages.keys()) if (key.startsWith(id + ":")) pages.delete(key);
+    for (const key of texts.keys()) if (key.startsWith(id + ":")) texts.delete(key);
     void task.then((doc) => doc.loadingTask.destroy()).catch(() => {});
   }
 }
@@ -95,4 +96,31 @@ export function usePageGeometry(refs: PageRef[]) {
 export const totalRotation = (ref: PageRef, g: PageGeometry) => (((g.rotation + ref.rotate) % 360) + 360) % 360;
 export function displaySize(g: PageGeometry, rotation: number, scale: number) {
   return rotation % 180 ? { width: g.height * scale, height: g.width * scale } : { width: g.width * scale, height: g.height * scale };
+}
+const texts = new Map<string, ReturnType<PDFPageProxy["getTextContent"]>>();
+/** Text of a source page, read once: the comments panel quotes many markups of the same page. */
+function textContent(ref: Pick<PageRef, "base" | "src">) {
+  const key = `${ref.base}:${ref.src}`;
+  let task = texts.get(key);
+  if (!task) { task = loadPage(ref).then((page) => page.getTextContent()); task.catch(() => texts.delete(key)); texts.set(key, task); }
+  return task;
+}
+/** The words printed inside line boxes (unrotated top-left points), for quoting a markup made elsewhere.
+ * Each text item is cut proportionally to the part of its width the box covers. */
+export async function textInRects(ref: Pick<PageRef, "base" | "src">, rects: Rect[]): Promise<string> {
+  if (!rects.length) return "";
+  const page = await loadPage(ref), [x0, , , y1] = page.view, content = await textContent(ref), lines: string[] = [];
+  for (const r of rects) {
+    const words: string[] = [];
+    for (const item of content.items) {
+      if (!("str" in item) || !item.str) continue;
+      const size = Math.hypot(item.transform[2], item.transform[3]) || item.height, left = item.transform[4] - x0, base = y1 - item.transform[5];
+      const middle = base - size * 0.35;
+      if (middle < r.y - 1 || middle > r.y + r.height + 1 || left > r.x + r.width || left + item.width < r.x) continue;
+      const per = item.width / item.str.length || 1, from = Math.max(0, Math.round((r.x - left) / per)), to = Math.min(item.str.length, Math.round((r.x + r.width - left) / per));
+      if (to > from) words.push(item.str.slice(from, to));
+    }
+    if (words.length) lines.push(words.join(" ").trim());
+  }
+  return lines.join(" ").replace(/\s+/g, " ").trim();
 }

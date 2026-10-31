@@ -1,11 +1,11 @@
-import type { FieldType, FontFamily, ShapeKind } from "../shared/types";
+import type { FieldType, FontFamily, MarkupStyle, ShapeKind } from "../shared/types";
 export type Tool =
   | { kind: "select" }
   | { kind: "edit"; mode?: "all" | "text" | "images" }
   | { kind: "text" }
   | { kind: "shape"; shape: ShapeKind; measure?: "distance" | "perimeter" | "area" }
   | { kind: "ink" }
-  | { kind: "markup"; style: "highlight" | "underline" | "strike" }
+  | { kind: "markup"; style: MarkupStyle }
   | { kind: "stamp"; dataUrl: string; name: string; signature: boolean; natural?: boolean }
   | { kind: "field"; field: FieldType }
   | { kind: "sign-area" }

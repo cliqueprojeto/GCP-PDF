@@ -1,5 +1,20 @@
 # Histórico de versões do GCP-PDF
 
+## 0.9.0 — 31/10/2026
+
+- Comentários presos ao texto: selecione um trecho, clique com o botão direito e escolha "Adicionar nota ao texto". O trecho fica marcado na página e aparece resumido no balão e no painel Comentários.
+- O balão do comentário agora tem uma seta que o liga ao ícone na página, mesmo quando você o arrasta para o lado.
+- No painel Comentários, cada destaque mostra o trecho marcado (também os feitos em outros programas) e o clique leva direto ao ponto da página.
+- Novo menu do botão direito no texto do PDF: copiar, selecionar tudo, destacar, sublinhar, tachar, sublinhado ondulado, nota ao texto, marcador, sinônimos e traduzir.
+- Leitor de livros renovado: ao selecionar um trecho aparecem nota, copiar, traduzir, sinônimos, pesquisar no livro, sublinhar, marcador e destaque em quatro cores, com painel de destaques, notas e marcadores.
+- Selecionar texto no livro não vira mais a página sem querer.
+- Livros: alinhamento do texto (do livro, esquerda, justificado ou centralizado), rolagem contínua para cima e para baixo, velocidade da animação e rolagem automática com tempo.
+- Livros sem sumário ganham o botão "Mapear capítulos", que monta o sumário pelos títulos do texto; nomes como "Start" e "Cover" aparecem em português.
+- O livro reabre exatamente no trecho onde você parou, e livros e quadrinhos aparecem nos arquivos recentes com a porcentagem lida.
+- Tempo restante estimado no capítulo e no livro, calculado pelo seu ritmo de leitura, e pesquisa no livro inteiro.
+- Novo leitor de quadrinhos e mangás (CBZ, CBR e CB7): uma ou duas páginas ou rolagem vertical, leitura da direita para a esquerda, zoom, ferramenta mão para mover a página ampliada e passagem automática.
+
+
 ## 0.8.0 — 31/10/2026
 
 - Janela de sinônimos e tradução redesenhada: controles acessíveis, resultados por sentido e uma única área de rolagem quando necessária, tanto em Revisar quanto no texto selecionado.

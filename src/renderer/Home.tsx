@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   Trash2,
   X,
+  BookOpen,
 } from "lucide-react";
 import type { DocumentInfo } from "../shared/types";
 import appIconUrl from "../../assets/icon.svg?url";
@@ -27,6 +28,15 @@ export interface RecentFile {
   name: string;
   openedAt: number;
   pageCount: number;
+  /** Books and comics opened in the reader: how far the reading went. */
+  book?: { percent: number };
+}
+const RECENT_EVENT = "gcp-recent-files";
+/** Adds or refreshes one entry (the reader calls this as the reading advances). */
+export function recordRecentFile(entry: RecentFile) {
+  const next = [entry, ...readRecentFiles().filter((item) => fileKey(item.path) !== fileKey(entry.path))].slice(0, HISTORY_LIMIT);
+  saveRecentFiles(next);
+  window.dispatchEvent(new Event(RECENT_EVENT));
 }
 export function fileKey(path: string): string {
   return /^(?:[a-z]:[\\/]|\\\\)/i.test(path)
@@ -116,8 +126,9 @@ export function useRecentFiles(documents: DocumentInfo[], activeId?: string) {
       if (event.key === HISTORY_KEY || event.key === null)
         setItems(readRecentFiles());
     };
-    window.addEventListener("storage", changed);
-    return () => window.removeEventListener("storage", changed);
+    const local = () => setItems(readRecentFiles());
+    window.addEventListener("storage", changed); window.addEventListener(RECENT_EVENT, local);
+    return () => { window.removeEventListener("storage", changed); window.removeEventListener(RECENT_EVENT, local); };
   }, []);
   const remove = useCallback((path: string) => {
     const next = readRecentFiles().filter(
@@ -383,7 +394,7 @@ export function Home({
                         {opening === file.path ? (
                           <LoaderCircle size={20} className="spin" />
                         ) : (
-                          <FileText size={21} />
+                          file.book ? <BookOpen size={21} /> : <FileText size={21} />
                         )}
                       </span>
                       <span className="home-recent-description">
@@ -395,6 +406,8 @@ export function Home({
                       <span className="home-recent-meta">
                         {open ? (
                           <b>{translateUi("Aberto")}</b>
+                        ) : file.book ? (
+                          <span>{file.book.percent >= 1 ? translateUi("Continuar em {percent}%", { percent: file.book.percent }) : translateUi("Começar a leitura")}</span>
                         ) : resume !== null && resume < file.pageCount ? (
                           <span>{translateUi("Continuar na página")}{" "}{resume + 1}</span>
                         ) : (

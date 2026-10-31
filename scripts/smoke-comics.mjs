@@ -1,0 +1,66 @@
+import { _electron as electron } from 'playwright-core';
+import {createRequire} from 'node:module';
+import {resolve} from 'node:path';
+import {mkdir,writeFile} from 'node:fs/promises';
+import {zipSync} from 'fflate';
+import {createCanvas} from '@napi-rs/canvas';
+/** Leitor de quadrinhos: CBZ gerado com páginas numeradas; navegação, mangá, duas páginas, zoom, mão,
+ * rolagem vertical, retomada da página e arquivos recentes. */
+const require=createRequire(import.meta.url);
+await mkdir('evidence/comics',{recursive:true});await mkdir('.cache',{recursive:true});
+const pages={};
+for(let i=1;i<=7;i++){const c=createCanvas(800,1200),g=c.getContext('2d');g.fillStyle=`hsl(${i*47},60%,80%)`;g.fillRect(0,0,800,1200);g.fillStyle='#222';g.font='bold 300px sans-serif';g.textAlign='center';g.fillText(String(i),400,700);pages[`HQ/pagina ${i}.png`]=c.toBuffer('image/png');}
+const file=resolve('.cache/hq-teste.cbz');await writeFile(file,zipSync(pages));
+const env={...process.env,GCP_PDF_TEST_MODE:'1',GCP_PDF_DATA_DIR:resolve('.cache/e2e-profile')};delete env.ELECTRON_RUN_AS_NODE;
+const app=await electron.launch({executablePath:require('electron'),args:[resolve('.')],cwd:resolve('.'),env,timeout:90000});
+const errors=[];let failed=0;const check=(label,ok,detail='')=>{if(!ok)failed++;console.log(ok?'✔':'✖',label,detail);};
+try{
+ const page=await app.firstWindow();page.on('pageerror',e=>errors.push(e.message));await page.waitForFunction(()=>!!window.gcp);
+ await page.evaluate(()=>{for(const k of Object.keys(localStorage))if(k.startsWith('gcp.comic'))localStorage.removeItem(k);});
+ const open=async()=>{await page.evaluate(p=>window.gcp.openBookFile(p),file);await page.waitForSelector('.comic-reader .comic-spread img');await page.waitForTimeout(400);};
+ const shown=()=>page.evaluate(()=>[...document.querySelectorAll('.comic-spread img')].map(i=>i.alt.replace(/\D+/g,'')).join(','));
+ await open();
+ check('abre o CBZ na página 1',await shown()==='1');
+ await page.keyboard.press('ArrowRight');await page.waitForTimeout(300);
+ check('seta para a direita vai à página 2',await shown()==='2');
+ await page.locator('.book-bar button[title^="Leitura de mangá"]').click();
+ await page.keyboard.press('ArrowLeft');await page.waitForTimeout(300);
+ check('mangá: seta para a esquerda avança (página 3)',await shown()==='3');
+ await page.locator('.book-bar button[title="Opções de exibição"]').click();
+ await page.locator('.comic-segments button',{hasText:'Duas páginas'}).click();await page.waitForTimeout(400);
+ const pair=await shown();
+ check('duas páginas com capa sozinha: 2 e 3 juntas',pair==='2,3',pair);
+ const order=await page.evaluate(()=>{const [a,b]=[...document.querySelectorAll('.comic-spread img')];return a.getBoundingClientRect().left>b.getBoundingClientRect().left;});
+ check('mangá: a primeira página do par fica à direita',order);
+ await page.screenshot({path:'evidence/comics/01-manga-duas-paginas.png'});
+ await page.locator('.comic-segments button',{hasText:'Uma página'}).click();
+ await page.locator('.book-bar button[title="Opções de exibição"]').click();
+ for(let i=0;i<3;i++)await page.locator('.book-bar button[title="Aumentar zoom"]').click();
+ await page.waitForTimeout(300);
+ const zoom=await page.locator('.comic-zoom').textContent();
+ check('zoom ampliado e mão ativada',zoom==='200%'&&await page.locator('.comic-stage.hand').count()===1,zoom);
+ const stage=await page.locator('.comic-stage').boundingBox();
+ const before=await page.evaluate(()=>{const s=document.querySelector('.comic-stage');return [s.scrollLeft,s.scrollTop];});
+ await page.mouse.move(stage.x+stage.width/2,stage.y+stage.height/2);await page.mouse.down();await page.mouse.move(stage.x+stage.width/2-150,stage.y+stage.height/2-200,{steps:6});await page.mouse.up();
+ const after=await page.evaluate(()=>{const s=document.querySelector('.comic-stage');return [s.scrollLeft,s.scrollTop];});
+ check('mão arrasta a página ampliada',after[1]>before[1]+100,JSON.stringify({before,after}));
+ await page.screenshot({path:'evidence/comics/02-zoom-mao.png'});
+ await page.keyboard.press('0');
+ await page.locator('.book-bar button[title="Opções de exibição"]').click();
+ await page.locator('.comic-segments button',{hasText:'Rolagem vertical'}).click();await page.waitForTimeout(800);
+ check('rolagem vertical mostra a tira de páginas',await page.locator('.comic-strip [data-comic-page]').count()===7);
+ await page.locator('.book-bar button[title="Opções de exibição"]').click();
+ await page.evaluate(()=>{const s=document.querySelector('.comic-stage');s.scrollTop=s.scrollHeight*0.62;});await page.waitForTimeout(600);
+ const label=await page.locator('.book-progress span').textContent();
+ check('a posição acompanha a rolagem',/Página [4-6] de 7/.test(label),label);
+ await page.screenshot({path:'evidence/comics/03-vertical.png'});
+ await page.keyboard.press('Escape');await page.waitForTimeout(600);
+ await page.evaluate(()=>localStorage.setItem('gcp.comic-reader',JSON.stringify({layout:'uma'})));
+ await open();
+ const resumed=await shown();
+ check('reabre na mesma página',['4','5','6'].includes(resumed),resumed);
+ const recent=await page.evaluate(()=>JSON.parse(localStorage.getItem('gcp.recent-files')||'[]').find(r=>r.path.endsWith('.cbz')));
+ check('quadrinho nos recentes com o progresso',!!recent?.book?.percent,JSON.stringify(recent));
+ await page.keyboard.press('Escape');
+}finally{if(errors.length)console.log('ERROS:',errors.join(' | '));await app.evaluate(()=>{for(const v of globalThis.__gcpTest.views.values())v.allowClose=true;}).catch(()=>{});await app.close();}
+process.exitCode=failed||errors.length?1:0;

@@ -9,6 +9,7 @@ export type ShapeKind='rect'|'ellipse'|'line'|'arrow'|'dimension'|'polyline'|'po
 export type MeasureKind='distance'|'perimeter'|'area';
 /** 'sans' | 'serif' | 'mono' (standard PDF faces) or the family name of an installed font. */
 export type FontFamily=string;
+export type MarkupStyle='highlight'|'underline'|'strike'|'squiggly';
 /** Objects drawn over a page. Coordinates are PDF points in the page's unrotated space, measured from
  * the top-left corner of its crop box, so they follow the page when it is rotated or moved. */
 export type PageObject={id:string;page:string}&(
@@ -16,10 +17,10 @@ export type PageObject={id:string;page:string}&(
  |{kind:'image';x:number;y:number;width:number;height:number;asset:string;rotation:number}
  |{kind:'shape';shape:ShapeKind;x:number;y:number;width:number;height:number;points?:Point[];stroke:string;fill:string|null;strokeWidth:number;opacity:number;measure?:MeasureKind}
  |{kind:'ink';points:Point[];stroke:string;strokeWidth:number;opacity:number}
- |{kind:'note';x:number;y:number;width:number;height:number;text:string;author:string;createdAt:string;color:string;replies?:NoteReply[]}
- |{kind:'markup';style:'highlight'|'underline'|'strike';rects:Rect[];color:string;opacity:number}
+ |{kind:'note';x:number;y:number;width:number;height:number;text:string;author:string;createdAt:string;color:string;replies?:NoteReply[];/** The commented passage: its words and its line boxes on the page. */quote?:string;anchor?:Rect[]}
+ |{kind:'markup';style:MarkupStyle;rects:Rect[];color:string;opacity:number;/** The marked words, as selected. */text?:string}
 );
-export interface PdfAnnotation {page:string;index:number;subtype:string;author:string;text:string;rect:Rect}
+export interface PdfAnnotation {page:string;index:number;subtype:string;author:string;text:string;rect:Rect;/** Line boxes of a text markup (QuadPoints), page top-left points. */quads?:Rect[]}
 export type PdfOperation =
  | {type:'delete-annotation';page:string;index:number}
  | {type:'rotate';pages:number[];degrees:number}
@@ -68,7 +69,9 @@ export interface EpubChapter {title:string;page:number;level:1|2}
 export interface EpubAnalysis {pages:number;chapters:EpubChapter[];source:'outline'|'headings'|'none';title:string;author:string;footnotes:number}
 export interface EpubOptions {title:string;author:string;year?:string;genre?:string;publisher?:string;description?:string;language:'pt-BR'|'en'|'es';chapters:EpubChapter[];/** PNG or JPEG data URL. */cover?:string}
 /** An opened EPUB, sanitized: one HTML string of all chapters (ids prefixed per chapter) and the book's CSS. */
-export interface BookContent {token:string;name:string;id:string;title:string;author:string;language:string;cover?:string;toc:{title:string;chapter:number;anchor?:string;level:number}[];chapters:number;html:string;css:string}
+export interface BookContent {token:string;name:string;id:string;title:string;author:string;language:string;cover?:string;toc:{title:string;chapter:number;anchor?:string;level:number}[];chapters:number;html:string;css:string;/** True when the book has no table of contents and one entry per file was made up. */tocGenerated?:boolean;/** The file on this computer, for the recent files list. */path?:string}
+/** A comic archive open in the reader: its page names in reading order; images come one by one. */
+export interface ComicContent {token:string;id:string;title:string;name:string;path:string;names:string[]}
 export interface Signature {id:string;name:string;dataUrl:string;createdAt:string}
 export interface AiConfig {provider:'openai'|'gemini'|'compatible';model:string;baseUrl:string;hasKey:boolean}
 export type ExportFormat='pdf'|'image-pdf'|'docx'|'xlsx'|'pptx'|'png'|'txt';
@@ -161,6 +164,8 @@ export interface GcpBridge {
  exportEpub(id:string,options:EpubOptions):Promise<string|null>;
  openBookFile(path?:string):Promise<void>;
  readBook(token:string):Promise<BookContent>;
+ readComic(token:string):Promise<ComicContent>;
+ comicPage(token:string,index:number):Promise<{type:string;data:Uint8Array}>;
  getSavedColors():Promise<string[]>;
  setSavedColors(colors:string[]):Promise<string[]>;
  getDictionaryPreferences():Promise<DictionaryPreferences>;

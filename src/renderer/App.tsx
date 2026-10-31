@@ -7,8 +7,9 @@ import {
   FileText, FolderOpen, Plus, X, Settings, Sun, Moon, ChevronLeft, ChevronRight, RotateCw, RotateCcw, Trash2, PanelLeftClose,
   Search, Check, Sparkles, Send, Heart, Layers3, Files, LoaderCircle, GripVertical, MoveUpRight, Signature as SignatureIcon,
   MessageSquare, ShieldCheck, SplitSquareHorizontal, PenLine, ArrowUpRight, Copy, Maximize2, Minimize2, FilePlus2, HelpCircle, ZoomIn, ZoomOut, Scissors, ClipboardPaste, FileOutput, Replace,
-  CopyPlus, BookA, Languages, ArrowDownRight, Lightbulb, Bookmark as BookmarkIcon, Pin, ChevronsUp, ChevronsDown, EyeOff, SlidersHorizontal, PanelRightClose } from "lucide-react";
-import type { AppPrompt, PageObject, PdfOperation, Signature, WorkspaceState, ExportFormat, ExportOptions } from "../shared/types";
+  CopyPlus, BookA, Languages, ArrowDownRight, Lightbulb, Bookmark as BookmarkIcon, Pin, ChevronsUp, ChevronsDown, EyeOff, SlidersHorizontal, PanelRightClose,
+  Highlighter, Underline, Strikethrough, Waves, MessageSquarePlus, BookmarkPlus, TextSelect } from "lucide-react";
+import type { AppPrompt, MarkupStyle, PageObject, PdfOperation, Signature, WorkspaceState, ExportFormat, ExportOptions } from "../shared/types";
 import { ExportDialog, Modal, PromptDialog, SettingsDialog, SignatureDialog, SupportDialog, SITE } from "./Dialogs";
 import { Viewer, PageThumb, type ViewerHandle } from "./Viewer";
 import { OrganizeView, NumberingDialog, CompressDialog, type OrganizeActions } from "./Tools";
@@ -18,6 +19,7 @@ import { StampDialog } from "./Stamps";
 import { LookupDialog } from "./Lookup";
 import { EpubDialog } from "./Epub";
 import { BookReader } from "./BookReader";
+import { ComicReader } from "./ComicReader";
 import { ImageEditor } from "./ImageEditor";
 import { PrintDialog } from "./Print";
 import { BookmarksPanel } from "./Bookmarks";
@@ -260,6 +262,11 @@ export default function App() {
   }, [selectionObjects.map((o) => o.id).join()]);
   function rotate(degrees: number, pages = selectedPages.length ? selectedPages : [page]) { void operation({ type: "rotate", pages, degrees }); }
   const zoomBy = useCallback((factor: number) => setZoom((z) => Math.max(0.25, Math.min(5, Math.round(z * factor * 100) / 100))), []);
+  /** Shows a comment or markup where it is on its page (points from the page top), not just its page. */
+  function goToSpot(index: number, top: number) {
+    setPage(index); setSelection(new Set([index]));
+    viewer.current?.scrollToPage(index, Math.max(0, top - 48));
+  }
   function choosePage(index: number, event?: React.MouseEvent, scroll = true) {
     setPage(index);
     if (scroll) viewer.current?.scrollToPage(index);
@@ -270,11 +277,37 @@ export default function App() {
     });
   }
   function deleteObjects(ids = [...selectedObjects]) { if (!ids.length) return; setSelectedObjects(new Set()); void operation({ type: "delete-objects", ids }); }
-  const [bookToken, setBookToken] = useState<string | null>(null);
+  const [bookToken, setBookToken] = useState<string | null>(null), [comicToken, setComicToken] = useState<string | null>(null);
   const [themeWelcomeDone, setThemeWelcomeDone] = useState(false);
   const [themeWelcomeOpen, setThemeWelcomeOpen] = useState(false);
   useEffect(() => { if (ready && workspace.themeChosen === false) setThemeWelcomeOpen(true); }, [ready, workspace.themeChosen]);
   const [pageContext, setPageContext] = useState<PageMenu | null>(null), [lookup, setLookup] = useState<{ text: string; mode: "synonyms" | "translate" } | null>(null);
+  // Actions of the right-click menu on selected page text: they act on exactly the selected words.
+  function markPassage(menu: PageMenu, kind: MarkupStyle) {
+    if (!menu.rects?.length) return;
+    window.getSelection()?.removeAllRanges();
+    void operation({ type: "add-object", object: { id: uid(), page: menu.page, kind: "markup", style: kind, rects: menu.rects, ...(menu.text ? { text: menu.text } : {}), color: kind === "highlight" ? style.highlight : style.stroke, opacity: kind === "highlight" ? style.highlightOpacity : 1 } });
+  }
+  function commentPassage(menu: PageMenu) {
+    if (!menu.rects?.length || !menu.noteAt) return;
+    window.getSelection()?.removeAllRanges();
+    const id = uid();
+    void operation({ type: "add-object", object: { id, page: menu.page, kind: "note", x: menu.noteAt.x, y: menu.noteAt.y, width: 22, height: 22, text: "", author: commentAuthor(), createdAt: new Date().toISOString(), color: "#ffd43b", replies: [], quote: (menu.text ?? "").slice(0, 2000), anchor: menu.rects } });
+    setToolState({ kind: "select" }); setSelectedObjects(new Set([id])); setOpenNote(id); setPanel("comments"); setSideOpen(true);
+  }
+  function bookmarkPassage(menu: PageMenu) {
+    if (!active || !menu.rects?.length) return;
+    const index = active.pages.findIndex((p) => p.id === menu.page), title = (menu.text ?? "").replace(/\s+/g, " ").trim();
+    if (index < 0) return;
+    void window.gcp.editBookmarks(active.id, { type: "add", title: title.length > 90 ? title.slice(0, 89) + "…" : title || translateUi("Marcador"), page: index, top: Math.max(0, Math.min(...menu.rects.map((r) => r.y)) - 12) })
+      .then(() => notify(translateUi("Marcador adicionado. Veja em Marcadores."))).catch(onError);
+  }
+  function selectPageText(pageId: string) {
+    const index = active?.pages.findIndex((p) => p.id === pageId) ?? -1, layer = document.querySelector(`.page-sheet[data-page="${index + 1}"] .textLayer`);
+    if (!layer) return;
+    const range = document.createRange(); range.selectNodeContents(layer);
+    const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range);
+  }
   function pageSize(pageId: string) {
     const ref = active?.pages.find((p) => p.id === pageId), geo = ref ? pageGeometry(ref) : undefined;
     if (!ref || !geo) return undefined;
@@ -530,6 +563,7 @@ export default function App() {
     if (action === "update-available") { void window.gcp.pendingUpdate().then((info) => info && setUpdate(info)); return; }
     if (action.startsWith("error:")) { notify(action.slice(6), true); return; }
     if (action.startsWith("book:")) { setBookToken(action.slice(5)); return; }
+    if (action.startsWith("comic:")) { setComicToken(action.slice(6)); return; }
     switch (action) {
       case "open": actions.open(); break;
       case "new": void perform(() => window.gcp.newDocument()); break;
@@ -812,9 +846,9 @@ export default function App() {
               <IconButton title={translateUi("Recolher painel")} onClick={() => setSideOpen(false)}><PanelLeftClose size={16} /></IconButton>
             </div>
             {panel === "bookmarks" && active && <BookmarksPanel doc={active} currentPage={page} readingTop={() => viewer.current?.readingTop() ?? 0} onGo={(index, top) => { setPage(index); viewer.current?.scrollToPage(index, top); }} onError={onError} notify={notify} />}
-            {panel === "comments" && active && <CommentsPanel annotations={active.annotations} onOpenAnnotation={(a) => { setSelectedObjects(new Set()); setToolState({kind:"select"}); const index=active.pages.findIndex(p=>p.id===a.page); if(index>=0)choosePage(index); setOpenNote(`native:${a.page}:${a.index}`); }} onDeleteAnnotation={(a) => { setOpenNote(null); void operation({type:"delete-annotation",page:a.page,index:a.index}); }} objects={active.objects} pages={active.pages} currentPage={page} openNote={openNote} onClose={() => setSideOpen(false)}
-              onOpen={(note) => { setOpenNote(note.id); setSelectedObjects(new Set([note.id])); const index = active.pages.findIndex((p) => p.id === note.page); if (index >= 0) choosePage(index); }}
-              onSelectObject={(object) => { setToolState({ kind: "select" }); setSelectedObjects(new Set([object.id])); const index = active.pages.findIndex((p) => p.id === object.page); if (index >= 0) choosePage(index); }}
+            {panel === "comments" && active && <CommentsPanel annotations={active.annotations} onOpenAnnotation={(a) => { setSelectedObjects(new Set()); setToolState({kind:"select"}); const index=active.pages.findIndex(p=>p.id===a.page); if(index>=0)goToSpot(index, a.rect.y); setOpenNote(`native:${a.page}:${a.index}`); }} onDeleteAnnotation={(a) => { setOpenNote(null); void operation({type:"delete-annotation",page:a.page,index:a.index}); }} objects={active.objects} pages={active.pages} currentPage={page} openNote={openNote} onClose={() => setSideOpen(false)}
+              onOpen={(note) => { setOpenNote(note.id); setSelectedObjects(new Set([note.id])); const index = active.pages.findIndex((p) => p.id === note.page); if (index >= 0) goToSpot(index, Math.min(note.y, ...(note.anchor ?? []).map((r) => r.y))); }}
+              onSelectObject={(object) => { setToolState({ kind: "select" }); setSelectedObjects(new Set([object.id])); const index = active.pages.findIndex((p) => p.id === object.page); if (index >= 0) goToSpot(index, object.kind === "markup" ? Math.min(...object.rects.map((r) => r.y)) : objectBounds(object).y); }}
               onCreate={(text) => { const ref = active.pages[page]!, geo = pageGeometry(ref), width = geo ? (((geo.rotation + ref.rotate) % 180) ? geo.height : geo.width) : 595; const id = uid(); void operation({ type: "add-object", object: { id, page: ref.id, kind: "note", x: Math.max(8, width - 40), y: 24 + active.objects.filter((o) => o.kind === "note" && o.page === ref.id).length * 28, width: 22, height: 22, text, author: commentAuthor(), createdAt: new Date().toISOString(), color: "#ffd43b", replies: [] } }); setOpenNote(id); }}
               onUpdate={(object) => void operation({ type: "update-object", object })} onDelete={(id) => { if (openNote === id) setOpenNote(null); deleteObjects([id]); }} />}
             {panel === "pages" && (
@@ -1064,13 +1098,26 @@ export default function App() {
       )}
       {modal === "epub" && active && <EpubDialog doc={active} onClose={() => setModal(null)} onError={onError} onDone={(path) => { setModal(null); notify("EPUB salvo. Abrindo no modo Livro…"); void window.gcp.openBookFile(path).catch(onError); }} />}
       {bookToken && <BookReader key={bookToken} token={bookToken} onClose={() => setBookToken(null)} onError={onError} />}
+      {comicToken && <ComicReader key={comicToken} token={comicToken} onClose={() => setComicToken(null)} onError={onError} />}
       {lookup && <LookupDialog text={lookup.text} mode={lookup.mode} onClose={() => setLookup(null)} onError={onError} onCopy={(text) => window.gcp.copyText(text)} />}
       {pageContext && active && (
         <div className="context-backdrop" onMouseDown={() => setPageContext(null)} onContextMenu={(e) => { e.preventDefault(); setPageContext(null); }}>
-          <div className="context-menu" style={{ left: Math.min(pageContext.x, window.innerWidth - 250), top: Math.min(pageContext.y, window.innerHeight - 300) }} onMouseDown={(e) => e.stopPropagation()} onClick={() => setPageContext(null)}>
+          <div className="context-menu" style={{ left: Math.min(pageContext.x, window.innerWidth - 250), top: Math.max(8, Math.min(pageContext.y, window.innerHeight - (pageContext.rects ? 470 : 300))), maxHeight: "calc(100vh - 16px)", overflowY: "auto" }} onMouseDown={(e) => e.stopPropagation()} onClick={() => setPageContext(null)}>
             {pageContext.text && <>
               <div className="context-title">{translateUi("Texto selecionado")}</div>
-              <button onClick={() => void window.gcp.copyText(pageContext.text!)}><Copy size={14} />{" "}{translateUi("Copiar texto")}</button>
+              <button onClick={() => void window.gcp.copyText(pageContext.text!)}><Copy size={14} />{" "}{translateUi("Copiar texto")}<kbd>Ctrl+C</kbd></button>
+              <button onClick={() => selectPageText(pageContext.page)}><TextSelect size={14} />{" "}{translateUi("Selecionar tudo na página")}</button>
+              {pageContext.rects && <>
+                <hr />
+                <button onClick={() => markPassage(pageContext, "highlight")}><Highlighter size={14} color={style.highlight} />{" "}{translateUi("Destacar")}</button>
+                <button onClick={() => markPassage(pageContext, "underline")}><Underline size={14} />{" "}{translateUi("Sublinhar")}</button>
+                <button onClick={() => markPassage(pageContext, "strike")}><Strikethrough size={14} />{" "}{translateUi("Tachar")}</button>
+                <button onClick={() => markPassage(pageContext, "squiggly")}><Waves size={14} />{" "}{translateUi("Sublinhado ondulado")}</button>
+                <hr />
+                <button onClick={() => commentPassage(pageContext)}><MessageSquarePlus size={14} />{" "}{translateUi("Adicionar nota ao texto")}</button>
+                <button onClick={() => bookmarkPassage(pageContext)}><BookmarkPlus size={14} />{" "}{translateUi("Adicionar marcador")}</button>
+              </>}
+              <hr />
               <button onClick={() => setLookup({ text: pageContext.text!, mode: "synonyms" })}><BookA size={14} />{" "}{translateUi("Sinônimos…")}</button>
               <button onClick={() => setLookup({ text: pageContext.text!, mode: "translate" })}><Languages size={14} />{" "}{translateUi("Traduzir…")}</button>
             </>}

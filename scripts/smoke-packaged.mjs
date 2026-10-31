@@ -7,6 +7,7 @@ import {promisify} from 'node:util';
 import {join,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 import assert from 'node:assert/strict';
+import {zipSync} from 'fflate';
 
 const executable=process.argv[2];
 if(!executable)throw new Error('Informe o executável extraído/instalado do pacote.');
@@ -57,6 +58,12 @@ try{
  check('leitura dos bytes pelo preload empacotado',converted);
  const lookup=await page.evaluate(async()=>({synonyms:await window.gcp.lookupSynonyms('território','pt'),translation:await window.gcp.lookupTranslation('no','pt','en')}));
  check('dicionários novos embarcados e siglas separadas de palavras',lookup.synonyms.meanings.length>0&&lookup.translation.entries[0].translations.includes('on')&&!lookup.translation.entries[0].translations.includes('NW'));
+ // Comic reader: libarchive's WebAssembly must load from the package and open a CBZ.
+ const comicPage=createCanvas(300,420),drawing=comicPage.getContext('2d');drawing.fillStyle='#ffd43b';drawing.fillRect(0,0,300,420);
+ const comicFile=join(root,'quadrinho.cbz');await writeFile(comicFile,zipSync({'02.png':comicPage.toBuffer('image/png'),'01.png':comicPage.toBuffer('image/png')}));
+ await page.evaluate(path=>window.gcp.openBookFile(path),comicFile);await page.waitForSelector('.comic-reader .comic-spread img',{timeout:30000});
+ check('quadrinho CBZ aberto pelo libarchive WebAssembly do pacote',(await page.locator('.comic-reader .book-progress span').textContent()).includes('de 2'));
+ await page.keyboard.press('Escape');await page.waitForSelector('.comic-reader',{state:'detached'});
  await page.evaluate(()=>window.gcp.setTheme('dark-ocean'));
  await page.waitForFunction(()=>document.documentElement.dataset.palette==='dark-ocean'&&document.documentElement.dataset.theme==='dark');
  check('paleta Oceano no aplicativo empacotado',(await page.evaluate(()=>window.gcp.getWorkspace())).theme==='dark-ocean');

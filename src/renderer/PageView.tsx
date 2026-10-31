@@ -15,7 +15,9 @@ export interface SourceSelection { page: string; paragraph: SourceParagraph; col
 interface PageText { items: { str: string; fontName: string; transform: number[]; width: number; hasEOL: boolean }[]; view: number[] }
 interface EditorRun { text: string; font: string; size: number; /** Letter spacing (points) of a tracked run. */ tracking?: number }
 interface EditorLine { runs: EditorRun[]; baseline: number; x: number; right: number }
-export interface PageMenu { x: number; y: number; page: string; point: Point; objectId?: string; text?: string }
+/** Right click on the page. With selected text it also carries the line boxes of the passage and where a
+ * comment icon on it would sit beside the text, so the menu can mark or comment exactly those words. */
+export interface PageMenu { x: number; y: number; page: string; point: Point; objectId?: string; text?: string; rects?: Rect[]; noteAt?: Point }
 interface Props {
   annotations:import("../shared/types").PdfAnnotation[];
   onDeleteAnnotation:(a:import("../shared/types").PdfAnnotation)=>void;
@@ -71,6 +73,13 @@ function useAsset(id: string | undefined) {
   return url;
 }
 function normalize(a: Point, b: Point): Rect { return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y) }; }
+/** A wavy line under a text line (PDF Squiggly), in waves proportional to the line height. */
+function squiggle(r: Rect) {
+  const step = Math.max(1.5, r.height * 0.12), amp = step * 0.55, y = r.y + r.height * 0.93;
+  let d = `M${r.x} ${y}`;
+  for (let x = r.x, up = true; x < r.x + r.width; x += step, up = !up) d += ` L${Math.min(x + step, r.x + r.width)} ${y + (up ? -amp : amp)}`;
+  return d;
+}
 function resized(from: Rect, handle: string, dx: number, dy: number): Rect {
   let { x, y, width, height } = from;
   if (handle.includes("w")) { x += dx; width -= dx; }
@@ -134,7 +143,12 @@ function ObjectView({ o, editing, onCommitText }: { o: PageObject; editing: bool
     return asset ? <img className="overlay-image" src={asset} alt="" draggable={false} style={{ left: o.x, top: o.y, width: o.width, height: o.height, transform: o.rotation ? `rotate(${o.rotation}deg)` : undefined }} /> : null;
   return null;
 }
-function VectorView({ o }: { o: PageObject }) {
+function VectorView({ o, open = false }: { o: PageObject; open?: boolean }) {
+  if (o.kind === "note") return o.anchor?.length ? (
+    <g className={`note-anchor ${open ? "open" : ""}`}>
+      {o.anchor.map((r, i) => <rect key={i} x={r.x - 1} y={r.y - 1} width={r.width + 2} height={r.height + 2} rx={2} fill={o.color} />)}
+    </g>
+  ) : null;
   if (o.kind === "shape") {
     const path = shapePath(o);
     return (
@@ -152,6 +166,8 @@ function VectorView({ o }: { o: PageObject }) {
         {o.rects.map((r, i) =>
           o.style === "highlight" ? (
             <rect key={i} x={r.x} y={r.y} width={r.width} height={r.height} fill={o.color} opacity={o.opacity} style={{ mixBlendMode: "multiply" }} />
+          ) : o.style === "squiggly" ? (
+            <path key={i} d={squiggle(r)} fill="none" stroke={o.color} strokeWidth={Math.max(0.7, r.height * 0.06)} opacity={Math.max(o.opacity, 0.8)} strokeLinecap="round" />
           ) : (
             <line key={i} x1={r.x} x2={r.x + r.width} y1={r.y + r.height * (o.style === "underline" ? 0.94 : 0.55)} y2={r.y + r.height * (o.style === "underline" ? 0.94 : 0.55)} stroke={o.color} strokeWidth={Math.max(0.8, r.height * 0.07)} opacity={Math.max(o.opacity, 0.8)} />
           ),
@@ -332,10 +348,10 @@ export function PageView(props: Props) {
     const xs = points.map((p) => p.x), ys = points.map((p) => p.y), r = { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) },id=uid();
     props.onAdd({ id, page: pageRef.id, kind: "shape", shape: tool.shape, ...(tool.measure ? { measure: tool.measure } : {}), ...r, points, stroke: style.stroke, fill: style.fill, strokeWidth: style.strokeWidth, opacity: style.opacity });props.onToolDone(id);return true;
   }
-  function markupFromSelection() {
-    if (tool.kind !== "markup") return false;
+  /** Line boxes and words of the text selected on this page; null when nothing here is selected. */
+  function selectedPassage(): { rects: Rect[]; text: string } | null {
     const selection = window.getSelection(), layer = textLayer.current;
-    if (!selection || selection.isCollapsed || !selection.rangeCount || !layer) return false;
+    if (!selection || selection.isCollapsed || !selection.rangeCount || !layer || !layer.contains(selection.anchorNode)) return null;
     const range = selection.getRangeAt(0), rects: Rect[] = [], walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT);
     // Measure only the selected characters of each text node, never whole elements.
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -346,11 +362,16 @@ export function PageView(props: Props) {
       if (node === range.endContainer) part.setEnd(node, range.endOffset);
       for (const r of part.getClientRects()) if (r.width >= 1 && r.height >= 1) rects.push(normalize(pagePoint({ clientX: r.left, clientY: r.top }), pagePoint({ clientX: r.right, clientY: r.bottom })));
     }
-    selection.removeAllRanges();
-    if (!rects.length) return false;
+    if (!rects.length) return null;
     const typical = [...rects].map((r) => r.height).sort((a, b) => a - b)[Math.floor(rects.length / 2)]!;
-    const lines = mergeLines(rects.filter((r) => r.height < typical * 3));
-    props.onAdd({ id: uid(), page: pageRef.id, kind: "markup", style: tool.style, rects: lines, color: tool.style === "highlight" ? style.highlight : style.stroke, opacity: tool.style === "highlight" ? style.highlightOpacity : 1 });
+    return { rects: mergeLines(rects.filter((r) => r.height < typical * 3)), text: selection.toString().replace(/\s+/g, " ").trim() };
+  }
+  function markupFromSelection() {
+    if (tool.kind !== "markup") return false;
+    const passage = selectedPassage();
+    window.getSelection()?.removeAllRanges();
+    if (!passage) return false;
+    props.onAdd({ id: uid(), page: pageRef.id, kind: "markup", style: tool.style, rects: passage.rects, ...(passage.text ? { text: passage.text } : {}), color: tool.style === "highlight" ? style.highlight : style.stroke, opacity: tool.style === "highlight" ? style.highlightOpacity : 1 });
     return true;
   }
   // Destacar/Sublinhar/Tachar act as soon as text is selected: on release anywhere in the window (a
@@ -382,11 +403,12 @@ export function PageView(props: Props) {
   const creating = tool.kind === "text" || tool.kind === "shape" || tool.kind === "ink" || tool.kind === "stamp" || tool.kind === "field" || tool.kind === "sign-area" || tool.kind === "note";
   function onContextMenu(e: React.MouseEvent) {
     if (!props.onPageMenu || (e.target as HTMLElement).closest(".source-editor, .source-box, input, textarea, [contenteditable=true], .form-layer, .note-bubble")) return;
-    const selection = window.getSelection(), text = selection && !selection.isCollapsed && textLayer.current?.contains(selection.anchorNode) ? selection.toString().trim() : "";
-    const objectId = tool.kind === "select" ? (e.target as HTMLElement).closest<HTMLElement>("[data-object-id]")?.dataset.objectId : undefined;
+    const passage = selectedPassage(), text = passage?.text ?? "";
+    const objectId = !text && tool.kind === "select" ? (e.target as HTMLElement).closest<HTMLElement>("[data-object-id]")?.dataset.objectId : undefined;
     e.preventDefault();
     if (objectId && !props.selected.has(objectId)) props.onSelect([objectId], false);
-    props.onPageMenu({ x: e.clientX, y: e.clientY, page: pageRef.id, point: pagePoint(e), ...(objectId ? { objectId } : {}), ...(text ? { text } : {}) });
+    const first = passage?.rects[0];
+    props.onPageMenu({ x: e.clientX, y: e.clientY, page: pageRef.id, point: pagePoint(e), ...(objectId ? { objectId } : {}), ...(text && passage ? { text, rects: passage.rects, noteAt: besideText({ x: first!.x, y: first!.y }, first) } : {}) });
   }
   function onPointerDown(e: React.PointerEvent) {
     if (e.button !== 0) return;
@@ -569,7 +591,7 @@ export function PageView(props: Props) {
       <div className="page-overlay" style={{ width: size.width, height: size.height, transform: pageTransform(size, rotation, scale) }}>
         <NativeAnnotations storageKey={props.docKey} pageWidth={size.width} pageHeight={size.height} scale={scale} besideText={besideText} annotations={props.annotations} open={props.openNote} onOpen={(id)=>props.onOpenNote?.(id)} onDelete={props.onDeleteAnnotation} interactive={tool.kind === "select"} />
         <svg className="overlay-vectors" width={size.width} height={size.height} viewBox={`0 0 ${size.width} ${size.height}`}>
-          {preview.map((o) => <VectorView key={o.id} o={o} />)}
+          {preview.map((o) => <VectorView key={o.id} o={o} open={props.openNote === o.id} />)}
           {draft && <VectorView o={draft} />}
         </svg>
         {preview.map((o) => (

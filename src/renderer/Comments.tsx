@@ -2,8 +2,9 @@ import {useLocale,t as translateUi} from "./i18n";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { MessageSquare, Trash2, X, Pencil, MoreHorizontal, Reply, Highlighter, Square, PenLine, Type, Stamp, FileText } from "lucide-react";
-import type { NoteReply, PageObject, PageRef, PdfAnnotation } from "../shared/types";
+import type { NoteReply, PageObject, PageRef, PdfAnnotation, Rect } from "../shared/types";
 import { measureLabel } from "../shared/geometry";
+import { textInRects } from "./pdf";
 
 export type PdfNote = Extract<PageObject, { kind: "note" }>;
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
@@ -64,9 +65,10 @@ function Composer({ initial = "", label = "Publicar", placeholder = "Adicionar c
 export function NoteThread({ note, onChange, onDelete, compact = false }: { note: PdfNote; onChange: (note: PdfNote) => void; onDelete: () => void; compact?: boolean }) {
   const [replying, setReplying] = useState(false), author = commentAuthor();
   const replies = note.replies ?? [];
-  if (!note.text) return <Composer placeholder={translateUi("Escreva seu comentário…")} onSubmit={(text) => onChange({ ...note, text, author: note.author || author })} onCancel={onDelete} />;
+  if (!note.text) return <>{note.quote && <blockquote className="note-quote" title={note.quote}>{note.quote}</blockquote>}<Composer placeholder={translateUi("Escreva seu comentário…")} onSubmit={(text) => onChange({ ...note, text, author: note.author || author })} onCancel={onDelete} /></>;
   return (
     <div className="note-thread">
+      {note.quote && <blockquote className="note-quote" title={note.quote}>{note.quote}</blockquote>}
       <Entry author={note.author} createdAt={note.createdAt} text={note.text} onEdit={(text) => onChange({ ...note, text })} onDelete={onDelete} />
       {replies.map((r) => <div key={r.id} className="note-reply"><Entry author={r.author} createdAt={r.createdAt} text={r.text} onEdit={(text) => onChange({ ...note, replies: replies.map((x) => (x.id === r.id ? { ...x, text } : x)) })} onDelete={() => onChange({ ...note, replies: replies.filter((x) => x.id !== r.id) })} /></div>)}
       {replying ? <Composer placeholder={translateUi("Responder…")} label={translateUi("Responder")} onCancel={() => setReplying(false)} onSubmit={(text) => { const reply: NoteReply = { id: uid(), author, text, createdAt: new Date().toISOString() }; onChange({ ...note, replies: [...replies, reply] }); setReplying(false); }} />
@@ -88,10 +90,25 @@ export function useBubbleDrag(id: string) {
   };
   return { offset, grip: <div className="note-bubble-grip" title={translateUi("Arraste para mover o comentário")} onPointerDown={onPointerDown} /> };
 }
+export type BubbleBox = { left: number; top: number; width: number; height: number };
+/** The pointer from an open bubble back to what it comments: a soft wedge from the icon to the bubble's
+ * nearest edge, drawn under the bubble, so a bubble dragged aside still shows where it belongs. */
+export function BubbleTail({ from, box }: { from: DOMRect | null; box: BubbleBox | null }) {
+  if (!from || !box || box.left < -999) return null;
+  const cx = from.left + from.width / 2, cy = from.top + from.height / 2, right = box.left + box.width, bottom = box.top + box.height;
+  const dx = cx < box.left ? box.left - cx : cx > right ? cx - right : 0, dy = cy < box.top ? box.top - cy : cy > bottom ? cy - bottom : 0;
+  if (dx < 6 && dy < 6) return null;
+  // The wide end sits on the edge facing the icon, centred on it as far as the rounded corners allow.
+  const span = (low: number, high: number, at: number) => { const length = Math.max(10, Math.min(44, high - low - 24)), start = Math.max(low + 12, Math.min(high - 12 - length, at - length / 2)); return [start, start + length] as const; };
+  let points: string;
+  if (dx >= dy) { const x = cx < box.left ? box.left + 1 : right - 1, [a, b] = span(box.top, bottom, cy); points = `${cx},${cy} ${x},${a} ${x},${b}`; }
+  else { const y = cy < box.top ? box.top + 1 : bottom - 1, [a, b] = span(box.left, right, cx); points = `${cx},${cy} ${a},${y} ${b},${y}`; }
+  return createPortal(<svg className="note-tail" aria-hidden="true"><polygon points={points} /><circle cx={cx} cy={cy} r={2.5} /></svg>, document.body);
+}
 /** The bubble next to a note icon, drawn above the whole interface (a portal at screen position), so zoom,
  * neighbouring pages and panels never cover it. Clicking outside or Esc closes it. */
 export function NoteBubble({ note, onChange, onDelete, onClose }: { note: PdfNote; onChange: (note: PdfNote) => void; onDelete: () => void; onClose: () => void }) {
-  const box = useRef<HTMLDivElement>(null), [at, setAt] = useState<{ left: number; top: number } | null>(null);
+  const box = useRef<HTMLDivElement>(null), [at, setAt] = useState<BubbleBox | null>(null), [icon, setIcon] = useState<DOMRect | null>(null);
   const close = useRef(onClose); close.current = onClose;
   const { offset, grip } = useBubbleDrag(note.id);
   useLayoutEffect(() => {
@@ -104,7 +121,8 @@ export function NoteBubble({ note, onChange, onDelete, onClose }: { note: PdfNot
       // Prefer the right side; flip left or clamp so the bubble always stays inside the window.
       let left = r.right + gap; if (left + w > window.innerWidth - 8) left = Math.max(8, r.left - gap - w);
       const top = Math.max(8, Math.min(r.top, window.innerHeight - h - 8));
-      setAt((old) => (old && old.left === left && old.top === top ? old : { left, top }));
+      setAt((old) => (old && old.left === left && old.top === top && old.width === w && old.height === h ? old : { left, top, width: w, height: h }));
+      setIcon((old) => (old && old.left === r.left && old.top === r.top ? old : r));
     };
     const schedule = () => { if (!frame) frame = requestAnimationFrame(place); };
     place();
@@ -118,17 +136,37 @@ export function NoteBubble({ note, onChange, onDelete, onClose }: { note: PdfNot
     window.addEventListener("pointerdown", outside, true); window.addEventListener("keydown", key);
     return () => { window.removeEventListener("pointerdown", outside, true); window.removeEventListener("keydown", key); };
   }, [note.id]);
-  return createPortal(
+  return createPortal(<>
+    <BubbleTail from={icon} box={at && { ...at, left: at.left + offset.x, top: at.top + offset.y }} />
     <div ref={box} className="note-bubble" style={{ left: at ? at.left + offset.x : -9999, top: at ? at.top + offset.y : -9999 }} onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
       {grip}
       <button className="icon-button note-bubble-close" title={translateUi("Fechar (Esc)")} onClick={onClose}><X size={13} /></button>
       <NoteThread note={note} onChange={onChange} onDelete={onDelete} compact />
-    </div>,
+    </div>
+  </>,
     document.body,
   );
 }
 
 export const annotationLabel = (type: string) => translateUi(({Text:"Comentário",Highlight:"Destaque",Underline:"Sublinhado",StrikeOut:"Tachado",Squiggly:"Sublinhado ondulado",Square:"Retângulo",Circle:"Oval",Ink:"Desenho",Stamp:"Carimbo",Line:"Linha",Polygon:"Polígono",PolyLine:"Linhas conectadas"} as Record<string,string>)[type] ?? "Anotação");
+const MARKUP_LABEL: Record<string, string> = { highlight: "Destaque", underline: "Sublinhado", strike: "Tachado", squiggly: "Sublinhado ondulado", Highlight: "Destaque", Underline: "Sublinhado", StrikeOut: "Tachado", Squiggly: "Sublinhado ondulado" };
+/** The words under a markup: kept from the selection when known, otherwise read from the page text. */
+function useExcerpt(ref: PageRef | undefined, rects: Rect[] | undefined, known?: string) {
+  const [text, setText] = useState(known ?? "");
+  const key = ref && rects?.length ? `${ref.base}:${ref.src}:${JSON.stringify(rects)}` : "";
+  useEffect(() => {
+    if (known) { setText(known); return; }
+    if (!key) return;
+    let live = true;
+    void textInRects(ref!, rects!).then((t) => { if (live) setText(t); }).catch(() => {});
+    return () => { live = false; };
+  }, [key, known]);
+  return text;
+}
+function Excerpt({ page, rects, known }: { page?: PageRef; rects?: Rect[]; known?: string }) {
+  const text = useExcerpt(page, rects, known);
+  return text ? <q className="note-excerpt" title={text}>{text}</q> : null;
+}
 const KIND: Record<string, { label: string; icon: React.ReactNode }> = {
   markup: { label: "Destaque", icon: <Highlighter size={13} /> }, shape: { label: "Forma", icon: <Square size={13} /> }, ink: { label: "Desenho", icon: <PenLine size={13} /> },
   text: { label: "Caixa de texto", icon: <Type size={13} /> }, image: { label: "Imagem ou carimbo", icon: <Stamp size={13} /> },
@@ -154,8 +192,18 @@ export function CommentsPanel({ annotations, onOpenAnnotation, onDeleteAnnotatio
         <NoteThread note={note} onChange={onUpdate} onDelete={() => onDelete(note.id)} />
       </article>);
     }
-    for (const mark of marks) { const k = KIND[mark.kind]; if (!k || !match(k.label)) continue; add(pageNumber(mark.page), <button key={mark.id} className="note-mark" onClick={() => onSelectObject(mark)}>{k.icon}<span>{mark.kind === "shape" && mark.measure ? `Medida: ${measureLabel(mark)?.text ?? ""}` : k.label}{mark.kind === "text" && "text" in mark ? `: ${String(mark.text).slice(0, 60)}` : ""}</span></button>); }
-    for (const a of annotations) { if (!match(a.text + a.author + annotationLabel(a.subtype))) continue; add(pageNumber(a.page), <article key={a.page+":"+a.index} className="note-card foreign"><button className="native-comment-link" onClick={() => onOpenAnnotation(a)}><span className="note-entry-head"><MessageSquare size={15}/><strong>{a.author || annotationLabel(a.subtype)}</strong><small>{annotationLabel(a.subtype)}</small></span><span className="note-text">{a.text || annotationLabel(a.subtype)}</span></button><button className="text-button" onClick={() => onDeleteAnnotation(a)}><Trash2 size={13}/>{" "}{translateUi("Excluir anotação")}</button></article>); }
+    for (const mark of marks) {
+      const k = KIND[mark.kind]; if (!k) continue;
+      if (mark.kind === "markup") {
+        const label = translateUi(MARKUP_LABEL[mark.style] ?? "Destaque");
+        if (!match(label + (mark.text ?? ""))) continue;
+        add(pageNumber(mark.page), <button key={mark.id} className="note-mark note-mark-quote" onClick={() => onSelectObject(mark)}><span className="note-swatch" style={{ background: mark.color }}>{k.icon}</span><span><b>{label}</b><Excerpt page={pages.find((p) => p.id === mark.page)} rects={mark.rects} known={mark.text} /></span></button>);
+        continue;
+      }
+      if (!match(k.label)) continue;
+      add(pageNumber(mark.page), <button key={mark.id} className="note-mark" onClick={() => onSelectObject(mark)}>{k.icon}<span>{mark.kind === "shape" && mark.measure ? `Medida: ${measureLabel(mark)?.text ?? ""}` : k.label}{mark.kind === "text" && "text" in mark ? `: ${String(mark.text).slice(0, 60)}` : ""}</span></button>);
+    }
+    for (const a of annotations) { if (!match(a.text + a.author + annotationLabel(a.subtype))) continue; add(pageNumber(a.page), <article key={a.page+":"+a.index} className="note-card foreign"><button className="native-comment-link" onClick={() => onOpenAnnotation(a)}><span className="note-entry-head"><MessageSquare size={15}/><strong>{a.author || annotationLabel(a.subtype)}</strong><small>{annotationLabel(a.subtype)}</small></span>{MARKUP_LABEL[a.subtype] && <Excerpt page={pages.find((p) => p.id === a.page)} rects={a.quads ?? [a.rect]} />}<span className="note-text">{a.text || annotationLabel(a.subtype)}</span></button><button className="text-button" onClick={() => onDeleteAnnotation(a)}><Trash2 size={13}/>{" "}{translateUi("Excluir anotação")}</button></article>); }
     return [...map.entries()].sort((a, b) => a[0] - b[0]);
   }, [objects, annotations, filter, openNote, pages, locale]);
   const total = notes.length + marks.length + annotations.length;

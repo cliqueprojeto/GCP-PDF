@@ -747,13 +747,13 @@
 .book-turn { width: 44px; border: 0; background: none; color: inherit; opacity: .35; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .book-turn:hover:not(:disabled) { opacity: .85; }
 .book-turn:disabled { opacity: .08; cursor: default; }
-.book-stage.effect-desvanecer iframe { transition: opacity .16s ease; }
+.book-stage.effect-desvanecer iframe { transition: opacity var(--turn, .16s) ease; }
 .book-stage.effect-desvanecer.out-next iframe, .book-stage.effect-desvanecer.out-prev iframe { opacity: 0; }
-.book-stage.effect-virar iframe { transition: transform .26s cubic-bezier(.4,.1,.3,1), filter .26s; }
+.book-stage.effect-virar iframe { transition: transform var(--turn, .26s) cubic-bezier(.4,.1,.3,1), filter var(--turn, .26s); }
 .book-stage.effect-virar.out-next iframe { transform: rotateY(-88deg); transform-origin: left center; filter: brightness(.82); }
 .book-stage.effect-virar.out-prev iframe { transform: rotateY(88deg); transform-origin: right center; filter: brightness(.82); }
-.book-stage.effect-virar.in-next iframe { animation: book-in-next .26s cubic-bezier(.2,.7,.3,1); }
-.book-stage.effect-virar.in-prev iframe { animation: book-in-prev .26s cubic-bezier(.2,.7,.3,1); }
+.book-stage.effect-virar.in-next iframe { animation: book-in-next var(--turn, .26s) cubic-bezier(.2,.7,.3,1); }
+.book-stage.effect-virar.in-prev iframe { animation: book-in-prev var(--turn, .26s) cubic-bezier(.2,.7,.3,1); }
 @keyframes book-in-next { from { transform: rotateY(88deg); transform-origin: right center; filter: brightness(.82); } to { transform: none; } }
 @keyframes book-in-prev { from { transform: rotateY(-88deg); transform-origin: left center; filter: brightness(.82); } to { transform: none; } }
 .book-panel { position: absolute; top: 0; bottom: 0; z-index: 2; width: 300px; overflow: auto; padding: 14px 16px; background: var(--book-bg); border-right: 1px solid color-mix(in srgb, var(--book-ink) 14%, transparent); box-shadow: 8px 0 24px -16px #0007; display: flex; flex-direction: column; gap: 10px; }
@@ -774,3 +774,75 @@
 .book-progress input { flex: 1; }
 .book-chapter { max-width: 34%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { .book-stage iframe { transition: none !important; animation: none !important; } }
+/* Comments tied to text: the pointer from bubble to icon, the commented passage on the page and its quote. */
+.note-tail { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 699; overflow: visible; }
+.note-tail polygon { fill: color-mix(in srgb, var(--purple) 14%, transparent); stroke: color-mix(in srgb, var(--purple) 45%, transparent); stroke-width: 1; stroke-linejoin: round; }
+.note-tail circle { fill: var(--purple); }
+.note-anchor rect { opacity: .3; mix-blend-mode: multiply; }
+.note-anchor.open rect { opacity: .42; stroke: var(--purple); stroke-width: .8; }
+.note-quote { margin: 0 0 8px; padding: 4px 8px; border-left: 3px solid var(--purple); background: var(--purple-soft); border-radius: 0 6px 6px 0; color: var(--text); font-size: 11.5px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.note-mark-quote { align-items: flex-start; border-style: solid; color: var(--text); }
+.note-mark-quote > span:last-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.note-mark-quote b { font-size: 11px; font-weight: 600; color: var(--muted); }
+.note-swatch { flex: none; width: 20px; height: 20px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; color: #2b2238; }
+.note-excerpt { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: 12px; line-height: 1.4; color: var(--text); quotes: "“" "”"; }
+.native-comment-link .note-excerpt { margin: 4px 0; padding-left: 8px; border-left: 3px solid var(--border); }
+/* Reader: selection actions, annotations, search, display options (in the manner of Play Livros). */
+.book-reader .context-backdrop { z-index: 20; }
+.book-menu { min-width: 230px; }
+.book-menu-colors { display: flex; align-items: center; gap: 10px; padding: 8px 10px 4px; color: var(--muted); }
+.book-menu-colors button { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #0000; cursor: pointer; padding: 0; }
+.book-menu-colors button:hover { border-color: var(--text); transform: scale(1.08); }
+.book-banner { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 3; display: flex; align-items: center; gap: 10px; max-width: calc(100% - 24px); padding: 8px 8px 8px 14px; border-radius: 10px; background: var(--book-bg); color: var(--book-ink); border: 1px solid color-mix(in srgb, var(--book-ink) 20%, transparent); box-shadow: 0 10px 30px #0004; font-size: 13px; }
+.book-banner .icon-button { color: inherit; }
+.book-toc-tools { display: flex; gap: 6px; }
+.book-toc-tools button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid color-mix(in srgb, var(--book-ink) 22%, transparent) !important; font-size: 12.5px !important; }
+.book-notes h3 small, .book-search small { opacity: .6; font-weight: 400; }
+.book-note-item { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px; }
+.book-note-item h4 { flex-basis: 100%; margin: 10px 0 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; opacity: .6; }
+.book-note-open { flex: 1; min-width: 0; display: flex !important; gap: 8px; align-items: flex-start; }
+.book-note-open > span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.book-note-open q { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.book-note-open em { font-style: normal; font-size: 12px; padding: 3px 7px; border-radius: 6px; background: color-mix(in srgb, var(--book-ink) 8%, transparent); }
+.book-note-swatch { flex: none; width: 10px; align-self: stretch; min-height: 18px; border-radius: 3px; background: var(--mark); }
+.book-note-swatch.underline { background: none; border-bottom: 3px solid var(--mark); }
+.book-note-icon { flex: none; margin-top: 2px; }
+.book-note-actions { display: flex; }
+.book-note-actions .icon-button, .book-search form .icon-button { color: inherit; }
+.book-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 40px 10px; opacity: .8; }
+.book-empty strong { font-size: 18px; font-weight: 500; }
+.book-empty p { margin: 0; font-size: 13px; line-height: 1.5; }
+.book-search form { display: flex; gap: 4px; }
+.book-search input { flex: 1; min-width: 0; padding: 7px 9px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--book-ink) 25%, transparent); background: transparent; color: inherit; }
+.book-search-result { display: flex; flex-direction: column; gap: 2px; text-align: left; border: 0; background: none; color: inherit; padding: 7px 8px; border-radius: 6px; cursor: pointer; font-size: 12.5px; line-height: 1.4; }
+.book-search-result:hover { background: color-mix(in srgb, var(--book-ink) 9%, transparent); }
+.book-search-result mark { background: #ffd43b99; color: inherit; border-radius: 2px; }
+.book-stepper, .book-segments { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.book-stepper span { flex: 1; text-align: center; font-size: 12.5px; }
+.book-stepper button, .book-segments button { display: inline-flex; align-items: center; justify-content: center; gap: 1px; min-width: 52px; height: 40px; flex: 1; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--book-ink) 18%, transparent); background: transparent; color: inherit; cursor: pointer; }
+.book-stepper button:disabled { opacity: .35; cursor: default; }
+.book-segments button.selected { background: color-mix(in srgb, var(--purple) 16%, transparent); border-color: var(--purple); color: var(--purple); }
+.book-stats { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.book-chapter { max-width: 26%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.book-annotation { position: fixed; z-index: 30; width: 300px; padding: 14px 12px 10px; border-radius: 10px; background: var(--surface); color: var(--text); border: 1px solid var(--border); box-shadow: 0 16px 40px #0005; display: flex; flex-direction: column; gap: 8px; }
+.book-annotation textarea { min-height: 90px; resize: vertical; padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg, transparent); color: inherit; font: inherit; font-size: 13px; }
+.book-annotation-close { position: absolute; top: 4px; right: 4px; }
+@media (max-width: 760px) { .book-stats { display: none; } }
+/* Comic reader: pages centred on a dark stage, zoom with scroll, hand to move, manga order. */
+.comic-reader .book-bar .icon-button.active { background: color-mix(in srgb, var(--purple) 30%, transparent); color: #fff; }
+.comic-zoom { min-width: 54px; border: 0; background: none; color: inherit; font: 12px system-ui; cursor: pointer; border-radius: 6px; padding: 4px; }
+.comic-zoom:hover { background: color-mix(in srgb, var(--book-ink) 12%, transparent); }
+.comic-stage { flex: 1; min-width: 0; overflow: auto; display: flex; position: relative; user-select: none; }
+.comic-stage.hand { cursor: grab; }
+.comic-stage.hand:active { cursor: grabbing; }
+.comic-spread { margin: auto; display: flex; align-items: center; justify-content: center; gap: 0; padding: 8px; animation: comic-in var(--turn, .22s) ease; }
+.comic-spread.manga { flex-direction: row-reverse; }
+.comic-spread img, .comic-strip img { display: block; max-width: none; box-shadow: 0 6px 28px #0007; background: #fff; }
+.comic-strip { margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0 30vh; }
+.comic-placeholder { display: flex; align-items: center; justify-content: center; min-width: 200px; min-height: 300px; opacity: .5; }
+.book-progress input.manga { direction: rtl; }
+.comic-segments button { min-width: 0; font-size: 12px; padding: 0 6px; }
+.comic-help { font-size: 12px; opacity: .7; margin: 0; line-height: 1.5; }
+.comic-reader .check { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+@keyframes comic-in { from { opacity: .2; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .comic-spread { animation: none; } }

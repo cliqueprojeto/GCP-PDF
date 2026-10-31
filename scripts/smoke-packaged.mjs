@@ -62,7 +62,8 @@ try{
  const comicPage=createCanvas(300,420),drawing=comicPage.getContext('2d');drawing.fillStyle='#ffd43b';drawing.fillRect(0,0,300,420);
  const comicFile=join(root,'quadrinho.cbz');await writeFile(comicFile,zipSync({'02.png':comicPage.toBuffer('image/png'),'01.png':comicPage.toBuffer('image/png')}));
  await page.evaluate(path=>window.gcp.openBookFile(path),comicFile);await page.waitForSelector('.comic-reader .comic-spread img',{timeout:30000});
- check('quadrinho CBZ aberto pelo libarchive WebAssembly do pacote',(await page.locator('.comic-reader .book-progress span').textContent()).includes('de 2'));
+ // Language-independent: the interface may open in English or Spanish on the test machine.
+ check('quadrinho CBZ aberto pelo libarchive WebAssembly do pacote',await page.locator('.comic-reader .book-progress input[type=range]').getAttribute('max')==='1'&&await page.locator('.comic-reader .comic-spread img').count()===1);
  await page.keyboard.press('Escape');await page.waitForSelector('.comic-reader',{state:'detached'});
  await page.evaluate(()=>window.gcp.setTheme('dark-ocean'));
  await page.waitForFunction(()=>document.documentElement.dataset.palette==='dark-ocean'&&document.documentElement.dataset.theme==='dark');

@@ -45,7 +45,7 @@ try{
  await page.screenshot({path:'evidence/ui/22-destaque.png'});
  await page.keyboard.press('Escape');
  // 4. Search with counter and navigation.
- await page.keyboard.press('Control+f');await page.locator('.search-box input').fill('Projeto');await page.keyboard.press('Enter');
+ await page.keyboard.press('Control+f');await page.locator('.sidebar .search-box input').fill('Projeto');await page.keyboard.press('Enter');
  await page.waitForSelector('.search-nav');const counter=await page.locator('.search-nav strong').textContent();
  await page.keyboard.press('Enter');const next=await page.locator('.search-nav strong').textContent();
  check('busca mostra contagem e avança',/1 de \d+/.test(counter)&&/2 de/.test(next),`${counter} → ${next}`);

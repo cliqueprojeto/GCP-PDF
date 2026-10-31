@@ -1,7 +1,7 @@
 import {t as translateUi} from "./i18n";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Move, LoaderCircle } from "lucide-react";
-import type { FieldValue, PageObject, PageRef, Point, Rect, SourceObjects, SourceParagraph } from "../shared/types";
+import type { FieldValue, PageObject, PageRef, Point, Rect, SourceObjects, SourceParagraph, ParagraphEdit } from "../shared/types";
 import { FormLayer } from "./FormLayer";
 import { NativeAnnotations } from "./NativeAnnotations";
 import { NoteBubble, commentAuthor, type PdfNote } from "./Comments";
@@ -10,7 +10,7 @@ import { fromPage, inkPath, measureLabel, objectBounds, pageTransform, resizeObj
 import { loadAsset, loadPage, pdfjs, displaySize, type PageGeometry } from "./pdf";
 import { uid, type Style, type Tool } from "./editor";
 
-export interface SourceSelection { page: string; paragraph: SourceParagraph; color: string; caret?: { x: number; y: number } }
+export interface SourceSelection { page: string; paragraph: SourceParagraph; color: string; generation?:number; caret?: { x: number; y: number } }
 /** PDF.js text of the rendered page, kept so the paragraph editor can show the page's own embedded fonts. */
 interface PageText { items: { str: string; fontName: string; transform: number[]; width: number; hasEOL: boolean }[]; view: number[] }
 interface EditorRun { text: string; font: string; size: number }
@@ -228,7 +228,7 @@ export function PageView(props: Props) {
     let alive = true;
     const key = `${props.docId}:${pageRef.base}:${pageRef.src}`;
     let task = sourceCache.get(key);
-    if (!task) { task = window.gcp.getSourceObjects(props.docId, pageRef.id); sourceCache.set(key, task); task.catch(() => sourceCache.delete(key)); }
+    if (!task) { task = window.gcp.getSourceObjects(props.docId, pageRef.id); sourceCache.set(key, task);if(sourceCache.size>64)sourceCache.delete(sourceCache.keys().next().value!); task.catch(() => sourceCache.delete(key)); }
     void task.then((value) => alive && setSource(value)).catch((error) => alive && props.onError(error));
     return () => { alive = false; };
   }, [tool.kind, near, pageRef.base, pageRef.src]);
@@ -397,11 +397,15 @@ export function PageView(props: Props) {
       if (selected && !stayingInText && !target.closest(".source-editor")) {
         e.preventDefault();
         const next = selectedBox?.[0] === "text" ? source?.paragraphs.find((p) => p.index === Number(selectedBox[1])) : undefined;
-        void commitPendingParagraph().then((applied) => {
+        void commitPendingParagraph().then(async (applied) => {
           if (!applied) return;
-          if (next) props.onSourceSelect({ page: pageRef.id, paragraph: next, color: sample(next.rect).color, caret: { x: e.clientX, y: e.clientY } });
+          if (next) {
+            const fresh=await window.gcp.getSourceObjects(props.docId,pageRef.id),x=next.rect.x+next.rect.width/2,y=next.rect.y+next.rect.height/2;
+            const paragraph=fresh.paragraphs.find(p=>x>=p.rect.x&&x<=p.rect.x+p.rect.width&&y>=p.rect.y&&y<=p.rect.y+p.rect.height);
+            props.onSourceSelect(paragraph?{page:pageRef.id,paragraph,generation:fresh.generation,color:sample(paragraph.rect).color,caret:{x:e.clientX,y:e.clientY}}:null);
+          }
           else { props.onSourceSelect(null); setPickedImage(selectedBox?.[0] === "image" ? Number(selectedBox[1]) : null); }
-        });
+        }).catch(props.onError);
         return;
       }
       if (!box || !source) { if (!target.closest(".source-editor")) props.onSourceSelect(null); setPickedImage(null); return; }
@@ -411,7 +415,7 @@ export function PageView(props: Props) {
         if (target.closest("[data-grip]")) { e.preventDefault(); outer.current!.setPointerCapture(e.pointerId); setDrag({ kind: "source", start: point, dx: 0, dy: 0, target: { kind: "text", index: index + 1, rect: paragraph.rect } }); return; }
         // Prevent the click from moving focus away from the editor that opens right now.
         e.preventDefault();
-        if (props.sourceSelection?.paragraph.index !== index || props.sourceSelection.page !== pageRef.id) props.onSourceSelect({ page: pageRef.id, paragraph, color: sample(paragraph.rect).color, caret: { x: e.clientX, y: e.clientY } });
+        if (props.sourceSelection?.paragraph.index !== index || props.sourceSelection.page !== pageRef.id) props.onSourceSelect({ page: pageRef.id, paragraph, generation:source.generation, color: sample(paragraph.rect).color, caret: { x: e.clientX, y: e.clientY } });
       } else {
         const image = source.images.find((i) => i.index === index)!;
         e.preventDefault(); outer.current!.setPointerCapture(e.pointerId);
@@ -494,7 +498,8 @@ export function PageView(props: Props) {
       setEngineBusy(true);
       props.onSourceSelect(null);
       if (d.target.kind === "image") setDropped({ generation: source.generation, index: d.target.index, dx: d.dx, dy: d.dy, ...(d.ghost ? { ghost: d.ghost } : {}) });
-      void window.gcp.moveSourceObjects(props.docId, pageRef.id, { generation: source.generation, objects: [{ kind: d.target.kind, index: d.target.index }], dx: d.dx, dy: d.dy }).catch((error) => { setDropped(null); props.onError(error); }).finally(() => setEngineBusy(false));
+      const members=d.target.kind==='text'?source.paragraphs.find(p=>p.index+1===d.target.index)?.members:undefined;
+      void window.gcp.moveSourceObjects(props.docId, pageRef.id, { generation: source.generation, objects: members?members.map(p=>({kind:'text' as const,index:p.index+1})):[{ kind: d.target.kind, index: d.target.index }], dx: d.dx, dy: d.dy }).catch((error) => { setDropped(null); props.onError(error); }).finally(() => setEngineBusy(false));
     }
   }
   /** One action from the image menu on an original picture, applied by the engine and undoable. */
@@ -586,7 +591,12 @@ export function PageView(props: Props) {
                 </div>
               );
             })}
-            {activeParagraph && <ParagraphEditor key={`${pageRef.id}:${activeParagraph.index}`} paragraph={activeParagraph} lines={paragraphLines(pageText.current, activeParagraph.rect)} caret={props.sourceSelection?.caret} colors={sample(activeParagraph.rect)} onCommit={async (text, width) => {
+            {activeParagraph?.members && <BlockEditor key={`${pageRef.id}:${activeParagraph.index}`} paragraph={activeParagraph} pageText={pageText.current} caret={props.sourceSelection?.caret} sample={sample} onCommit={async members=>{
+              if(!members.some(m=>m.text!==undefined)){props.onSourceSelect(null);return;}
+              setEngineBusy(true);
+              try{await window.gcp.editParagraph(props.docId,pageRef.id,{paragraph:activeParagraph.index,generation:source.generation,members});props.onSourceSelect(null);}finally{setEngineBusy(false);}
+            }} onError={props.onError}/>}
+            {activeParagraph && !activeParagraph.members && <ParagraphEditor key={`${pageRef.id}:${activeParagraph.index}`} paragraph={activeParagraph} lines={paragraphLines(pageText.current, activeParagraph.rect)} caret={props.sourceSelection?.caret} colors={sample(activeParagraph.rect)} onCommit={async (text, width) => {
               const resized = width !== undefined && Math.abs(width - activeParagraph.rect.width) > 0.5;
               if (text === activeParagraph.text && !resized) { props.onSourceSelect(null); return; }
               setEngineBusy(true);
@@ -646,8 +656,7 @@ function ParagraphEditor({ paragraph, lines, caret, colors, onCommit, onError }:
   const box = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null), done = useRef(false), busy = useRef(false);
   const commitRef = useRef<() => Promise<boolean>>(() => Promise.resolve(true));
   const pendingCommit = useRef<Promise<boolean> | null>(null);
-  const lastPointer = useRef<{ target: HTMLElement; at: number } | null>(null);
-  useEffect(() => { const remember = (event: PointerEvent) => { if (event.target instanceof HTMLElement) lastPointer.current = { target: event.target, at: Date.now() }; }; document.addEventListener("pointerdown", remember, true); return () => document.removeEventListener("pointerdown", remember, true); }, []);
+  const lastPointer = useRecentPointer();
   const [width, setWidth] = useState(paragraph.rect.width), [saving, setSaving] = useState(false);
   const resized = useRef(false), drag = useRef<{x:number;width:number;scale:number}|null>(null);
   const fallback = paragraph.family ? `"${paragraph.family}", Helvetica, Arial, sans-serif` : "Helvetica, Arial, sans-serif";
@@ -665,8 +674,8 @@ function ParagraphEditor({ paragraph, lines, caret, colors, onCommit, onError }:
     return () => cancelAnimationFrame(frame);
   }, []);
   const editedText = () => (content.current?.innerText ?? paragraph.text).replace(/\r\n?/g, "\n").replace(/\n$/, "");
-  // The formatting bar applies font/size/colour together with what was typed (see pendingParagraphText).
-  useEffect(() => { openEditor = { text: () => { const t = editedText(); return t.replace(/\s+/g, " ").trim() === paragraph.text.replace(/\s+/g, " ").trim() ? undefined : t; }, done: () => { done.current = true; }, commit: () => commitRef.current() }; return () => { openEditor = null; }; }, []);
+  // The formatting bar applies font/size/colour together with what was typed.
+  useEffect(() => { openEditor = { text: () => { const t = editedText(); return t.replace(/\s+/g, " ").trim() === paragraph.text.replace(/\s+/g, " ").trim() ? undefined : t; }, commit: () => commitRef.current() }; return () => { openEditor = null; }; }, []);
   const applyEdit = async (cancel: boolean): Promise<boolean> => {
     if (done.current) return true;
     if (busy.current || drag.current) return false;
@@ -719,8 +728,49 @@ function ParagraphEditor({ paragraph, lines, caret, colors, onCommit, onError }:
 }
 
 export function clearSourceCache() { sourceCache.clear(); }
-let openEditor: { text: () => string | undefined; done: () => void; commit: () => Promise<boolean> } | null = null;
+let openEditor: { text: () => string | undefined; members?:()=>NonNullable<ParagraphEdit['members']>; commit: () => Promise<boolean> } | null = null;
 /** Returns false after a failed edit so callers keep the draft and its selection. */
 export function commitPendingParagraph(): Promise<boolean> { return openEditor?.commit() ?? Promise.resolve(true); }
-/** Text typed in the open paragraph editor (undefined when unchanged); marks it handled for the formatting edit. */
-export function pendingParagraphText() { const editor = openEditor; if (!editor) return undefined; const text = editor.text(); editor.done(); return text; }
+/** Current draft for the formatting bar. It stays open until the write succeeds. */
+export function pendingParagraphEdit():Pick<ParagraphEdit,'text'|'members'> { const editor = openEditor; if (!editor) return {};return editor.members?{members:editor.members()}:{text:editor.text()}; }
+
+/** One selectable block, with native text regions retaining their own baselines and fonts. Keeping
+ * editable regions separate also prevents a cell edit from swallowing a neighbouring source region. */
+function BlockEditor({paragraph,pageText,caret,sample,onCommit,onError}:{paragraph:SourceParagraph;pageText:PageText|null;caret?:{x:number;y:number};sample:(r:Rect)=>{background:string;color:string};onCommit:(members:NonNullable<ParagraphEdit['members']>)=>Promise<void>;onError:(error:unknown)=>void}) {
+  const box=useRef<HTMLDivElement>(null),nodes=useRef(new Map<number,HTMLDivElement>()),done=useRef(false),pending=useRef<Promise<boolean>|null>(null),[saving,setSaving]=useState(false);
+  const lastPointer=useRecentPointer();
+  const members=paragraph.members!;
+  const flat=(v:string)=>v.replace(/\s+/g,' ').trim();
+  const drafts=()=>members.map(p=>{const text=(nodes.current.get(p.index)?.innerText??p.text).replace(/\r\n?/g,'\n').replace(/\n$/,'');return {paragraph:p.index,...(flat(text)!==flat(p.text)?{text,width:p.rect.width}:{})};});
+  const apply=():Promise<boolean>=>{
+    if(done.current)return Promise.resolve(true);if(pending.current)return pending.current;
+    setSaving(true);
+    pending.current=(async()=>{try{await onCommit(drafts());done.current=true;return true;}catch(error){onError(error);return false;}finally{pending.current=null;setSaving(false);}})();return pending.current;
+  };
+  const commitRef=useRef(apply);commitRef.current=apply;
+  useEffect(()=>{openEditor={text:()=>undefined,members:drafts,commit:()=>commitRef.current()};return()=>{openEditor=null;};},[]);
+  useLayoutEffect(()=>{const frame=requestAnimationFrame(()=>{
+    const target=caret?document.elementFromPoint(caret.x,caret.y)?.closest<HTMLElement>('[data-member]'):undefined;
+    const node=target&&box.current?.contains(target)?target:nodes.current.values().next().value;node?.focus();
+    if(caret){const range=document.caretRangeFromPoint?.(caret.x,caret.y);if(range&&node?.contains(range.startContainer)){const selection=window.getSelection();selection?.removeAllRanges();selection?.addRange(range);}}
+  });return()=>cancelAnimationFrame(frame);},[]);
+  return <div ref={box} className="source-editor source-block-editor" data-saving={saving||undefined} style={{left:paragraph.rect.x-2,top:paragraph.rect.y-2,width:paragraph.rect.width+4,height:paragraph.rect.height+4}}
+    onPointerDown={e=>e.stopPropagation()} onKeyDown={e=>{e.stopPropagation();if(e.key==='Escape'){e.preventDefault();done.current=true;void onCommit(members.map(p=>({paragraph:p.index})));}else if(e.key==='Enter'&&e.ctrlKey){e.preventDefault();void apply();}}}
+    onBlur={e=>{const to=e.relatedTarget as HTMLElement|null,pointer=lastPointer.current;if(box.current?.contains(to)||to?.closest('.property-bar')||(pointer&&Date.now()-pointer.at<200&&pointer.target.closest('.property-bar')))return;void apply();}}>
+    {members.map(p=>{
+      const lines=paragraphLines(pageText,p.rect),colors=sample(p.rect),fallback=p.family?`"${p.family}",Arial,sans-serif`:'Arial,sans-serif';
+      const pitch=lines.length>1?(lines.at(-1)!.baseline-lines[0]!.baseline)/(lines.length-1):p.size*1.25;
+      return <div key={p.index} data-member={p.index} ref={node=>{if(node)nodes.current.set(p.index,node);else nodes.current.delete(p.index);}} className="source-editor-content source-block-member" contentEditable={!saving} suppressContentEditableWarning spellCheck={false}
+        style={{position:'absolute',left:p.rect.x-paragraph.rect.x+2,top:lines.length?lines[0]!.baseline-p.size*.8-(pitch-p.size)/2-paragraph.rect.y+2:p.rect.y-paragraph.rect.y+2,minWidth:p.rect.width,minHeight:p.rect.height,fontFamily:fallback,fontSize:p.size,lineHeight:`${pitch}px`,background:colors.background,color:colors.color}}
+        onPaste={e=>{e.preventDefault();document.execCommand('insertText',false,e.clipboardData.getData('text/plain'));}}>
+        {lines.length?lines.map((line,i)=><div key={i} style={{marginLeft:line.x-p.rect.x,minHeight:pitch}}>{line.runs.map((r,j)=><span key={j} style={{fontFamily:`"${r.font}",${fallback}`,fontSize:r.size}}>{r.text}</span>)}</div>):p.text.split('\n').map((line,i)=><div key={i}>{line||<br/>}</div>)}
+      </div>;
+    })}
+  </div>;
+}
+
+function useRecentPointer(){
+ const pointer=useRef<{target:HTMLElement;at:number}|null>(null);
+ useEffect(()=>{const remember=(event:PointerEvent)=>{if(event.target instanceof HTMLElement)pointer.current={target:event.target,at:Date.now()};};document.addEventListener('pointerdown',remember,true);return()=>document.removeEventListener('pointerdown',remember,true);},[]);
+ return pointer;
+}

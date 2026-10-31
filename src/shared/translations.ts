@@ -2872,10 +2872,6 @@ export const translations:Record<string,readonly [string,string]> = {
     "Open downloads",
     "Abrir descargas"
   ],
-  "Baixar e instalar": [
-    "Download and install",
-    "Descargar e instalar"
-  ],
   "Todos os dias": [
     "Every day",
     "Todos los días"

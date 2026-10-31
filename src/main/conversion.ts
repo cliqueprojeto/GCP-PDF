@@ -8,7 +8,7 @@ import ExcelJS from 'exceljs';
 import { pageGrid, type PageGrid } from './tables';
 import PptxGenJS from 'pptxgenjs';
 import type { ExportOptions } from '../shared/types';
-import { toDocxLayout, toPptxLayout } from './word-layout';
+import { toDocxLayout, toPptxLayout, type OcrRuns } from './word-layout';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/types/src/display/api';
 
 const localRequire = createRequire(typeof __filename === 'string' ? __filename : pathToFileURL(resolve('package.json')));
@@ -137,7 +137,13 @@ export async function extractDocumentText(bytes:Uint8Array):Promise<string> {
   const pdf=await loadPdf(bytes);
   try {const pages:string[]=[];for(let i=1;i<=pdf.numPages;i++){const data=await inspectPage(await pdf.getPage(i),false);pages.push(`[Página ${i}]\n${data.lines.map(l=>l.text).join('\n')}`);}return pages.join('\n\n');}finally{await pdf.loadingTask.destroy();}
 }
-export async function convertPdf(bytes:Uint8Array,options:ExportOptions,onProgress?:(message:string)=>void):Promise<{bytes:Uint8Array;extension:string;warnings:string[]}> {
+/** Pages whose content has no text at all (scans, photos of documents): OCR gives them editable text. */
+export async function pagesWithoutText(bytes:Uint8Array):Promise<number[]> {
+  const pdf=await loadPdf(bytes),empty:number[]=[];
+  try{for(let i=1;i<=pdf.numPages;i++){const page=await pdf.getPage(i),content=await page.getTextContent();if(!content.items.some(item=>'str' in item&&item.str.trim()))empty.push(i-1);page.cleanup();}}finally{await pdf.loadingTask.destroy();}
+  return empty;
+}
+export async function convertPdf(bytes:Uint8Array,options:ExportOptions,onProgress?:(message:string)=>void,ocr:OcrRuns=new Map()):Promise<{bytes:Uint8Array;extension:string;warnings:string[]}> {
   validateOptions(options);
   if(options.format==='pdf')return {bytes:new Uint8Array(bytes),extension:'pdf',warnings:[]};
   const pdf=await loadPdf(bytes),warnings:string[]=[],dpi=options.dpi??(options.format==='image-pdf'?300:150);
@@ -156,10 +162,10 @@ export async function convertPdf(bytes:Uint8Array,options:ExportOptions,onProgre
       warnings.push('O PDF contém apenas imagens das páginas; ele não mantém texto pesquisável, formulários ou assinaturas criptográficas. Uma imagem ainda pode ser alterada por outros programas.');
       return {bytes:await output.save(),extension:'pdf',warnings:uniqueWarnings(warnings)};
     }
-    if(options.format==='docx'&&options.mode!=='fidelity')return await toDocxLayout(bytes,options.dpi??150,warnings,onProgress);
+    if(options.format==='docx'&&options.mode!=='fidelity')return await toDocxLayout(bytes,options.dpi??150,warnings,onProgress,ocr);
     if(options.format==='docx')return await toDocx(pdf,options,dpi,warnings,onProgress);
     if(options.format==='xlsx')return await toXlsx(pdf,dpi,warnings,onProgress);
-    if(options.mode!=='fidelity')return await toPptxLayout(bytes,options.dpi??150,warnings,onProgress);
+    if(options.mode!=='fidelity')return await toPptxLayout(bytes,options.dpi??150,warnings,onProgress,ocr);
     return await toPptx(pdf,options,dpi,warnings,onProgress);
   }finally{await pdf.loadingTask.destroy();}
 }

@@ -1,10 +1,12 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { PDFDocument, PDFName, PDFRawStream, PDFDict, PDFArray, PDFRef, ParseSpeeds, decodePDFRawStream, type PDFContext } from 'pdf-lib';
-import { Document, Packer, Paragraph, TextRun, ImageRun, AlignmentType, FrameAnchorType, FrameWrap, HeightRule, HorizontalPositionRelativeFrom, VerticalPositionRelativeFrom, TextWrappingType, SectionType, LineRuleType, Table, TableRow, TableCell, WidthType, TableLayoutType, TableAnchorType, OverlapType, VerticalAlign, BorderStyle, ShadingType, type ISectionOptions } from 'docx';
+import { Document, Packer, Paragraph, TextRun, ImageRun, AlignmentType, FrameAnchorType, FrameWrap, HeightRule, HorizontalPositionRelativeFrom, VerticalPositionRelativeFrom, TextWrappingType, SectionType, LineRuleType, Table, TableRow, TableCell, WidthType, TableLayoutType, TableAnchorType, OverlapType, VerticalAlign, BorderStyle, ShadingType, PageNumber, type ISectionOptions } from 'docx';
 import { pageGrid, tableOf, insideTable, type GridTable, type GridEdge } from './tables';
 import type { PDFPageProxy } from 'pdfjs-dist/types/src/display/api';
-import { loadPdf, pdfjs } from './conversion';
+import { inspectPage, loadPdf, pdfjs } from './conversion';
 import { faceForPostscript, fontFamilies } from './fonts';
+import { embeddedFaces, type EmbeddedFace } from './embedded-fonts';
+import { bodyStyle, flowPage, flowSection, type FlowPage } from './docx-flow';
 
 /** Word export that keeps the page layout, like "retain page layout" in desktop PDF converters:
  * each page gets its artwork (backgrounds, table fills and borders, icons, photos) rendered without
@@ -13,17 +15,17 @@ import { faceForPostscript, fontFamilies } from './fonts';
 
 export interface Run { text: string; x: number; baseline: number; width: number; size: number; font: string; bold: boolean; italic: boolean; color: string; space: boolean }
 export interface Line { runs: Run[]; x: number; right: number; baseline: number; size: number }
-interface Block { lines: Line[]; x: number; right: number; size: number; align: 'left' | 'center' | 'right'; flow: boolean }
+export interface Block { lines: Line[]; x: number; right: number; size: number; align: 'left' | 'center' | 'right' | 'justify'; flow: boolean }
 
 /** A painted path in top-left page points, ready to become a native PowerPoint shape. */
-export interface VectorShape { segments: Segment[]; box: { x: number; y: number; width: number; height: number }; fill?: { color: string; alpha: number }; stroke?: { color: string; alpha: number; width: number; dash: boolean } }
+export interface VectorShape { segments: Segment[]; box: { x: number; y: number; width: number; height: number }; fill?: { color: string; alpha: number }; stroke?: { color: string; alpha: number; width: number; dash: boolean }; operation?:number }
 type Segment = { op: 'M' | 'L'; x: number; y: number } | { op: 'C'; x1: number; y1: number; x2: number; y2: number; x: number; y: number } | { op: 'Z' };
 type Matrix = [number, number, number, number, number, number];
 const multiply = (c: Matrix, m: number[]): Matrix => [c[0] * m[0]! + c[2] * m[1]!, c[1] * m[0]! + c[3] * m[1]!, c[0] * m[2]! + c[2] * m[3]!, c[1] * m[2]! + c[3] * m[3]!, c[0] * m[4]! + c[2] * m[5]! + c[4], c[1] * m[4]! + c[3] * m[5]! + c[5]];
 const apply = (c: Matrix, x: number, y: number) => ({ x: c[0] * x + c[2] * y + c[4], y: c[1] * x + c[3] * y + c[5] });
 const hex = (value: unknown) => (typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value.toLowerCase() : null);
 // PDF.js operator codes (OPS) used here; DrawOPS inside constructPath: 0 moveTo, 1 lineTo, 2 curveTo, 3 quadraticCurveTo, 4 closePath.
-const OP = { setLineWidth: 2, setDash: 6, setGState: 9, save: 10, restore: 11, transform: 12, stroke: 20, closeStroke: 21, fill: 22, eoFill: 23, fillStroke: 24, eoFillStroke: 25, closeFillStroke: 26, closeEOFillStroke: 27, endPath: 28, clip: 29, eoClip: 30, setStrokeColorN: 53, setFillColorN: 55, setStrokeRGBColor: 58, setFillRGBColor: 59, shadingFill: 62, paintFormXObjectBegin: 74, paintFormXObjectEnd: 75, beginGroup: 76, constructPath: 91 };
+const OP = { setLineWidth: 2, setDash: 6, setGState: 9, save: 10, restore: 11, transform: 12, stroke: 20, closeStroke: 21, fill: 22, eoFill: 23, fillStroke: 24, eoFillStroke: 25, closeFillStroke: 26, closeEOFillStroke: 27, endPath: 28, clip: 29, eoClip: 30, setStrokeColorN: 53, setFillColorN: 55, setStrokeRGBColor: 58, setFillRGBColor: 59, shadingFill: 62, paintFormXObjectBegin: 74, paintFormXObjectEnd: 75, beginGroup: 76, endGroup:77, constructPath: 91 };
 const MAX_SHAPES = 800;
 type Box = { x: number; y: number; width: number; height: number };
 const intersect = (a: Box, b: Box): Box => { const x = Math.max(a.x, b.x), y = Math.max(a.y, b.y); return { x, y, width: Math.min(a.x + a.width, b.x + b.width) - x, height: Math.min(a.y + a.height, b.y + b.height) - y }; };
@@ -37,18 +39,19 @@ function rectangle(path: { segments: Segment[]; box: Box }) {
 /** Reads the page's vector art from the PDF.js operator list. `supported` is false when the page uses
  * something a PowerPoint shape cannot reproduce faithfully (gradients, patterns, clipped vectors,
  * soft masks or too many paths); such pages keep their vectors in the slide background. */
-export async function vectorShapes(page: PDFPageProxy): Promise<{ supported: boolean; shapes: VectorShape[]; reason?: string }> {
+export async function vectorShapes(page: PDFPageProxy): Promise<{ supported: boolean; shapes: VectorShape[]; reason?: string; firstRaster?:number;lastRaster?:number; /** Areas painted with gradients or patterns. */ painted: Box[] }> {
   const list = await page.getOperatorList(), viewport = page.getViewport({ scale: 1 }), area = viewport.width * viewport.height;
-  type State = { ctm: Matrix; fill: string; stroke: string; fillAlpha: number; strokeAlpha: number; width: number; dash: boolean; clip: Box | null; pattern: boolean };
-  let state: State = { ctm: [...viewport.transform] as Matrix, fill: '#000000', stroke: '#000000', fillAlpha: 1, strokeAlpha: 1, width: 1, dash: false, clip: null, pattern: false };
-  const stack: State[] = [], shapes: VectorShape[] = [];
-  let unsupportedReason:string|undefined;
+  type State = { ctm: Matrix; fill: string; stroke: string; fillAlpha: number; strokeAlpha: number; width: number; dash: boolean; clip: Box | null; clipComplex:boolean; pattern: boolean; masked:boolean; blended:boolean };
+  let state: State = { ctm: [...viewport.transform] as Matrix, fill: '#000000', stroke: '#000000', fillAlpha: 1, strokeAlpha: 1, width: 1, dash: false, clip: null, clipComplex:false,pattern: false, masked:false,blended:false };
+  const stack: State[] = [], shapes: VectorShape[] = [], painted: Box[] = [];
+  let unsupportedReason:string|undefined,firstRaster=Infinity,lastRaster=-1;
   let pending: { segments: Segment[]; box: VectorShape['box'] } | null = null, clipNext = false;
   for (let i = 0; i < list.fnArray.length; i++) {
     const fn = list.fnArray[i]!, args = list.argsArray[i] as any[];
     switch (fn) {
-      case OP.save: case OP.beginGroup: stack.push({ ...state }); break;
-      case OP.restore: state = stack.pop() ?? state; break;
+      case OP.save: stack.push({ ...state }); break;
+      case OP.beginGroup: stack.push({...state});if(args[0]?.smask){state={...state,masked:true};unsupportedReason??='máscara suave';}break;
+      case OP.restore: case OP.endGroup: state = stack.pop() ?? state; break;
       case OP.transform: state.ctm = multiply(state.ctm, args); break;
       case OP.paintFormXObjectBegin: stack.push({ ...state }); if (Array.isArray(args[0]) || ArrayBuffer.isView(args[0])) state.ctm = multiply(state.ctm, Array.from(args[0] as ArrayLike<number>)); break;
       case OP.paintFormXObjectEnd: state = stack.pop() ?? state; break;
@@ -60,10 +63,11 @@ export async function vectorShapes(page: PDFPageProxy): Promise<{ supported: boo
       case OP.setGState:
         for (const [key, value] of (args[0] ?? []) as [string, unknown][]) {
           if (key === 'ca') state.fillAlpha = Number(value); else if (key === 'CA') state.strokeAlpha = Number(value);
-          else if (key === 'SMask' && value) unsupportedReason ??= 'máscara suave';
+          else if (key === 'SMask') {state.masked=!!value;if(value)unsupportedReason ??= 'máscara suave';}
+          else if(key==='BM'){state.blended=value!=='source-over'&&value!=='Normal';if(state.blended)unsupportedReason??='mistura de cores';}
         }
         break;
-      case OP.shadingFill: unsupportedReason ??= 'degradê'; break;
+      case OP.shadingFill: unsupportedReason ??= 'degradê';firstRaster=Math.min(firstRaster,i);lastRaster=i; painted.push(state.clip ?? { x: 0, y: 0, width: viewport.width, height: viewport.height }); break;
       case OP.constructPath: {
         const paint = args[0] as number, data = (Array.isArray(args[1]) ? args[1][0] : args[1]) as ArrayLike<number> | undefined;
         const segments: Segment[] = [];
@@ -75,30 +79,32 @@ export async function vectorShapes(page: PDFPageProxy): Promise<{ supported: boo
           else if (code === 2) { const a = add(data[k++]!, data[k++]!), b = add(data[k++]!, data[k++]!), p = add(data[k++]!, data[k++]!); segments.push({ op: 'C', x1: a.x, y1: a.y, x2: b.x, y2: b.y, x: p.x, y: p.y }); }
           else if (code === 3) { const a = add(data[k++]!, data[k++]!), p = add(data[k++]!, data[k++]!); segments.push({ op: 'C', x1: a.x, y1: a.y, x2: a.x, y2: a.y, x: p.x, y: p.y }); }
           else if (code === 4) segments.push({ op: 'Z' });
-          else { unsupportedReason ??= 'caminho desconhecido'; segments.length = 0; break; }
+          else { unsupportedReason ??= 'caminho desconhecido';firstRaster=Math.min(firstRaster,i);lastRaster=i; segments.length = 0; break; }
         }
         pending = segments.length ? { segments, box: { x: minX, y: minY, width: maxX - minX, height: maxY - minY } } : null;
         // PDF.js emits the clip operator before the path it applies to. A clip that leaves (nearly) the
         // whole page visible changes nothing; anything smaller would cut the shapes painted inside it.
         if (clipNext) {
           clipNext = false;
+          if(pending&&!rectangle(pending))state.clipComplex=true;
           if (pending && pending.box.width * pending.box.height < area * 0.97) state.clip = state.clip ? intersect(state.clip, pending.box) : pending.box;
         }
         const filled = [OP.fill, OP.eoFill, OP.fillStroke, OP.eoFillStroke, OP.closeFillStroke, OP.closeEOFillStroke].includes(paint);
         const stroked = [OP.stroke, OP.closeStroke, OP.fillStroke, OP.eoFillStroke, OP.closeFillStroke, OP.closeEOFillStroke].includes(paint);
         if ((filled || stroked) && pending) {
-          if (state.pattern && filled) { unsupportedReason ??= 'padrão'; pending=null; break; }
+          if(state.masked||state.blended||state.clipComplex){if(state.clipComplex)unsupportedReason??='recorte';firstRaster=Math.min(firstRaster,i);lastRaster=i;pending=null;break;}
+          if (state.pattern && filled) { unsupportedReason ??= 'padrão';firstRaster=Math.min(firstRaster,i);lastRaster=i; painted.push(state.clip ? intersect(pending.box, state.clip) : pending.box); pending=null; break; }
           if (state.clip && !inside(pending.box, state.clip)) {
             // Rectangles are cut to the clip exactly; other shapes would show what the clip hides.
-            if (!rectangle(pending)) { unsupportedReason ??= 'recorte'; pending = null; break; }
+            if (!rectangle(pending)||stroked) { unsupportedReason ??= 'recorte';firstRaster=Math.min(firstRaster,i);lastRaster=i; pending = null; break; }
             const b = intersect(pending.box, state.clip);
             if (b.width <= 0 || b.height <= 0) { pending = null; break; }
             pending = { box: b, segments: [{ op: 'M', x: b.x, y: b.y }, { op: 'L', x: b.x + b.width, y: b.y }, { op: 'L', x: b.x + b.width, y: b.y + b.height }, { op: 'L', x: b.x, y: b.y + b.height }, { op: 'Z' }] };
           }
           if ([OP.closeStroke, OP.closeFillStroke, OP.closeEOFillStroke].includes(paint)) pending.segments.push({ op: 'Z' });
           const scale = Math.sqrt(Math.abs(state.ctm[0] * state.ctm[3] - state.ctm[1] * state.ctm[2]));
-          shapes.push({ ...pending, ...(filled ? { fill: { color: state.fill, alpha: state.fillAlpha } } : {}), ...(stroked ? { stroke: { color: state.stroke, alpha: state.strokeAlpha, width: Math.max(0.25, state.width * scale), dash: state.dash } } : {}) });
-          if (shapes.length > MAX_SHAPES) return { supported: false, shapes: shapes.slice(0,MAX_SHAPES), reason: 'formas demais' };
+          shapes.push({ ...pending, operation:i, ...(filled ? { fill: { color: state.fill, alpha: state.fillAlpha } } : {}), ...(stroked ? { stroke: { color: state.stroke, alpha: state.strokeAlpha, width: Math.max(0.25, state.width * scale), dash: state.dash } } : {}) });
+          if (shapes.length > MAX_SHAPES) return { supported: false, shapes: shapes.slice(0,MAX_SHAPES), reason: 'formas demais', painted };
           pending = null;
         }
         break;
@@ -107,7 +113,7 @@ export async function vectorShapes(page: PDFPageProxy): Promise<{ supported: boo
       case OP.endPath: pending = null; break;
     }
   }
-  return { supported: !unsupportedReason, shapes, ...(unsupportedReason?{reason:unsupportedReason}:{}) };
+  return { supported: !unsupportedReason, shapes, painted,firstRaster,lastRaster, ...(unsupportedReason?{reason:unsupportedReason}:{}) };
 }
 
 /** Replaces every path-painting operator with `n` (end path, paint nothing), outside strings and inline images. */
@@ -219,18 +225,44 @@ async function characterColors(page: PDFPageProxy): Promise<{ chars: string[]; c
   }
   return { chars, colors };
 }
-/** A font the PDF embeds but this computer lacks would make Office measure with one font and draw with
- * another (lines overflow and words repeat). Such text uses a close installed family instead. */
-async function installedFamily(family: string, generic: string | undefined, missing?: Map<string, string>) {
-  const installed = new Set((await fontFamilies().catch(() => [] as string[])).map((f) => f.toLowerCase()));
-  if (!installed.size || installed.has(family.toLowerCase())) return family;
-  const serif = /serif/i.test(generic ?? '') && !/sans/i.test(generic ?? '') || /slab|serif|times|garamond|georgia|book|roman|minion|merriweather|lora|playfair|caslon/i.test(family);
-  const mono = /mono/i.test(generic ?? '') || /mono|courier|code|consol/i.test(family);
-  const substitute = [mono ? 'Consolas' : serif ? 'Cambria' : 'Segoe UI', 'Arial'].find((f) => installed.has(f.toLowerCase())) ?? 'Arial';
-  missing?.set(family, substitute);
-  return substitute;
+/** Families with the same character widths, so text keeps its line breaks where the original is absent
+ * (Linux and macOS ship these instead of the Microsoft fonts). */
+const METRIC_TWINS: Record<string, string[]> = {
+  calibri: ['Carlito'], cambria: ['Caladea'], arial: ['Liberation Sans', 'Arimo', 'Helvetica'], helvetica: ['Arial', 'Liberation Sans', 'Arimo'],
+  'times new roman': ['Liberation Serif', 'Tinos', 'Times'], times: ['Times New Roman', 'Liberation Serif', 'Tinos'], 'courier new': ['Liberation Mono', 'Cousine', 'Courier'], courier: ['Courier New', 'Liberation Mono'],
+  carlito: ['Calibri'], caladea: ['Cambria'], 'liberation sans': ['Arial'], 'liberation serif': ['Times New Roman'], 'liberation mono': ['Courier New'],
+};
+/** How the fonts of one conversion resolve: the PDF's own font programs, what this computer has, and the
+ * faces the output document embeds so it opens with the original fonts on any system. */
+export class FontContext {
+  readonly missing = new Map<string, string>();
+  readonly embedded = new Map<string, { regular?: Buffer; bold?: Buffer; italic?: Buffer; boldItalic?: Buffer }>();
+  constructor(readonly faces: Map<string, EmbeddedFace> = new Map(), readonly canEmbed = false) {}
+  static async of(bytes: Uint8Array, canEmbed: boolean) { return new FontContext(await embeddedFaces(bytes).catch(() => new Map()), canEmbed); }
+  /** Embedded faces in the shape the docx writer takes; a family with only a bold face uses it as regular too. */
+  docxFonts() {
+    return [...this.embedded].flatMap(([name, f]) => { const data = f.regular ?? f.bold ?? f.italic ?? f.boldItalic; return data ? [{ name, data, ...(f.bold ? { bold: f.bold } : {}), ...(f.italic ? { italic: f.italic } : {}), ...(f.boldItalic ? { boldItalic: f.boldItalic } : {}) }] : []; });
+  }
+  /** The family Office should use. Installed fonts are used as they are. A missing font the PDF carries
+   * complete, whose licence allows editing, travels inside the document; otherwise a font with the same
+   * widths is preferred, then a close family, so lines do not overflow. */
+  async family(family: string, generic: string | undefined, face?: EmbeddedFace) {
+    const installed = new Set((await fontFamilies().catch(() => [] as string[])).map((f) => f.toLowerCase()));
+    if (!installed.size || installed.has(family.toLowerCase())) return family;
+    if (this.canEmbed && face?.data && face.complete && face.editable) {
+      const slot = face.bold ? (face.italic ? 'boldItalic' : 'bold') : face.italic ? 'italic' : 'regular', entry = this.embedded.get(family) ?? {};
+      entry[slot] ??= face.data; this.embedded.set(family, entry);
+      return family;
+    }
+    const twin = METRIC_TWINS[family.toLowerCase()]?.find((f) => installed.has(f.toLowerCase()));
+    const serif = /serif/i.test(generic ?? '') && !/sans/i.test(generic ?? '') || /slab|serif|times|garamond|georgia|book|roman|minion|merriweather|lora|playfair|caslon|cambria|caladea/i.test(family);
+    const mono = /mono/i.test(generic ?? '') || /mono|courier|code|consol/i.test(family);
+    const substitute = twin ?? [mono ? 'Consolas' : serif ? 'Cambria' : 'Segoe UI', mono ? 'Liberation Mono' : serif ? 'Liberation Serif' : 'Liberation Sans', 'Arial'].find((f) => installed.has(f.toLowerCase())) ?? 'Arial';
+    this.missing.set(family, substitute);
+    return substitute;
+  }
 }
-export async function pageRuns(page: PDFPageProxy, missing?: Map<string, string>): Promise<Run[]> {
+export async function pageRuns(page: PDFPageProxy, fonts: FontContext = new FontContext()): Promise<Run[]> {
   const engine = await pdfjs(), viewport = page.getViewport({ scale: 1 });
   // The operator list resolves the embedded fonts, so their real names are known for the text items.
   const palette = await characterColors(page), content = await page.getTextContent();
@@ -251,10 +283,11 @@ export async function pageRuns(page: PDFPageProxy, missing?: Map<string, string>
     if (!Number.isFinite(size) || size < 1 || Math.abs(t[1]) > 0.01 * size) continue;
     let raw = '';
     try { const font = page.commonObjs.get(item.fontName) as { name?: string }; raw = font?.name ?? ''; } catch {}
-    // An installed face with the same PostScript name gives Word the exact family and weight.
-    const face = raw ? await faceForPostscript(raw) : undefined;
-    const style = face ? { family: face.legacy, bold: /bold/i.test(face.legacyStyle), italic: face.italic } : wordFont(raw || content.styles[item.fontName]?.fontFamily || 'Arial');
-    if (!face) style.family = await installedFamily(style.family, content.styles[item.fontName]?.fontFamily, missing);
+    // An installed face with the same PostScript name gives Word the exact family and weight. Otherwise the
+    // font program inside the PDF names itself, even when the PDF hides it (CIDFont+F1).
+    const face = raw ? await faceForPostscript(raw) : undefined, own = raw ? fonts.faces.get(raw) : undefined;
+    const style = face ? { family: face.legacy, bold: /bold/i.test(face.legacyStyle), italic: face.italic } : own ? { family: own.family, bold: own.bold, italic: own.italic } : wordFont(raw || content.styles[item.fontName]?.fontFamily || 'Arial');
+    if (!face) style.family = await fonts.family(style.family, content.styles[item.fontName]?.fontFamily, own);
     // The item's colour is the fill colour of its own characters, matched as a whole sequence.
     const visible = [...item.str].filter((c) => c.trim()), at = locate(visible.slice(0, 8));
     const color = at >= 0 ? palette.colors[at]! : palette.colors[cursor] ?? '#000000';
@@ -264,7 +297,7 @@ export async function pageRuns(page: PDFPageProxy, missing?: Map<string, string>
   }
   return runs;
 }
-function buildLines(runs: Run[]): Line[] {
+export function buildLines(runs: Run[]): Line[] {
   const rows: Run[][] = [];
   for (const run of [...runs].sort((a, b) => a.baseline - b.baseline || a.x - b.x)) {
     const row = rows.find((r) => Math.abs(r[0]!.baseline - run.baseline) <= Math.max(1.5, Math.min(r[0]!.size, run.size) * 0.3));
@@ -287,7 +320,7 @@ function buildLines(runs: Run[]): Line[] {
   }
   return lines.sort((a, b) => a.baseline - b.baseline || a.x - b.x);
 }
-function buildBlocks(lines: Line[]): Block[] {
+export function buildBlocks(lines: Line[]): Block[] {
   const blocks: Block[] = [];
   for (const line of lines) {
     const center = (line.x + line.right) / 2;
@@ -303,25 +336,57 @@ function buildBlocks(lines: Line[]): Block[] {
     if (block.lines.length === 1 && Math.abs(line.x - last.x) >= 2.5) block.align = 'center';
     block.lines.push(line); block.x = Math.min(block.x, line.x); block.right = Math.max(block.right, line.right);
   }
-  for (const b of blocks) {
+  // Paragraphs that follow each other without a blank line share a block: in prose whose lines reach the
+  // right edge, a line that stops short ends its paragraph.
+  const parts = blocks.flatMap((b) => {
+    if (b.align !== 'left' || b.lines.length < 3) return [b];
+    const tolerance = Math.max(1.5, b.size * 0.15), full = b.lines.filter((l) => b.right - l.right < tolerance).length;
+    if (full < b.lines.length / 2) return [b];
+    const out: Block[] = [];
+    let current: Line[] = [];
+    for (const [i, line] of b.lines.entries()) {
+      current.push(line);
+      if (i < b.lines.length - 1 && b.right - line.right > b.size * 2) { out.push({ ...b, lines: current }); current = []; }
+    }
+    if (current.length) out.push({ ...b, lines: current });
+    return out.map((p) => ({ ...p, x: Math.min(...p.lines.map((l) => l.x)), right: b.right }));
+  });
+  const words = (l: Line) => l.runs.reduce((n, r) => n + r.text.trim().split(/\s+/).length, 0);
+  for (const b of parts) {
     const width = b.right - b.x, body = b.lines.slice(0, -1);
     // Prose fills its column: let Word rewrap it. Lists, headings and cells keep their line breaks.
     b.flow = b.align === 'left' && b.lines.length > 2 && body.every((l) => l.right - l.x > width * 0.82) && !b.lines.some((l) => /^[•\-–·\d]+[.)]?\s/.test(l.runs[0]!.text));
+    // Every line but the last ends at the same right edge: the text is justified. One full line proves
+    // nothing (it defines the edge), so at least two are needed.
+    if (b.align === 'left' && body.length >= 2 && body.every((l) => b.right - l.right < Math.max(1.2, b.size * 0.12)) && body.some((l) => words(l) > 3)) b.align = 'justify';
   }
-  return blocks;
+  return parts;
 }
-function lineRuns(line: Line, leadingSpace: boolean): TextRun[] {
-  return line.runs.map((run, index) => {
+/** How many spaces a gap between two pieces of text holds. The narrowest word gap of a long line is one
+ * space (justified lines stretch every gap alike); a gap several times wider keeps that many spaces,
+ * as in form blanks like "[    ]". */
+export function spacesIn(gap: number, unit: number) { return gap > unit * 2.4 ? Math.min(60, Math.round(gap / unit)) : 1; }
+/** Word runs for one line. In a header or footer, `fields` turns the page number (and the page count) the
+ * PDF printed into Word's own page fields, so they count right after editing. */
+export function lineRuns(line: Line, leadingSpace: boolean, fields?: { page: string; total?: string }): TextRun[] {
+  const gaps = line.runs.slice(1).map((run, i) => run.x - (line.runs[i]!.x + line.runs[i]!.width)).filter((g) => g > 0.5);
+  // With few gaps the narrowest may itself hold several spaces; a typical space (about a quarter em) is the unit then.
+  const size = line.size, unit = Math.min(size * 0.4, Math.max(size * 0.2, gaps.length >= 4 ? Math.min(...gaps) : size * 0.25));
+  return line.runs.flatMap((run, index) => {
     const previous = line.runs[index - 1], gap = previous ? run.x - (previous.x + previous.width) : 0;
     const space = (index === 0 && leadingSpace) || (index > 0 && run.space) || (gap > Math.max(0.8, run.size * 0.15) && !/^\s/.test(run.text) && !/\s$/.test(previous?.text ?? ''));
-    return new TextRun({ text: (space ? ' ' : '') + run.text, font: { ascii: run.font, hAnsi: run.font, cs: run.font, eastAsia: run.font }, size: Math.max(2, Math.round(run.size * 2)), bold: run.bold, italics: run.italic, color: run.color.replace('#', '').toUpperCase() });
+    const style = { font: { ascii: run.font, hAnsi: run.font, cs: run.font, eastAsia: run.font }, size: Math.max(2, Math.round(run.size * 2)), bold: run.bold, italics: run.italic, color: run.color.replace('#', '').toUpperCase() };
+    const text = (space ? ' '.repeat(index > 0 ? spacesIn(gap, unit) : 1) : '') + run.text;
+    if (!fields) return [new TextRun({ text, ...style })];
+    return text.split(/(\d+)/).filter(Boolean).map((piece) => piece === fields.page ? new TextRun({ children: [PageNumber.CURRENT], ...style }) : piece === fields.total ? new TextRun({ children: [PageNumber.TOTAL_PAGES], ...style }) : new TextRun({ text: piece, ...style }));
   });
 }
 function blockParagraph(block: Block, pageWidth: number): Paragraph {
   const pitch = block.lines.length > 1 ? (block.lines.at(-1)!.baseline - block.lines[0]!.baseline) / (block.lines.length - 1) : block.size * 1.22;
   const lineHeight = Math.max(pitch, block.size * 1.05), top = block.lines[0]!.baseline - lineHeight * 0.8;
   // Single lines get generous room so a font with wider metrics (or letter spacing) never wraps them.
-  const slack = block.flow ? block.size * 0.4 : block.lines.length === 1 ? block.size * 3 + (block.right - block.x) * 0.3 : block.size * 1.2 + (block.right - block.x) * 0.04;
+  // Justified text is stretched to the frame, so the frame is the original column width exactly.
+  const slack = block.align === 'justify' ? 0.6 : block.flow ? block.size * 0.4 : block.lines.length === 1 ? block.size * 3 + (block.right - block.x) * 0.3 : block.size * 1.2 + (block.right - block.x) * 0.04;
   const width = Math.min(pageWidth - block.x, block.right - block.x + slack);
   const x = block.align === 'center' ? Math.max(0, (block.x + block.right) / 2 - width / 2) : block.x;
   const children: TextRun[] = [];
@@ -331,30 +396,67 @@ function blockParagraph(block: Block, pageWidth: number): Paragraph {
   });
   return new Paragraph({
     frame: { type: 'absolute', position: { x: Math.round(x * 20), y: Math.max(0, Math.round(top * 20)) }, width: Math.max(40, Math.round(width * 20)), height: Math.round(lineHeight * block.lines.length * 20), anchor: { horizontal: FrameAnchorType.PAGE, vertical: FrameAnchorType.PAGE }, rule: HeightRule.ATLEAST, wrap: FrameWrap.NONE, space: { horizontal: 0, vertical: 0 } },
-    alignment: block.align === 'center' ? AlignmentType.CENTER : block.align === 'right' ? AlignmentType.RIGHT : AlignmentType.LEFT,
+    alignment: block.align === 'center' ? AlignmentType.CENTER : block.align === 'right' ? AlignmentType.RIGHT : block.align === 'justify' ? AlignmentType.JUSTIFIED : AlignmentType.LEFT,
     spacing: { before: 0, after: 0, line: Math.round(lineHeight * 20), lineRule: LineRuleType.EXACT },
     children,
   });
 }
-/** Renders the artwork-only page; returns null when it is blank white. */
-async function artwork(page: PDFPageProxy, dpi: number): Promise<Buffer | null> {
+/** Renders the artwork-only page; returns null when it is blank white. On a scanned page the words are
+ * part of the picture: `erase` covers each recognized word with the paper colour around it, so only the
+ * editable text shows. */
+async function artwork(page: PDFPageProxy, dpi: number, erase: Run[] = [], omit:ReadonlySet<number>=new Set(),transparent=false): Promise<Buffer | null> {
   const viewport = page.getViewport({ scale: dpi / 72 }), canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height)), context = canvas.getContext('2d');
-  await page.render({ canvas: canvas as never, canvasContext: context as never, viewport, background: 'white' }).promise;
+  await page.render({ canvas: canvas as never, canvasContext: context as never, viewport, background: transparent?'rgba(0,0,0,0)':'white',operationsFilter:index=>!omit.has(index) }).promise;
+  const k = dpi / 72;
+  for (const run of erase) {
+    const x = Math.max(0, Math.floor((run.x - 1) * k)), y = Math.max(0, Math.floor((run.baseline - run.size * 0.95) * k));
+    const w = Math.min(canvas.width - x, Math.ceil((run.width + 2) * k)), h = Math.min(canvas.height - y, Math.ceil(run.size * 1.25 * k));
+    if (w <= 0 || h <= 0) continue;
+    // The brightest pixels on the box border are the paper; ink is darker.
+    const ring = [context.getImageData(x, Math.max(0, y - 2), w, 1).data, context.getImageData(x, Math.min(canvas.height - 1, y + h + 1), w, 1).data];
+    const samples: number[][] = [];
+    for (const row of ring) for (let i = 0; i < row.length; i += 4) samples.push([row[i]!, row[i + 1]!, row[i + 2]!]);
+    samples.sort((a, b) => b[0]! + b[1]! + b[2]! - (a[0]! + a[1]! + a[2]!));
+    const paper = samples[Math.floor(samples.length * 0.25)] ?? [255, 255, 255];
+    context.fillStyle = `rgb(${paper[0]},${paper[1]},${paper[2]})`;
+    context.fillRect(x, y, w, h);
+  }
   const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
   let ink = false;
-  for (let i = 0; i < data.length && !ink; i += 4 * 7) if (data[i]! < 248 || data[i + 1]! < 248 || data[i + 2]! < 248) ink = true;
-  return ink ? canvas.toBuffer('image/jpeg', 88) : null;
+  for (let i = 0; i < data.length && !ink; i += 4) if (transparent?data[i+3]!>0:data[i]! < 248 || data[i + 1]! < 248 || data[i + 2]! < 248) ink = true;
+  return ink ? transparent?canvas.toBuffer('image/png'):canvas.toBuffer('image/jpeg', 88) : null;
 }
-export async function toDocxLayout(bytes: Uint8Array, dpi: number, warnings: string[], onProgress?: (message: string) => void) {
+/** Text recognized by OCR on scanned pages (by page index), used where the PDF has no text of its own. */
+export type OcrRuns = Map<number, Run[]>;
+export async function toDocxLayout(bytes: Uint8Array, dpi: number, warnings: string[], onProgress?: (message: string) => void, ocr: OcrRuns = new Map()) {
   onProgress?.('Preparando o fundo das páginas…');
-  const [source, art] = await Promise.all([loadPdf(bytes), artworkOnly(bytes).then(loadPdf)]), missing = new Map<string, string>();
+  const [source, art, fonts] = await Promise.all([loadPdf(bytes), artworkOnly(bytes).then(loadPdf), FontContext.of(bytes, true)]), missing = fonts.missing;
   try {
     const sections: ISectionOptions[] = [];
-    let tables = 0;
+    let tables = 0, flowed = 0, laidOut = 0, flowPages: FlowPage[] = [];
+    const allFlow: FlowPage[] = [];
+    // Consecutive text pages of one size become one flowing section with their margins, header and footer.
+    const closeFlow = () => {
+      if (!flowPages.length) return;
+      const section = flowSection(flowPages, source.numPages);
+      sections.push({ ...section, properties: { ...section.properties, type: SectionType.NEXT_PAGE } });
+      flowed += flowPages.length; flowPages = [];
+    };
     for (let i = 1; i <= source.numPages; i++) {
       onProgress?.(`Convertendo página ${i} de ${source.numPages}…`);
-      const page = await source.getPage(i), viewport = page.getViewport({ scale: 1 }), artPage = await art.getPage(i);
-      const [allRuns, background, grid] = await Promise.all([pageRuns(page, missing), artwork(artPage, dpi), pageGrid(page, missing).catch(() => null)]);
+      const page = await source.getPage(i), viewport = page.getViewport({ scale: 1 });
+      const scanned = ocr.get(i - 1);
+      if (!scanned) {
+        const flow = await flowPage(page, fonts, (await inspectPage(page, true)).images);
+        if (flow) {
+          if (flowPages.length && (Math.abs(flowPages[0]!.width - flow.width) > 1 || Math.abs(flowPages[0]!.height - flow.height) > 1)) closeFlow();
+          flowPages.push(flow); allFlow.push(flow); tables += flow.items.filter((item) => item.kind === 'table').length;
+          page.cleanup(); continue;
+        }
+      }
+      closeFlow(); laidOut++;
+      const artPage = await art.getPage(i);
+      const [allRuns, background, grid] = await Promise.all([scanned ?? pageRuns(page, fonts), artwork(artPage, dpi, scanned), scanned ? null : pageGrid(page, fonts).catch(() => null)]);
       // A ruled/filled table becomes a real Word table at its place; its text is not repeated as frames.
       const table = grid ? tableOf(grid) : null;
       const runs = table ? allRuns.filter((r) => !insideTable(table, { x: r.x, y: r.baseline - r.size * 0.7, width: Math.min(r.width, 1), height: r.size * 0.6 })) : allRuns;
@@ -367,10 +469,13 @@ export async function toDocxLayout(bytes: Uint8Array, dpi: number, warnings: str
       sections.push({ properties: { type: SectionType.NEXT_PAGE, page: { size: { width: Math.round(viewport.width * 20), height: Math.round(viewport.height * 20) }, margin: { top: 0, bottom: 0, left: 0, right: 0, header: 0, footer: 0 } } }, children });
       page.cleanup(); artPage.cleanup();
     }
+    closeFlow();
     if (missing.size) warnings.push(`Fontes do PDF não instaladas neste computador foram trocadas por equivalentes: ${[...missing].map(([a, b]) => `${a} → ${b}`).join(', ')}. Instale-as para fidelidade total.`);
+    if (fonts.embedded.size) warnings.push(`Fontes incorporadas ao Word para abrir igual em qualquer computador: ${[...fonts.embedded.keys()].join(', ')}.`);
     if (tables) warnings.push(`${tables} tabela${tables > 1 ? 's' : ''} reconstruída${tables > 1 ? 's' : ''} como tabela real do Word (células mescladas, cores e bordas).`);
-    warnings.push('Word com layout preservado: fundos, tabelas e imagens ficam atrás do texto, e os textos são editáveis com as fontes originais quando instaladas no computador.');
-    const document = new Document({ creator: 'Bruno Albertini | Gestão Cultural Pro', title: 'Documento convertido pelo GCP-PDF', description: 'Conversão local de PDF', sections, styles: { default: { document: { run: { font: 'Segoe UI', language: { value: 'pt-BR' } } } } } });
+    if (flowed) warnings.push(`${flowed === source.numPages ? 'Documento convertido' : `${flowed} página${flowed > 1 ? 's convertidas' : ' convertida'}`} como texto corrido: margens, parágrafos, listas, tabelas, cabeçalho e rodapé editáveis, que se reorganizam ao editar.`);
+    if (laidOut) warnings.push(`${flowed ? `${laidOut} página${laidOut > 1 ? 's' : ''} com arte (cartaz, slide ou digitalização) mantida${laidOut > 1 ? 's' : ''} com layout preservado: ` : 'Word com layout preservado: '}fundos, tabelas e imagens ficam atrás do texto, e os textos são editáveis com as fontes originais quando instaladas no computador.`);
+    const document = new Document({ creator: 'Bruno Albertini | Gestão Cultural Pro', title: 'Documento convertido pelo GCP-PDF', description: 'Conversão local de PDF', sections, fonts: fonts.docxFonts(), styles: { default: { document: { run: allFlow.length ? { font: bodyStyle(allFlow).font, size: bodyStyle(allFlow).size, language: { value: 'pt-BR' } } : { font: 'Segoe UI', language: { value: 'pt-BR' } } } } } });
     return { bytes: await Packer.toBuffer(document), extension: 'docx', warnings: [...new Set(warnings)] };
   } finally {
     await source.loadingTask.destroy();
@@ -379,7 +484,7 @@ export async function toDocxLayout(bytes: Uint8Array, dpi: number, warnings: str
 }
 
 
-const hex6 = (c: string) => c.replace('#', '').toUpperCase();
+export const hex6 = (c: string) => c.replace('#', '').toUpperCase();
 /** A grid table as a native PowerPoint table: merged cells, fills, white rules, rich text. */
 function addSlideTable(slide: any, t: GridTable, sx: number, sy: number) {
   const inch = (pt: number) => pt / 72, rows: any[][] = t.rowH.map(() => []);
@@ -397,26 +502,31 @@ function addSlideTable(slide: any, t: GridTable, sx: number, sy: number) {
   slide.addTable(rows, { x: inch(t.x * sx), y: inch(t.y * sy), w: inch(t.width * sx), colW: t.colW.map((w) => inch(w * sx)), rowH: t.rowH.map((h) => inch(h * sy)), autoPage: false });
 }
 /** A grid table as a Word table floating at its place on the page. */
-function wordTable(t: GridTable) {
+/** A Word table for a grid. Positioned exactly on the page by default; in a flowing document it sits in
+ * the text (`inline`), indented from the margin, with the cell padding the PDF shows. */
+export function wordTable(t: GridTable, inline?: { indent: number; padding: number; paddingTop?: number }) {
   const twip = (pt: number) => Math.round(pt * 20);
   const edge = (e?: GridEdge) => (e ? { style: BorderStyle.SINGLE, size: Math.max(2, Math.round(e.width * 8)), color: hex6(e.color) } : { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' });
   const rows = t.rowH.map((height, r) => new TableRow({
     height: { value: twip(height), rule: HeightRule.ATLEAST },
     children: t.cells.filter((c) => c.row === r).sort((a, b) => a.col - b.col).map((cell) => {
-      const text = cell.text, align = text?.align === 'center' ? AlignmentType.CENTER : text?.align === 'right' ? AlignmentType.RIGHT : AlignmentType.LEFT;
+      const text = cell.text, align = text?.align === 'center' ? AlignmentType.CENTER : text?.align === 'right' ? AlignmentType.RIGHT : text?.align === 'justify' ? AlignmentType.JUSTIFIED : AlignmentType.LEFT;
       const paragraphs: Paragraph[] = [];
       let current: TextRun[] = [];
+      // In a flowing table the space above the text is the first paragraph's, as word processors write it:
+      // Word adds a top cell margin to the row height it was given.
+      const before = () => (inline && !paragraphs.length ? twip(inline.paddingTop ?? 0) : 0);
       for (const part of text?.parts ?? []) part.text.split('\n').forEach((piece, k) => {
-        if (k > 0) { paragraphs.push(new Paragraph({ alignment: align, spacing: { before: 0, after: 0 }, children: current })); current = []; }
+        if (k > 0) { paragraphs.push(new Paragraph({ alignment: align, spacing: { before: before(), after: 0 }, children: current })); current = []; }
         if (piece) current.push(new TextRun({ text: piece, bold: part.bold, italics: part.italic, color: hex6(part.color), size: Math.max(2, Math.round(part.size * 2)), font: text!.font }));
       });
-      paragraphs.push(new Paragraph({ alignment: align, spacing: { before: 0, after: 0 }, children: current }));
+      paragraphs.push(new Paragraph({ alignment: align, spacing: { before: before(), after: 0 }, children: current }));
       return new TableCell({
         columnSpan: cell.cols > 1 ? cell.cols : undefined, rowSpan: cell.rows > 1 ? cell.rows : undefined,
         width: { size: twip(t.colW.slice(cell.col, cell.col + cell.cols).reduce((a, b) => a + b, 0)), type: WidthType.DXA },
         shading: cell.fill ? { type: ShadingType.CLEAR, color: 'auto', fill: hex6(cell.fill) } : undefined,
         verticalAlign: text?.valign === 'middle' ? VerticalAlign.CENTER : text?.valign === 'bottom' ? VerticalAlign.BOTTOM : VerticalAlign.TOP,
-        margins: { top: 20, bottom: 20, left: 40, right: 40 },
+        margins: inline ? { top: 0, bottom: 0, left: twip(inline.padding), right: twip(inline.padding) } : { top: 20, bottom: 20, left: 40, right: 40 },
         borders: { top: edge(cell.borders?.top), bottom: edge(cell.borders?.bottom), left: edge(cell.borders?.left), right: edge(cell.borders?.right) },
         children: paragraphs,
       });
@@ -424,7 +534,8 @@ function wordTable(t: GridTable) {
   }));
   return new Table({
     rows, layout: TableLayoutType.FIXED, columnWidths: t.colW.map(twip), width: { size: twip(t.width), type: WidthType.DXA },
-    float: { horizontalAnchor: TableAnchorType.PAGE, verticalAnchor: TableAnchorType.PAGE, absoluteHorizontalPosition: twip(t.x), absoluteVerticalPosition: twip(t.y), overlap: OverlapType.OVERLAP },
+    ...(inline ? { indent: { size: twip(inline.indent), type: WidthType.DXA } } : {}),
+    float: inline ? undefined : { horizontalAnchor: TableAnchorType.PAGE, verticalAnchor: TableAnchorType.PAGE, absoluteHorizontalPosition: twip(t.x), absoluteVerticalPosition: twip(t.y), overlap: OverlapType.OVERLAP },
   });
 }
 /** pptxgenjs 4.0.1 writes an <a:pPr> before every run of a paragraph; only the first is valid, and
@@ -458,17 +569,17 @@ function addVector(pptx: any, slide: any, shape: VectorShape, sx: number, sy: nu
 }
 /** PowerPoint that looks like the PDF: artwork as the slide background, every photo/picture as its own
  * movable image and every text block as an editable text box with its font, size, colour and weight. */
-export async function toPptxLayout(bytes: Uint8Array, dpi: number, warnings: string[], onProgress?: (message: string) => void) {
+export async function toPptxLayout(bytes: Uint8Array, dpi: number, warnings: string[], onProgress?: (message: string) => void, ocr: OcrRuns = new Map()) {
   onProgress?.('Preparando os slides…');
-  const PptxGenJS = (await import('pptxgenjs')).default, { inspectPage } = await import('./conversion');
+  const PptxGenJS = (await import('pptxgenjs')).default;
   const source = await loadPdf(bytes);
   // Vector art (bars, lines, boxes, icons) becomes native shapes on every page where it can be reproduced.
   const vectors: Awaited<ReturnType<typeof vectorShapes>>[] = [];
-  for (let i = 1; i <= source.numPages; i++) { onProgress?.(`Lendo formas vetoriais ${i} de ${source.numPages}…`); const page = await source.getPage(i); vectors.push(await vectorShapes(page).catch(() => ({ supported: false, shapes: [] }))); page.cleanup(); }
+  for (let i = 1; i <= source.numPages; i++) { onProgress?.(`Lendo formas vetoriais ${i} de ${source.numPages}…`); const page = await source.getPage(i); vectors.push(await vectorShapes(page).catch(() => ({ supported: false, shapes: [], painted: [] }))); page.cleanup(); }
   const editable = new Set(vectors.flatMap((v, i) => (v.supported && v.shapes.length ? [i] : [])));
   const [art, pictures] = await Promise.all([artworkOnly(bytes, false, editable).then(loadPdf), artworkOnly(bytes, true).then(loadPdf)]);
   let shapeCount = 0;
-  const missing = new Map<string, string>();
+  const fonts = await FontContext.of(bytes, false), missing = fonts.missing;
   try {
     const first = (await source.getPage(1)).getViewport({ scale: 1 }), pptx = new PptxGenJS();
     pptx.defineLayout({ name: 'PDF', width: first.width / 72, height: first.height / 72 });
@@ -478,18 +589,29 @@ export async function toPptxLayout(bytes: Uint8Array, dpi: number, warnings: str
       onProgress?.(`Convertendo slide ${i} de ${source.numPages}…`);
       const page = await source.getPage(i), viewport = page.getViewport({ scale: 1 }), artPage = await art.getPage(i), slide = pptx.addSlide();
       const sx = first.width / viewport.width, sy = first.height / viewport.height;
-      const [allRuns, background, images, grid] = await Promise.all([pageRuns(page, missing), artwork(artPage, dpi), inspectPage(page, true), pageGrid(page, missing).catch(() => null)]);
+      const scanned = ocr.get(i - 1);
+      // On mixed pages, retain the complex middle composite as a transparent bitmap and promote
+      // compatible vectors before and after it. Identities come from the page being rendered, so promoted
+      // paths are removed from the bitmap and remain truly removable/editable in PowerPoint.
+      const partial=!editable.has(i-1)&&!scanned?await vectorShapes(artPage):undefined;
+      const promoted=partial&&partial.reason!=='formas demais'?partial.shapes.filter(s=>s.operation!==undefined&&(s.operation<(partial.firstRaster??Infinity)||s.operation>(partial.lastRaster??-1))):[];
+      const omit=new Set(promoted.map(s=>s.operation!));
+      const [allRuns, background, images, grid] = await Promise.all([scanned ?? pageRuns(page, fonts), artwork(artPage, dpi, scanned,omit,!!partial), scanned ? { images: [] } : inspectPage(page, true), scanned||partial ? null : pageGrid(page, fonts).catch(() => null)]);
       // A ruled/filled table becomes a native PowerPoint table; its cell shapes and text are not repeated.
       const table = grid ? tableOf(grid) : null;
       const runs = table ? allRuns.filter((r) => !insideTable(table, { x: r.x, y: r.baseline - r.size * 0.7, width: Math.min(r.width, 1), height: r.size * 0.6 })) : allRuns;
-      const vector = (editable.has(i - 1) ? vectors[i - 1]!.shapes : []).filter((v) => !table || !insideTable(table, v.box));
+      const vector = (editable.has(i - 1) ? vectors[i - 1]!.shapes : promoted).filter((v) => !table || !insideTable(table, v.box));
       // A filled box covering the page is the page colour: it becomes the slide background, not a shape.
       // Opaque fills covering the page at the bottom of the stack: the last one is the visible page colour.
       let pageFills = 0;
-      while (pageFills < vector.length && vector[pageFills]!.fill && !vector[pageFills]!.stroke && vector[pageFills]!.fill!.alpha > 0.99 && vector[pageFills]!.box.width * vector[pageFills]!.box.height >= viewport.width * viewport.height * 0.95) pageFills++;
-      if (background) slide.background = { data: 'image/jpeg;base64,' + background.toString('base64') };
+      while (!partial&&pageFills < vector.length && vector[pageFills]!.fill && !vector[pageFills]!.stroke && vector[pageFills]!.fill!.alpha > 0.99 && vector[pageFills]!.box.width * vector[pageFills]!.box.height >= viewport.width * viewport.height * 0.95) pageFills++;
+      if (background&&!partial) slide.background = { data: 'image/jpeg;base64,' + background.toString('base64') };
       else if (pageFills) slide.background = { color: vector[pageFills - 1]!.fill!.color.slice(1).toUpperCase() };
-      for (const shape of vector.slice(pageFills)) { addVector(pptx, slide, shape, sx, sy); shapeCount++; }
+      if(partial){
+        for(const shape of vector.filter(s=>s.operation!<(partial.firstRaster??Infinity))){addVector(pptx,slide,shape,sx,sy);shapeCount++;}
+        if(background)slide.addImage({data:'image/png;base64,'+background.toString('base64'),x:0,y:0,w:inch(first.width),h:inch(first.height)});
+        for(const shape of vector.filter(s=>s.operation!>=(partial.firstRaster??Infinity))){addVector(pptx,slide,shape,sx,sy);shapeCount++;}
+      }else for (const shape of vector.slice(pageFills)) { addVector(pptx, slide, shape, sx, sy); shapeCount++; }
       if (table) { addSlideTable(slide, table, sx, sy); shapeCount++; }
       // Each picture is cut from the page as drawn (masks, transparency and effects included).
       if (images.images.length) {
@@ -518,7 +640,7 @@ export async function toPptxLayout(bytes: Uint8Array, dpi: number, warnings: str
     if (missing.size) warnings.push(`Fontes do PDF não instaladas neste computador foram trocadas por equivalentes: ${[...missing].map(([a, b]) => `${a} → ${b}`).join(', ')}. Instale-as para fidelidade total.`);
     warnings.push(shapeCount ? `PowerPoint com layout preservado: ${shapeCount} forma${shapeCount > 1 ? 's vetoriais viraram formas editáveis' : ' vetorial virou forma editável'}; imagens e textos também são objetos editáveis.` : 'PowerPoint com layout preservado: imagens e textos são objetos editáveis.');
     const flat = vectors.filter((v) => !v.supported).length;
-    if (flat) warnings.push(`${flat} slide${flat > 1 ? 's têm' : ' tem'} degradês, padrões ou recortes; nesses slides as formas ficam no plano de fundo para manter a aparência exata.`);
+    if (flat) warnings.push(`${flat} slide${flat > 1 ? 's têm' : ' tem'} efeitos que exigem imagem. As formas compatíveis antes e depois desses efeitos continuam editáveis; a composição intermediária permanece como imagem transparente para preservar a ordem das camadas.`);
     return { bytes: await singleParagraphProperties(await pptx.write({ outputType: 'nodebuffer' }) as Buffer), extension: 'pptx', warnings: [...new Set(warnings)] };
   } finally {
     await source.loadingTask.destroy();

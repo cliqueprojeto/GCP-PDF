@@ -25,7 +25,7 @@ import { AiUsagePanel } from "./AiUsage";
 import { Markdown } from "./Markdown";
 import { DEFAULT_STYLE, uid, type Style, type Tool } from "./editor";
 import { loadAsset, loadPage, pageGeometry, releaseBases } from "./pdf";
-import { commitPendingParagraph, pendingParagraphText, type SourceSelection } from "./PageView";
+import { commitPendingParagraph, pendingParagraphEdit, type SourceSelection } from "./PageView";
 import { Home, useRecentFiles } from "./Home";
 
 type Panel = "comments" | "pages" | "bookmarks" | "search" | "signatures" | "ai";
@@ -377,9 +377,8 @@ export default function App() {
     },
     formatParagraph: (patch) => {
       if (!active || !sourceSelection) return;
-      const target = sourceSelection, text = pendingParagraphText();
-      setSourceSelection(null);
-      void perform(() => window.gcp.editParagraph(active.id, target.page, { paragraph: target.paragraph.index, ...(text !== undefined ? { text } : {}), ...patch }), "Aplicando formatação…");
+      const target = sourceSelection, draft = pendingParagraphEdit();
+      void perform(async () => {await window.gcp.editParagraph(active.id, target.page, { paragraph: target.paragraph.index, ...draft, ...(target.paragraph.members?{generation:target.generation}:{}), ...patch });setSourceSelection(null);}, "Aplicando formatação…");
     },
   };
   const organize: OrganizeActions = {

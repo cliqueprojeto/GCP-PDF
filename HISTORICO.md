@@ -1,5 +1,20 @@
 # Histórico de versões do GCP-PDF
 
+## 0.6.0 — 31/10/2026
+
+- Conversão para Word em texto corrido, como nos melhores conversores: margens reais, parágrafos que se reorganizam ao editar, listas numeradas com recuo, tabelas reais com células mescladas e sombreadas, cabeçalho e rodapé com número de página automático.
+- Cartazes, slides e páginas escaneadas continuam com o layout da página preservado no Word.
+- Fontes reconhecidas mesmo quando o PDF esconde o nome (por exemplo, Calibri), com negrito e itálico corretos; quando a licença permite, a fonte vai junto no Word para abrir igual em qualquer computador.
+- O Word mantém espaços de formulário como "[    ]" e o texto justificado, sem texto passando das bordas das tabelas.
+- Páginas escaneadas são reconhecidas automaticamente (OCR) ao converter para Word, Excel, PowerPoint ou texto, com fonte, tamanho e negrito estimados e logotipos preservados.
+- Editar tudo agrupa o texto como um editor: parágrafos, listas e o conteúdo de cada célula de tabela formam uma só caixa, editada, movida e formatada de uma vez, com desfazer e refazer.
+- PowerPoint com mais formas, molduras e fundos editáveis, em vez de imagem.
+- Excel separa corretamente as células de tabelas com bordas desenhadas em partes e mantém quantidades e valores como números.
+- O painel Pesquisar rola em janelas pequenas, com a busca e a navegação entre resultados sempre visíveis no topo.
+- O menu de mais opções (…) do balão de comentário agora abre ao lado do botão, com Editar e Excluir.
+- Removida uma barra de rolagem sem função que aparecia na faixa de abas.
+
+
 ## 0.5.1 — 30/10/2026
 
 - As abas dos documentos agora ficam logo abaixo da faixa de ferramentas, acima do documento, como nos leitores de PDF de mesa.

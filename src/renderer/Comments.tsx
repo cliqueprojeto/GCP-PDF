@@ -19,6 +19,8 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase();
 
 function Entry({ author, createdAt, text, onEdit, onDelete }: { author: string; createdAt: string; text: string; onEdit?: (text: string) => void; onDelete?: () => void }) {
   const [menu, setMenu] = useState(false), [editing, setEditing] = useState(false), [value, setValue] = useState(text);
+  // In the floating bubble the menu is fixed on screen (the bubble scrolls and would clip it), so it needs the button's place.
+  const [at, setAt] = useState<React.CSSProperties | null>(null);
   return (
     <div className="note-entry">
       <div className="note-entry-head">
@@ -27,9 +29,9 @@ function Entry({ author, createdAt, text, onEdit, onDelete }: { author: string; 
         <small>{when(createdAt)}</small>
         {(onEdit || onDelete) && (
           <span className="note-menu">
-            <button className="icon-button" title={translateUi("Mais opções")} onClick={(e) => { e.stopPropagation(); setMenu(!menu); }}><MoreHorizontal size={14} /></button>
+            <button className="icon-button" title={translateUi("Mais opções")} onClick={(e) => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(), inBubble = !!e.currentTarget.closest('.note-bubble'); setAt(inBubble ? { top: Math.min(r.bottom + 4, window.innerHeight - 90), left: Math.max(8, r.right - 130), right: 'auto', width: 'max-content' } : null); setMenu(!menu); }}><MoreHorizontal size={14} /></button>
             {menu && (
-              <span className="dropdown-menu note-menu-list" onPointerDown={(e) => e.stopPropagation()}>
+              <span className="dropdown-menu note-menu-list" style={at ?? undefined} onPointerDown={(e) => e.stopPropagation()}>
                 {onEdit && <button onClick={() => { setEditing(true); setValue(text); setMenu(false); }}><Pencil size={13} />{" "}{translateUi("Editar")}</button>}
                 {onDelete && <button className="danger" onClick={() => { setMenu(false); onDelete(); }}><Trash2 size={13} />{" "}{translateUi("Excluir")}</button>}
               </span>

@@ -28,9 +28,9 @@ Baixe a versão mais recente na página de [versões publicadas](https://github.
 - **GCP-PDF-x.y.z-macOS-arm64.dmg** — Macs Apple Silicon (M1, M2 e posteriores).
 - **GCP-PDF-x.y.z-macOS-x64.dmg** — Macs Intel. Abra o DMG e arraste o GCP-PDF para Aplicativos. Os arquivos `.zip` contêm o mesmo aplicativo.
 
-**macOS:** os pacotes têm assinatura local (ad hoc), sem notarização Apple. Na primeira abertura, o sistema pode bloquear o aplicativo: tente abrir, vá a **Ajustes do Sistema › Privacidade e Segurança › Abrir Mesmo Assim** e confirme. Políticas de Macs gerenciados podem impedir essa autorização. Requisitos mínimos seguem os runtimes Electron e PdfCraft incluídos; os testes de distribuição são executados em macOS 15 para Intel e Apple Silicon e Ubuntu 22.04 x64.
+**macOS:** os pacotes têm assinatura local (ad hoc), sem notarização Apple. Na primeira abertura, o sistema pode bloquear o aplicativo: tente abrir, vá a **Ajustes do Sistema › Privacidade e Segurança › Abrir Mesmo Assim** e confirme. Políticas de Macs gerenciados podem impedir essa autorização. Requisitos mínimos seguem o runtime Electron incluído; os testes de distribuição são executados em macOS 15 para Intel e Apple Silicon e Ubuntu 22.04 x64.
 
-Os hashes SHA-256 dos pacotes Linux/macOS ficam no arquivo `SHA256SUMS-linux-macOS.txt` da release. O motor PdfCraft 0.15.0 nativo está incluído em cada pacote.
+Os hashes SHA-256 dos pacotes Linux/macOS ficam no arquivo `SHA256SUMS-linux-macOS.txt` da release.
 
 Como o instalador ainda não tem assinatura digital de código, o Windows pode mostrar "O Windows protegeu o computador". Clique em **Mais informações** e depois em **Executar assim mesmo**.
 
@@ -45,18 +45,20 @@ Os demais formatos Office além de `.docx`, `.xlsx` e `.txt` podem exigir LibreO
 ## O que ele faz
 
 ### Ler
-- Leitura contínua, em página única ou duas páginas lado a lado, com zoom, tela cheia e filtro noturno.
+- Leitura contínua, em página única ou duas páginas lado a lado, com zoom, tela cheia, modo leitura e filtros (sépia, papel, noturno, cinza, contraste).
 - Volta para a página e a posição onde você parou em cada arquivo.
-- Página inicial com arquivos recentes, busca e documentos abertos em abas.
-- Pesquisa no documento, marcadores (criados à mão ou a partir dos títulos) e miniaturas das páginas.
+- Página inicial com arquivos recentes, busca e documentos abertos em abas; abas reorganizáveis e destacáveis em outra janela (inclusive arrastando a aba para baixo).
+- Pesquisa no documento direto na barra superior ou no painel, com navegação entre resultados; marcadores (criados à mão ou a partir dos títulos) e miniaturas das páginas.
+- Painel Propriedades encaixado à direita, que aparece ao escolher uma ferramenta ou selecionar um objeto, sem deslocar a leitura.
 
 ### Comentar e revisar
-- Comentários em balões, destaque, sublinhado e tachado de texto.
+- Comentários em balões com respostas, editar e excluir; os ícones ficam na margem, ao lado do texto, e podem ser arrastados.
+- Destaque, sublinhado e tachado de texto, salvos como anotações padrão reconhecidas por outros leitores.
 - Caixas de texto, carimbos, formas, desenho à mão livre e medidas de distância, perímetro e área em centímetros.
 - Comparação de dois PDFs, mostrando o que entrou, saiu ou mudou.
 
 ### Editar
-- Edição do texto original da página, mantendo fonte, tamanho e cor.
+- Edição do texto original da página, mantendo fonte, tamanho e cor, com blocos agrupados como num editor: parágrafos, listas e o texto de cada célula de tabela formam uma única caixa, editada, movida e formatada de uma vez, com desfazer e refazer.
 - Imagens originais do PDF: mover, redimensionar, girar, espelhar, substituir, recortar, ajustar cores e salvar como arquivo.
 - Inserção de texto, imagens e páginas em branco.
 
@@ -77,7 +79,11 @@ Os demais formatos Office além de `.docx`, `.xlsx` e `.txt` podem exigir LibreO
 - Um PDF assinado nunca é sobrescrito por engano: alterações são salvas como cópia.
 
 ### Converter
-- Exportar para Word, Excel, PowerPoint e PDF de imagens.
+- Word em texto corrido para documentos: margens reais, parágrafos que se reorganizam ao editar, listas numeradas, tabelas reais com células mescladas e sombreadas, cabeçalho e rodapé com número de página automático. Cartazes, slides e digitalizações mantêm o layout da página.
+- Fontes reconhecidas mesmo quando o PDF esconde o nome; incorporadas ao Word quando a licença permite, para abrir igual em Windows, Linux e macOS.
+- PowerPoint com formas, molduras e fundos editáveis; Excel com cada célula da tabela no seu lugar e números como números.
+- Páginas escaneadas são reconhecidas automaticamente (OCR) ao converter, com fonte, tamanho e negrito estimados e logotipos preservados.
+- Exportar para PDF de imagens.
 - Converter arquivos para PDF e criar um PDF novo em branco.
 - Reconhecimento de texto (OCR) em português, inglês e espanhol, feito no próprio computador e sem baixar modelos durante o uso. O idioma do sistema é detectado; em **Configurações › Idioma**, a interface e o OCR podem ser escolhidos separadamente. Idiomas não reconhecidos usam PT-BR.
 - Compressão de PDF em vários níveis, com prévia do tamanho final.
@@ -88,7 +94,7 @@ Os documentos são abertos, editados e salvos localmente. O GCP-PDF não exige c
 
 ## Para desenvolvedores
 
-O GCP-PDF é feito com Electron, React, TypeScript, PDF.js e pdf-lib. O motor de edição do conteúdo original das páginas é baseado no [PdfCraft](assets/pdfcraft/NOTICE).
+O GCP-PDF é feito com Electron, React, TypeScript, PDF.js (leitura e renderização), pdf-lib (gravação) e Tesseract (OCR).
 
 Requisitos de desenvolvimento: Node.js da `.nvmrc` e npm indicado em `package.json`. Compile Linux no Linux e macOS no Mac da arquitetura correspondente.
 

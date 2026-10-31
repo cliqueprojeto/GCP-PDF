@@ -51,10 +51,10 @@ export interface UpdateStatus {frequency:UpdatePreferences['frequency'];lastChec
 export interface UpdateInfo {version:string;current:string;notes:string;published:string;size:number;assetUrl:string;assetName:string;sha256?:string;manual?:boolean}
 export interface WorkspaceState {windowId:number;documents:DocumentInfo[];activeDocumentId?:string;theme:'light'|'dark';quickActions:boolean}
 /** An existing paragraph or image of a page, in the page's unrotated top-left space. */
-export interface SourceParagraph {index:number;text:string;rect:Rect;size:number;font:string;family?:string;bold:boolean;italic:boolean;color:string}
+export interface SourceParagraph {index:number;text:string;rect:Rect;size:number;font:string;family?:string;bold:boolean;italic:boolean;color:string;members?:SourceParagraph[]}
 export interface SourceImage {index:number;rect:Rect}
 export interface SourceObjects {generation:number;paragraphs:SourceParagraph[];images:SourceImage[]}
-export interface ParagraphEdit {paragraph:number;text?:string;size?:number;bold?:boolean;italic?:boolean;underline?:boolean;color?:string;align?:'left'|'center'|'right'|'justify';font?:'helvetica'|'times'|'courier';dx?:number;dy?:number;width?:number}
+export interface ParagraphEdit {paragraph:number;text?:string;size?:number;bold?:boolean;italic?:boolean;underline?:boolean;color?:string;align?:'left'|'center'|'right'|'justify';font?:'helvetica'|'times'|'courier';dx?:number;dy?:number;width?:number;generation?:number;members?:{paragraph:number;text?:string;width?:number}[]}
 export interface Signature {id:string;name:string;dataUrl:string;createdAt:string}
 export interface AiConfig {provider:'openai'|'gemini'|'compatible';model:string;baseUrl:string;hasKey:boolean}
 export type ExportFormat='pdf'|'image-pdf'|'docx'|'xlsx'|'pptx'|'png'|'txt';

@@ -118,6 +118,40 @@ export class PdfCraftSession {
  editParagraph(base: string, bytes: () => Uint8Array, page: number, edit: ParagraphEdit & {dy?: number}) {
   return this.serial(async () => {
    const entry = await this.document(base, bytes);
+   if(edit.members) {
+    const current=await this.call('object_list',{doc:entry.doc,page:page+1});
+    if(current.generation!==edit.generation)throw new Error('A página mudou desde a seleção. Selecione o bloco novamente.');
+    const original=await this.call('text_paragraphs',{doc:entry.doc,page:page+1});
+    // All member rewrites happen in a disposable copy. A refusal midway cannot contaminate the
+    // persistent source session or the next retry; the store accepts one revision for the whole block.
+    const saved=await this.copy(bytes(),async({doc,output,call})=>{
+     const listed=await call('text_paragraphs',{doc,page:page+1});
+     const planned=edit.members!.map(member=>{
+      const source=listed.paragraphs?.find((p:any)=>Number(p.paragraph)===member.paragraph+1);
+      const expected=original.paragraphs?.find((p:any)=>Number(p.paragraph)===member.paragraph+1);
+      if(!source||!expected||(source.editor_text??source.text)!==(expected.editor_text??expected.text)||JSON.stringify(source.rect)!==JSON.stringify(expected.rect))throw new Error('O bloco mudou. Selecione o texto novamente.');
+      const args:Record<string,unknown>={doc,page:page+1,paragraph:member.paragraph+1};
+      for(const key of ['size','bold','italic','underline','color','align','font','dx','dy'] as const)if(edit[key]!==undefined)args[key]=edit[key];
+      if(member.text!==undefined)args.text=member.text;
+      if(member.width!==undefined)args.width=member.width;
+      return args;
+     });
+     for(const args of planned)if(args.text!==undefined||args.width!==undefined||args.size!==undefined){
+      const layout=await call('text_edit_layout',{doc,page:page+1,paragraph:args.paragraph,...(args.text!==undefined?{text:args.text}:{}),...(args.width!==undefined?{width:args.width}:{}),...(args.size!==undefined?{size:args.size}:{})});
+      const a=layout.source_rect,b=layout.draft_rect;
+      if(!Array.isArray(a)||!Array.isArray(b)||a.length!==4||b.length!==4||![...a,...b].every(Number.isFinite))throw new Error('Não foi possível conferir o espaço do texto. O PDF foi preservado.');
+      const height=Math.abs(a[3]-a[1]);
+      if(Math.abs(b[3]-b[1])>height+Math.max(2,height*.4))throw new Error('O texto ultrapassaria o espaço original dentro do bloco. Ajuste o texto ou a largura. O PDF foi preservado.');
+     }
+     for(const args of planned.reverse())if(Object.keys(args).length>3)await call('text_edit',args);
+     await call('doc_save',{doc,path:output});
+    });
+    if(!saved.bytes)throw new Error('Não foi possível salvar o bloco. O PDF foi preservado.');
+    // Do not rekey the untouched persistent document to the edited bytes.
+    await this.call('doc_close',{doc:entry.doc,discard_changes:true});
+    this.open.delete(base);
+    return saved.bytes;
+   }
    const args: Record<string, unknown> = {doc: entry.doc, page: page + 1, paragraph: edit.paragraph + 1};
    for (const key of ['text', 'size', 'bold', 'italic', 'underline', 'color', 'align', 'font', 'dx', 'dy', 'width'] as const) if (edit[key] !== undefined) args[key] = edit[key];
    // Measure with the engine's font metrics before mutation. Refuse accidental reflow into
@@ -183,7 +217,9 @@ export class PdfCraftSession {
  }
  /** Runs tools on a private copy of `bytes`; `output` is the copy's save path. The open documents are untouched. */
  onCopy<T>(bytes: Uint8Array, run: (ctx: {doc: number; output: string; call: (name: string, args: Record<string, unknown>) => Promise<any>}) => Promise<T>) {
-  return this.serial(async () => {
+  return this.serial(()=>this.copy(bytes,run));
+ }
+ private async copy<T>(bytes: Uint8Array, run: (ctx: {doc: number; output: string; call: (name: string, args: Record<string, unknown>) => Promise<any>}) => Promise<T>) {
    await this.start();
    const input = `copia-${++this.files}.pdf`, output = `copia-${this.files}-saida.pdf`;
    await writeFile(path.join(this.root!, input), bytes, {flag: 'wx', mode: 0o600});
@@ -198,7 +234,6 @@ export class PdfCraftSession {
     await rm(path.join(this.root!, input), {force: true}).catch(() => {});
     await rm(path.join(this.root!, output), {force: true}).catch(() => {});
    }
-  });
  }
  /** Adds a form field to a source page (rect in the page's displayed top-left points). */
  /** Edits one original image (number from page_images/object_list): move, crop, rotate, flip, replace or delete.

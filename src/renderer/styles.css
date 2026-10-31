@@ -767,8 +767,12 @@ button {
 .page-insertion.drop-active:before {
   top: 13px;
 }
+/* The panel body takes the space under the heading and scrolls when the window is short (search results). */
 .sidebar-body {
   padding: 16px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 .sidebar-empty {
   display: flex;
@@ -2421,3 +2425,16 @@ button {
 .document-tab { flex:1 0 190px; max-width:320px; }
 .document-tab.active { background:var(--purple-soft); border-color:var(--purple); box-shadow:inset 0 3px var(--purple); font-weight:600; }
 .document-tab.active > svg { color:var(--purple); filter:drop-shadow(0 0 3px var(--purple)); }
+/* While the results scroll, the search box and the "1 de N" navigator stay at the top of the panel. */
+.panel-search .search-box {
+  position: sticky;
+  top: -16px;
+  z-index: 2;
+  box-shadow: 0 -16px 0 var(--surface-2);
+}
+.panel-search .search-nav {
+  position: sticky;
+  top: 30px;
+  z-index: 1;
+  box-shadow: 0 -12px 0 var(--surface-2), 0 8px 10px -6px #1c123024;
+}

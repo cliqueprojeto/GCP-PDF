@@ -653,3 +653,8 @@
 .title-search input { font-size: 11.5px; padding: 6px 2px; }
 .title-search:focus-within { border-color: var(--purple); color: var(--purple); }
 .title-search input:disabled { cursor: not-allowed; }
+
+/* The tab strip only scrolls sideways (many tabs); a stray vertical scroll bar showed as a lone purple pill. */
+.document-tabs-row .document-tabs { overflow-y: hidden; overflow-x: auto; }
+.document-tabs-row .document-tabs::-webkit-scrollbar { height: 4px; }
+.document-tabs-row .document-tabs::-webkit-scrollbar-thumb { border-width: 0; min-width: 32px; }

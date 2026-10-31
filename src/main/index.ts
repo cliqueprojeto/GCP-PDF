@@ -9,7 +9,9 @@ import {pathToFileURL} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {DocumentStore} from './store';
 import {Settings,atomicWrite} from './settings';
-import {convertPdf,extractDocumentText,renderPdfPage,renderPdfPages} from './conversion';
+import {convertPdf,extractDocumentText,pagesWithoutText,renderPdfPage,renderPdfPages} from './conversion';
+import type {OcrRuns} from './word-layout';
+import {ocrRuns,type OcrLine} from './ocr-layout';
 import {readMetadata,documentStats} from './review';
 import {fieldFormats,imageFields} from './field-formats';
 import {headings} from './review';
@@ -17,6 +19,7 @@ import {UPDATE_REPOSITORY,checkForUpdate,due,installUpdate} from './updates';
 import {addOcrTextLayer,combineSelections} from './pdf-engine';
 import {requestAnswer,listModels,probeModel,freeCandidates,paidCandidate} from './ai';
 import {PdfCraftSession} from './pdfcraft-session';
+import {EditorBlockReader} from './editor-blocks';
 import {CertificateFiles} from './certificate-files';
 import {installUnixIntegration,type DesktopOptions} from './desktop-integration';
 import {privateDirectory} from './pdfcraft-sidecar';
@@ -28,6 +31,7 @@ import type {AiConfig,UpdatePreferences,UpdateStatus,Bookmark,BookmarkEdit,Field
 app.setName('GCP-PDF');
 if(process.env.GCP_PDF_DATA_DIR)app.setPath('userData',resolve(process.env.GCP_PDF_DATA_DIR));
 const fontCache=()=>join(app.getPath('userData'),'font-catalog.json');
+const editorBlockReader=new EditorBlockReader();
 const store=new DocumentStore(async(family,bold,italic)=>{const face=await faceFor(family,bold,italic,fontCache());return face?new Uint8Array(await readFile(face.file)):undefined;}),settings=new Settings();
 type View={window:BrowserWindow;ids:string[];active?:string;allowClose:boolean};
 type Quick={window:BrowserWindow;state:QuickState};
@@ -49,6 +53,56 @@ const rendererUrl=()=>pathToFileURL(join(app.getAppPath(),'dist','renderer')).hr
 function trusted(event:Electron.IpcMainInvokeEvent){if(event.senderFrame!==event.sender.mainFrame)throw new Error('Origem de ação não autorizada.');const url=event.sender.getURL();if(!(url.startsWith(rendererUrl())||(!app.isPackaged&&url.startsWith('http://127.0.0.1:'))))throw new Error('Origem inválida.');}
 function saveDialog(window:BrowserWindow,options:Electron.SaveDialogOptions){const locale=languages().locale;return dialog.showSaveDialog(window,{...options,title:options.title?localize(options.title,locale):undefined,filters:options.filters?.map(f=>({...f,name:localize(f.name,locale)}))});}
 function openDialog(window:BrowserWindow,options:Electron.OpenDialogOptions){const locale=languages().locale;return dialog.showOpenDialog(window,{...options,title:options.title?localize(options.title,locale):undefined,filters:options.filters?.map(f=>({...f,name:localize(f.name,locale)}))});}
+const OCR_FAMILIES=['Calibri','Arial','Times New Roman','Cambria','Segoe UI','Verdana','Georgia','Tahoma','Carlito','Liberation Sans','Liberation Serif','DejaVu Sans','Helvetica','Times'];
+/** Families installed here that scanned text is compared against (the canvas measures only installed ones). */
+async function ocrFamilies(){const installed=new Set((await fontFamilies(fontCache()).catch(()=>[] as string[])).map(f=>f.toLowerCase()));const found=OCR_FAMILIES.filter(f=>installed.has(f.toLowerCase()));return found.length?found:['Arial'];}
+/** Stroke thickness and text widths measured on the page image the recognizer read (`image.scale` pixels per point). */
+async function ocrMeasure(image:{bytes:Uint8Array;scale:number}){
+ const {createCanvas,loadImage}=await import('@napi-rs/canvas');
+ const picture=await loadImage(Buffer.from(image.bytes)),canvas=createCanvas(picture.width,picture.height),context=canvas.getContext('2d');
+ context.drawImage(picture,0,0);
+ const pixels=context.getImageData(0,0,canvas.width,canvas.height).data,k=image.scale,probe=createCanvas(8,8).getContext('2d');
+ return {
+  stroke(box:{x:number;y:number;width:number;height:number}){
+   const x0=Math.max(0,Math.floor(box.x*k)),y0=Math.max(0,Math.floor(box.y*k)),x1=Math.min(canvas.width,Math.ceil((box.x+box.width)*k)),y1=Math.min(canvas.height,Math.ceil((box.y+box.height)*k));
+   let dark=0,runs=0;
+   for(let y=y0;y<y1;y++){let inside=false;for(let x=x0;x<x1;x++){const i=(y*canvas.width+x)*4,ink=pixels[i]!*0.299+pixels[i+1]!*0.587+pixels[i+2]!*0.114<128;if(ink){dark++;if(!inside)runs++;}inside=ink;}}
+   return runs?dark/runs:0;
+  },
+  width(text:string,family:string,size:number,bold:boolean){probe.font=`${bold?'bold ':''}${size*10}px "${family}"`;return probe.measureText(text).width/10;},
+ };
+}
+/** Local OCR of the given pages: invisible text layers for the PDF and, for Office exports, the text as
+ * runs with one size and baseline per line, as the scan shows it. */
+type Recognized={layers:{page:number;words:{text:string;x:number;y:number;width:number;height:number}[]}[];runs:OcrRuns};
+/** Local OCR with Tesseract, bundled with the app: the searchable text layer and the runs Office exports lay out. */
+async function recognizePages(view:View,source:Uint8Array,pages:number[]):Promise<Recognized>{
+ const {createWorker}=await import('tesseract.js');await mkdir(join(app.getPath('userData'),'ocr-cache'),{recursive:true});
+ const ocrLocale=languages().ocrLocale;
+ const worker=await createWorker(OCR_LANGUAGES[ocrLocale],1,{langPath:join(assets(),'tessdata'),gzip:false,cachePath:join(app.getPath('userData'),'ocr-cache'),logger:()=>{}});
+ try{
+  const layers:{page:number;words:{text:string;x:number;y:number;width:number;height:number}[]}[]=[],runs:OcrRuns=new Map();
+  for(let n=0;n<pages.length;n++){
+   action(view,`progress:Reconhecendo ${({'pt-BR':'português',en:'inglês',es:'espanhol'})[ocrLocale]}: página ${n+1} de ${pages.length}…`);
+   const page=pages[n]!,image=await renderPdfPage(source,page,200),k=image.scale;
+   const result=await worker.recognize(Buffer.from(image.bytes),{},{blocks:true,text:true});
+   const words:{text:string;x:number;y:number;width:number;height:number}[]=[],lines:OcrLine[]=[];
+   for(const block of result.data.blocks||[])for(const paragraph of block.paragraphs||[])for(const line of paragraph.lines||[]){
+    const base=line.baseline,slope=base&&base.x1!==base.x0?(base.y1-base.y0)/(base.x1-base.x0):0,found:OcrLine['words']=[];
+    for(const word of line.words||[]){
+     if(!word.text?.trim())continue;
+     const box={x:word.bbox.x0/k,y:word.bbox.y0/k,width:(word.bbox.x1-word.bbox.x0)/k,height:(word.bbox.y1-word.bbox.y0)/k};
+     words.push({text:word.text,...box});
+     found.push({text:word.text,...box,confidence:word.confidence,baseline:base?(base.y0+slope*(word.bbox.x0-base.x0))/k:box.y+box.height*0.8});
+    }
+    if(found.length)lines.push({words:found,rowHeight:(line.rowAttributes?.rowHeight??0)/k,height:(line.bbox.y1-line.bbox.y0)/k});
+   }
+   const {runs:pageRuns}=ocrRuns(lines,await ocrMeasure(image),await ocrFamilies());
+   layers.push({page,words});runs.set(page,pageRuns);
+  }
+  return {layers,runs};
+ }finally{await worker.terminate();}
+}
 function languages(){const system=app.getPreferredSystemLanguages();return {language:settings.language,ocr:settings.ocrLanguage,locale:resolveLocale(settings.language,system),ocrLocale:resolveLocale(settings.ocrLanguage,system)};}
 function state(view:View):WorkspaceState{return {windowId:view.window.webContents.id,documents:view.ids.map(id=>store.info(id)),activeDocumentId:view.active,theme:settings.theme,quickActions:settings.quickActions};}
 function notify(){for(const view of views.values()){if(!view.window.isDestroyed()){view.window.webContents.send('gcp:workspace',state(view));view.window.setTitle((view.active?store.get(view.active).name+' — ':'')+'GCP-PDF');}}}
@@ -318,7 +372,12 @@ function registerIpc(){
    action(view,'progress:Preparando a exportação local…');
    try{
     const bytes=await store.materialize(id);
-    const output=options.format==='pdf'?{bytes,extension:'pdf',warnings:[] as string[]}:await convertPdf(bytes,options,message=>action(view,'progress:'+message));
+    // Scanned pages have no text of their own: they are recognized locally first, as desktop converters do.
+    const scanned=['docx','xlsx','pptx','txt'].includes(options.format)?await pagesWithoutText(bytes):[];
+    const ocr=scanned.length?await recognizePages(view,bytes,scanned):null;
+    const input=ocr?await addOcrTextLayer(bytes,ocr.layers):bytes;
+    const output=options.format==='pdf'?{bytes,extension:'pdf',warnings:[] as string[]}:await convertPdf(input,options,message=>action(view,'progress:'+message),ocr?.runs);
+    if(ocr)output.warnings.unshift(`${scanned.length===1?'A página '+(scanned[0]!+1)+' era uma imagem e foi reconhecida':'As páginas '+scanned.map(p=>p+1).join(', ')+' eram imagens e foram reconhecidas'} por OCR local. Confira o texto reconhecido.`);
     let path=result.filePath;if(!path.toLowerCase().endsWith('.'+output.extension))path+='.'+output.extension;
     if(output.extension==='pdf')await refusesSignedOverwrite(store.signedSourcePath(id),path,true);
     await atomicWrite(path,output.bytes);if(output.warnings.length)action(view,'notice:'+output.warnings.join('\n'));return path;
@@ -328,12 +387,14 @@ function registerIpc(){
    const ref=pageRef(view,id,page),size=store.baseInfo(ref.base).pages[ref.src]!;
    const found=await engine.objects(ref.base,()=>store.base(ref.base),ref.src);
    const faces=await Promise.all(found.paragraphs.map(p=>faceForPostscript(p.font,fontCache()).catch(()=>undefined)));
-   return {generation:found.generation,images:found.images.map(image=>({index:image.index,rect:engineRect(size,image.rect)})),paragraphs:found.paragraphs.map((p,i)=>({index:p.index,text:p.text,rect:engineRect(size,p.rect),size:p.size,font:p.font.replace(/^[A-Z]{6}\+/,''),family:faces[i]?.legacy,bold:/bold|black|heavy|semibold|demi/i.test(p.font),italic:/italic|oblique/i.test(p.font),color:'#000000'}))};
+   const paragraphs=found.paragraphs.map((p,i)=>({index:p.index,text:p.text,rect:engineRect(size,p.rect),size:p.size,font:p.font.replace(/^[A-Z]{6}\+/,''),family:faces[i]?.legacy,bold:/bold|black|heavy|semibold|demi/i.test(p.font),italic:/italic|oblique/i.test(p.font),color:'#000000'}));
+   return {generation:found.generation,images:found.images.map(image=>({index:image.index,rect:engineRect(size,image.rect)})),paragraphs:await editorBlockReader.read(store.base(ref.base),ref.src,paragraphs,size.rotation)};
   },
   editParagraph:(view,id,page:string,edit:ParagraphEdit)=>{
    if(!edit||!Number.isSafeInteger(edit.paragraph)||edit.paragraph<0)throw new Error('Escolha um parágrafo válido.');
    if(edit.text!==undefined&&(typeof edit.text!=='string'||edit.text.length>50_000))throw new Error('O texto do parágrafo é inválido.');
    if(edit.width!==undefined&&!(Number.isFinite(edit.width)&&edit.width>1&&edit.width<20_000))throw new Error('Largura de parágrafo inválida.');
+   if(edit.members!==undefined&&(!Array.isArray(edit.members)||edit.members.length<2||edit.members.length>1000||!Number.isSafeInteger(edit.generation)||new Set(edit.members.map(m=>m.paragraph)).size!==edit.members.length||edit.members.some(m=>!Number.isSafeInteger(m.paragraph)||m.paragraph<0||(m.text!==undefined&&(typeof m.text!=='string'||m.text.length>50_000))||(m.width!==undefined&&!(Number.isFinite(m.width)&&m.width>1&&m.width<20_000)))))throw new Error('Bloco de texto inválido.');
    return engineEdit(view,id,page,(base,bytes,src,rotation)=>{const offset=edit.dx!==undefined||edit.dy!==undefined?engineOffset(rotation,edit.dx??0,edit.dy??0):undefined;return engine.editParagraph(base,bytes,src,{...edit,...(offset?{dx:offset.dx,dy:-offset.dy}:{})});});
   },
   moveSourceObjects:(view,id,page:string,input)=>{
@@ -601,21 +662,8 @@ function registerIpc(){
    const selected=pages?.length?[...new Set(pages)]:Array.from({length:count},(_,i)=>i);
    if(selected.some(i=>!Number.isInteger(i)||i<0||i>=count))throw new Error('Seleção de páginas inválida.');
    const source=await store.materialize(id,false);
-   const {createWorker}=await import('tesseract.js');await mkdir(join(app.getPath('userData'),'ocr-cache'),{recursive:true});
-   const ocrLocale=languages().ocrLocale;
-   const worker=await createWorker(OCR_LANGUAGES[ocrLocale],1,{langPath:join(assets(),'tessdata'),gzip:false,cachePath:join(app.getPath('userData'),'ocr-cache'),logger:()=>{}});
-   try{
-    const layers=[];
-    for(let n=0;n<selected.length;n++){
-     action(view,`progress:Reconhecendo ${({'pt-BR':'português',en:'inglês',es:'espanhol'})[ocrLocale]}: página ${n+1} de ${selected.length}…`);
-     const page=selected[n]!,image=await renderPdfPage(source,page,200);
-     const result=await worker.recognize(Buffer.from(image.bytes),{},{blocks:true,text:true});
-     const words:any[]=[];
-     for(const block of result.data.blocks||[])for(const paragraph of block.paragraphs||[])for(const line of paragraph.lines||[])for(const word of line.words||[])if(word.text?.trim())words.push({text:word.text,x:word.bbox.x0/image.scale,y:word.bbox.y0/image.scale,width:(word.bbox.x1-word.bbox.x0)/image.scale,height:(word.bbox.y1-word.bbox.y0)/image.scale});
-     layers.push({page,words});
-    }
-    await store.replacePages(id,await addOcrTextLayer(source,layers),revision);
-   }finally{await worker.terminate();action(view,'progress:');notify();}
+   try{const {layers}=await recognizePages(view,source,selected);await store.replacePages(id,await addOcrTextLayer(source,layers),revision);}
+   finally{action(view,'progress:');notify();}
   },
   installContextMenu:async(_view,enabled)=>{await installQuickActions(!!enabled);await settings.setQuickActions(!!enabled);notify();},
   openExternal:async(_view,url)=>{const allowed=['https://validar.iti.gov.br/','https://gestaoculturalpro.com.br/','https://donate.stripe.com/fZu4gzeBSfhbd7451F6Ri00','https://aistudio.google.com/apikey','https://platform.openai.com/api-keys'];if(!allowed.includes(url))throw new Error('Este link externo não é permitido.');await shell.openExternal(url);},
@@ -786,4 +834,4 @@ else{
 }
 app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit();});
 app.on('activate',()=>{if(!views.size)createWindow();});
-app.on('before-quit',()=>{shuttingDown=true;void engine.dispose();});
+app.on('before-quit',()=>{shuttingDown=true;void engine.dispose();void editorBlockReader.dispose();});

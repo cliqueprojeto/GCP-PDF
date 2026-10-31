@@ -23,6 +23,12 @@ try{
  app=await electron.launch({executablePath:resolve(executable),args:[input],env,timeout:90_000});
  const page=await app.firstWindow();page.on('pageerror',error=>errors.push(error.stack??error.message));
  await page.waitForFunction(async()=>!!window.gcp&&(await window.gcp.getWorkspace()).documents.length===1,{},{timeout:60_000});
+ await page.locator('.modal:has(.theme-gallery) .theme-options button').nth(4).click();
+ await page.waitForFunction(()=>document.documentElement.dataset.palette==='dark-ocean');
+ await page.keyboard.press('Escape');
+ await page.waitForSelector('.modal:has(.theme-gallery)',{state:'detached'});
+ await page.waitForTimeout(300);
+ check('Escape confirma a paleta escolhida na primeira abertura',(await page.evaluate(()=>window.gcp.getWorkspace())).theme==='dark-ocean');
  const packaged=await app.evaluate(({app})=>({packaged:app.isPackaged,arch:process.arch,platform:process.platform}));
  check('aplicativo empacotado e arquitetura nativa',packaged.packaged&&packaged.arch===process.arch&&packaged.platform===process.platform);
  const state=await page.evaluate(()=>window.gcp.getWorkspace()),id=state.documents[0].id;
@@ -49,6 +55,11 @@ try{
   const result=await window.gcp.getBase(current.documents[0].pages[0].base);return !!result;
  });
  check('leitura dos bytes pelo preload empacotado',converted);
+ const lookup=await page.evaluate(async()=>({synonyms:await window.gcp.lookupSynonyms('território','pt'),translation:await window.gcp.lookupTranslation('no','pt','en')}));
+ check('dicionários novos embarcados e siglas separadas de palavras',lookup.synonyms.meanings.length>0&&lookup.translation.entries[0].translations.includes('on')&&!lookup.translation.entries[0].translations.includes('NW'));
+ await page.evaluate(()=>window.gcp.setTheme('dark-ocean'));
+ await page.waitForFunction(()=>document.documentElement.dataset.palette==='dark-ocean'&&document.documentElement.dataset.theme==='dark');
+ check('paleta Oceano no aplicativo empacotado',(await page.evaluate(()=>window.gcp.getWorkspace())).theme==='dark-ocean');
  for(const [language,text,expected] of [['pt-BR','Cultura brasileira e participação social.','participação'],['en','Cultural projects support public education.','education'],['es','La educación cultural necesita colaboración.','colaboración']]){
   const canvas=createCanvas(1600,450),context=canvas.getContext('2d');context.fillStyle='white';context.fillRect(0,0,1600,450);context.fillStyle='black';context.font='48px sans-serif';context.fillText(text,50,180);
   const scanned=await PDFDocument.create(),image=await scanned.embedPng(canvas.toBuffer('image/png'));scanned.addPage([800,225]).drawImage(image,{x:0,y:0,width:800,height:225});

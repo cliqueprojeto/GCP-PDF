@@ -16,6 +16,7 @@ try{
  const env={...process.env,GCP_PDF_TEST_MODE:'1',GCP_PDF_DATA_DIR:join(root,'profile')};delete env.ELECTRON_RUN_AS_NODE;
  app=await electron.launch({executablePath:require('electron'),args:[resolve('.'),first],env,timeout:90_000});
  const window=await app.firstWindow(),errors=[];window.on('pageerror',error=>errors.push(error.stack??error.message));
+ await window.locator('.modal:has(.theme-gallery) .modal-footer .button').click();
  await window.waitForSelector('.form-button');
  const button=await window.locator('.form-button').boundingBox();assert.ok(button&&button.width>100&&button.height>10);
  await window.locator('.form-layer input[type="text"]').first().fill('Ação cultural');

@@ -1,3 +1,4 @@
+import type {Theme} from './themes';
 import type {LanguagePreference,LanguageSettings} from './locale';
 /** A page of an open document: page `src` (zero based) of the immutable PDF `base`, plus an extra
  * clockwise rotation. Page structure edits only rewrite these references, so they are instant. */
@@ -49,7 +50,7 @@ export type BookmarkEdit={type:'add';title:string;page:number;top?:number;parent
 export interface UpdatePreferences {frequency:'never'|'startup'|'daily'|'weekly'|'biweekly'|'monthly';lastCheck?:number}
 export interface UpdateStatus {frequency:UpdatePreferences['frequency'];lastCheck?:number;repository:string;version:string}
 export interface UpdateInfo {version:string;current:string;notes:string;published:string;size:number;assetUrl:string;assetName:string;sha256?:string;manual?:boolean}
-export interface WorkspaceState {windowId:number;documents:DocumentInfo[];activeDocumentId?:string;theme:'light'|'dark';quickActions:boolean}
+export interface WorkspaceState {windowId:number;documents:DocumentInfo[];activeDocumentId?:string;theme:Theme;quickActions:boolean;themeChosen?:boolean}
 /** An existing paragraph or image of a page, in the page's unrotated top-left space. */
 export interface SourceParagraph {index:number;text:string;rect:Rect;size:number;font:string;family?:string;bold:boolean;italic:boolean;color:string;/** Letter spacing in points, when the printed text is tracked. */tracking?:number;/** Horizontal text scale (1 = none). */scale?:number;/** Baseline pitch as a multiple of the size, for several lines. */lineSpacing?:number;members?:SourceParagraph[]}
 export interface SourceImage {index:number;rect:Rect}
@@ -80,7 +81,7 @@ export interface Certificate {id:string;name:string;issuer:string;validTo:string
 export interface ProtectOptions {openPassword?:string;permissionsPassword?:string;printing:'none'|'low'|'high';changes:'none'|'pages'|'fill-sign'|'comment-fill-sign'|'any-except-extract';copy:boolean;encryption:'aes-256'|'aes-128'|'rc4-128'}
 export interface SignOptions {certificate:string;password?:string;page:string|null;rect:Rect|null;reason:string;location:string;showName:boolean;signatureImage?:string}
 export interface QuickFile {path:string;name:string;pages?:number;error?:string}
-export interface QuickState {action:'combine'|'convert';files:QuickFile[];theme:'light'|'dark'}
+export interface QuickState {action:'combine'|'convert';files:QuickFile[];theme:Theme}
 export interface GcpBridge {
  moveDocumentTab(id:string,beforeId?:string):Promise<void>;
  onLanguage(listener:(settings:LanguageSettings)=>void):()=>void;
@@ -171,7 +172,7 @@ export interface GcpBridge {
  saveSignature(signature:{id?:string;name:string;dataUrl:string}):Promise<Signature[]>;
  deleteSignature(id:string):Promise<Signature[]>;
  chooseImage():Promise<{dataUrl:string;name:string}|null>;
- setTheme(theme:'light'|'dark'):Promise<void>;
+ setTheme(theme:Theme):Promise<void>;
  getAiConfig():Promise<AiConfig>;
  saveAiConfig(config:Omit<AiConfig,'hasKey'>&{key?:string}):Promise<AiConfig>;
  askAi(id:string,question:string):Promise<string>;

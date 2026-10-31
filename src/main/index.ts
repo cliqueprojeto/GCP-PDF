@@ -1,3 +1,4 @@
+import {themeMode} from '../shared/themes';
 import {localize} from '../shared/localize';
 import {resolveLocale,OCR_LANGUAGES} from '../shared/locale';
 import {app,BrowserWindow,ipcMain,dialog,Menu,shell,clipboard,nativeTheme,screen,session} from 'electron';
@@ -113,7 +114,7 @@ async function recognizePages(view:View,source:Uint8Array,pages:number[]):Promis
  }finally{await worker.terminate();}
 }
 function languages(){const system=app.getPreferredSystemLanguages();return {language:settings.language,ocr:settings.ocrLanguage,locale:resolveLocale(settings.language,system),ocrLocale:resolveLocale(settings.ocrLanguage,system)};}
-function state(view:View):WorkspaceState{return {windowId:view.window.webContents.id,documents:view.ids.map(id=>store.info(id)),activeDocumentId:view.active,theme:settings.theme,quickActions:settings.quickActions};}
+function state(view:View):WorkspaceState{return {windowId:view.window.webContents.id,documents:view.ids.map(id=>store.info(id)),activeDocumentId:view.active,theme:settings.theme,themeChosen:settings.themeChosen,quickActions:settings.quickActions};}
 function notify(){for(const view of views.values()){if(!view.window.isDestroyed()){view.window.webContents.send('gcp:workspace',state(view));view.window.setTitle((view.active?store.get(view.active).name+' — ':'')+'GCP-PDF');}}}
 function action(view:{window:BrowserWindow},name:string){if(!view.window.isDestroyed())view.window.webContents.send('gcp:action',name);}
 function own(view:View,id:string){if(!view.ids.includes(id))throw new Error('O documento não pertence a esta janela.');return store.get(id);}
@@ -157,7 +158,7 @@ function secureWindow(window:BrowserWindow,hash=''){
 }
 const preferences={preload:join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,spellcheck:false,webSecurity:true};
 function createWindow(ids:string[]=[]){
- const window=new BrowserWindow({width:1420,height:940,minWidth:940,minHeight:660,show:false,title:'GCP-PDF',backgroundColor:settings.theme==='dark'?'#11121a':'#f6f5fa',icon:join(assets(),'icon.png'),autoHideMenuBar:true,webPreferences:preferences});
+ const window=new BrowserWindow({width:1420,height:940,minWidth:940,minHeight:660,show:false,title:'GCP-PDF',backgroundColor:themeMode(settings.theme)==='dark'?'#11121a':'#f6f5fa',icon:join(assets(),'icon.png'),autoHideMenuBar:true,webPreferences:preferences});
  // The ribbon is the menu; the native bar stays hidden (its accelerators keep working).
  window.setMenuBarVisibility(false);
  const windowId=window.webContents.id,view:View={window,ids,active:ids[0],allowClose:false};views.set(windowId,view);
@@ -227,7 +228,7 @@ async function countPages(quick:Quick){
  for(const file of quick.state.files){if(file.pages!==undefined||file.error)continue;try{file.pages=extname(file.path).toLowerCase()==='.pdf'?(await store.inspectPages(new Uint8Array(await readFile(file.path)))):1;}catch(error){file.error=error instanceof Error?error.message:String(error);}if(!quick.window.isDestroyed())quick.window.webContents.send('gcp:quick',quick.state);}
 }
 function createQuickWindow(action:'combine'|'convert',paths:string[]){
- const window=new BrowserWindow({width:880,height:600,minWidth:640,minHeight:440,show:false,title:action==='combine'?'Combinar arquivos — GCP-PDF':'Converter para PDF — GCP-PDF',backgroundColor:settings.theme==='dark'?'#11121a':'#f6f5fa',icon:join(assets(),'icon.png'),autoHideMenuBar:true,webPreferences:preferences});
+ const window=new BrowserWindow({width:880,height:600,minWidth:640,minHeight:440,show:false,title:action==='combine'?'Combinar arquivos — GCP-PDF':'Converter para PDF — GCP-PDF',backgroundColor:themeMode(settings.theme)==='dark'?'#11121a':'#f6f5fa',icon:join(assets(),'icon.png'),autoHideMenuBar:true,webPreferences:preferences});
  window.setMenuBarVisibility(false);
  const quick:Quick={window,state:{action,files:[],theme:settings.theme}},contentsId=window.webContents.id;quicks.set(contentsId,quick);
  // webContents is already destroyed when 'closed' fires; keep the id captured at creation.
@@ -668,7 +669,7 @@ function registerIpc(){
   translateWithAi:(_view,text,to)=>{if(typeof text!=='string'||!text.trim()||text.length>8000||!['pt','en','es'].includes(to))throw new Error('Selecione um texto de até 8.000 caracteres.');const name={pt:'português do Brasil',en:'inglês',es:'espanhol'}[to as 'pt'|'en'|'es'];return (async()=>requestAnswer(settings.config(),await settings.secret(),`Traduza para ${name} o trecho a seguir, mantendo o sentido e o tom. Responda somente com a tradução, sem comentários.`,text,(async(url:string,options:RequestInit)=>{let response:Response;try{response=await fetch(url,options);}catch(error){await settings.recordAiUsage(0).catch(()=>{});throw error;}await settings.recordAiUsage(response.status).catch(()=>{});return response;}) as typeof fetch))();},setDictionaryPreferences:(_view,input)=>settings.setDictionary(input),
   getSignatures:()=>settings.signatures(),saveSignature:(_view,input)=>settings.saveSignature(input),deleteSignature:(_view,id)=>settings.deleteSignature(id),
   chooseImage:async view=>{const result=await openDialog(view.window,{title:'Escolher imagem',properties:['openFile'],filters:[{name:'Imagem',extensions:['png','jpg','jpeg']}]});if(result.canceled)return null;const path=result.filePaths[0]!;if((await stat(path)).size>20*1024*1024)throw new Error('Use uma imagem de até 20 MB.');return {name:basename(path),dataUrl:`data:image/${extname(path).toLowerCase()==='.png'?'png':'jpeg'};base64,${(await readFile(path)).toString('base64')}`};},
-  setTheme:async(_view,theme)=>{await settings.setTheme(theme);nativeTheme.themeSource=theme;notify();},
+  setTheme:async(_view,theme)=>{await settings.setTheme(theme);nativeTheme.themeSource=themeMode(theme);notify();},
   listAiModels:async(_view,input)=>{const {config,key}=await aiTarget(input);return listModels(config,key);},
   probeAiModel:async(_view,input)=>{const {config,key}=await aiTarget(input);if(typeof input?.model!=='string'||!input.model.trim())throw new Error('Informe o modelo.');return probeModel({...config,model:input.model.trim()},key);},
   findFreeAiModel:async(view,input)=>{
@@ -860,7 +861,7 @@ if(!app.requestSingleInstanceLock())app.quit();
 else{
  app.on('second-instance',(_event,args)=>{if(ready)handleLaunch(args);else early.push(args);});
  app.whenReady().then(async()=>{
-  await settings.init();nativeTheme.themeSource=settings.theme;registerIpc();makeMenu();
+  await settings.init();nativeTheme.themeSource=themeMode(settings.theme);registerIpc();makeMenu();
   session.defaultSession.on('will-download',event=>event.preventDefault());
   session.defaultSession.setPermissionRequestHandler((_wc,_permission,callback)=>callback(false));
   if(!process.env.VITE_DEV_SERVER_URL)session.defaultSession.webRequest.onBeforeRequest((details,callback)=>{callback({cancel:!['file:','data:','blob:','devtools:'].some(protocol=>details.url.startsWith(protocol))});});

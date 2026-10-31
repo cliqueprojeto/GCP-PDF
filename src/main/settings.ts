@@ -1,6 +1,8 @@
+import {isTheme, type Theme} from '../shared/themes';
 import type {LanguagePreference} from '../shared/locale';
 import {app,safeStorage} from 'electron';
-import {readFile,mkdir,writeFile,rename,unlink} from 'node:fs/promises';
+import {readFile,mkdir,writeFile,rename,unlink,copyFile} from 'node:fs/promises';
+import {constants} from 'node:fs';
 import {join,dirname} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import type {Signature,AiConfig,UpdatePreferences,DictionaryPreferences} from '../shared/types';
@@ -8,17 +10,18 @@ import {usageToday,recordUsage,type AiUsage} from '../shared/ai-usage';
 /** Works on a free Google AI Studio key; "Encontrar melhor modelo" upgrades it when the key has billing. */
 export const DEFAULT_GEMINI_MODEL='gemini-3.5-flash-lite';
 export async function atomicWrite(path:string,bytes:Uint8Array|string){const temp=path+'.gcp-'+randomUUID()+'.tmp';try{await writeFile(temp,bytes,{flag:'wx',mode:0o600});await rename(temp,path);}catch(error){await unlink(temp).catch(()=>{});throw error;}}
-type Preferences={language?:LanguagePreference;ocrLanguage?:LanguagePreference;theme:'light'|'dark';signatures:Signature[];ai:Omit<AiConfig,'hasKey'>;keys:Record<string,string>;quickActions?:boolean;updates?:UpdatePreferences;seenVersion?:string;aiUsage?:AiUsage;savedColors?:string[];dictionary?:DictionaryPreferences};
+type Preferences={language?:LanguagePreference;ocrLanguage?:LanguagePreference;theme:Theme;themeChosen?:boolean;signatures:Signature[];ai:Omit<AiConfig,'hasKey'>;keys:Record<string,string>;quickActions?:boolean;updates?:UpdatePreferences;seenVersion?:string;aiUsage?:AiUsage;savedColors?:string[];dictionary?:DictionaryPreferences};
 export class Settings {
- private value:Preferences={theme:'light',signatures:[],ai:{provider:'gemini',model:DEFAULT_GEMINI_MODEL,baseUrl:'https://generativelanguage.googleapis.com/v1beta'},keys:{}};
+ private value:Preferences={theme:'light',themeChosen:false,signatures:[],ai:{provider:'gemini',model:DEFAULT_GEMINI_MODEL,baseUrl:'https://generativelanguage.googleapis.com/v1beta'},keys:{}};
  private queue:Promise<unknown>=Promise.resolve();
  private file='';
- async init(){this.file=join(app.getPath('userData'),'preferences.json');await mkdir(dirname(this.file),{recursive:true});try{const parsed=JSON.parse(await readFile(this.file,'utf8'));if(parsed&&Array.isArray(parsed.signatures)&&parsed.ai&&parsed.keys)this.value={...this.value,...parsed};}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT'){await rename(this.file,this.file+'.invalid-'+Date.now()).catch(()=>{});}}}
+ async init(){this.file=join(app.getPath('userData'),'preferences.json');await mkdir(dirname(this.file),{recursive:true});try{const parsed=JSON.parse(await readFile(this.file,'utf8'));if(parsed&&Array.isArray(parsed.signatures)&&parsed.ai&&parsed.keys)this.value={...this.value,...parsed,theme:isTheme(parsed.theme)?parsed.theme:'light',themeChosen:parsed.themeChosen??!!parsed.theme};}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT'){await rename(this.file,this.file+'.invalid-'+Date.now()).catch(()=>{});}}}
  private persist(){const snapshot=JSON.stringify(this.value,null,2);const job=this.queue.then(()=>atomicWrite(this.file,snapshot));this.queue=job.catch(()=>{});return job;}
  get language():LanguagePreference{return ['pt-BR','en','es','auto'].includes(this.value.language??'')?this.value.language!:'auto';}
  get ocrLanguage():LanguagePreference{return ['pt-BR','en','es','auto'].includes(this.value.ocrLanguage??'')?this.value.ocrLanguage!:'auto';}
  async setLanguage(language:LanguagePreference,ocr:LanguagePreference){if(!['auto','pt-BR','en','es'].includes(language)||!['auto','pt-BR','en','es'].includes(ocr))throw new Error('Idioma inválido.');this.value.language=language;this.value.ocrLanguage=ocr;await this.persist();}
  get theme(){return this.value.theme;}
+ get themeChosen(){return this.value.themeChosen!==false;}
  aiUsage(){return usageToday(this.value.aiUsage);}
  async recordAiUsage(status:number){this.value.aiUsage=recordUsage(this.value.aiUsage,status);await this.persist();}
  get seenVersion(){return this.value.seenVersion;}
@@ -29,7 +32,12 @@ export class Settings {
  /** Explorer quick actions are on unless the user removed them. */
  get quickActions(){return this.value.quickActions!==false;}
  async setQuickActions(enabled:boolean){this.value.quickActions=enabled;await this.persist();}
- async setTheme(theme:'light'|'dark'){if(theme!=='light'&&theme!=='dark')throw new Error('Tema inválido.');this.value.theme=theme;await this.persist();}
+ async setTheme(theme:Theme){
+  if(!isTheme(theme))throw new Error('Tema inválido.');
+  // Preserve the previous preferences once, before the first appearance change in this release.
+  await copyFile(this.file,this.file+'.before-0.8.0',constants.COPYFILE_EXCL).catch(error=>{if(!['ENOENT','EEXIST'].includes(error.code))throw error;});
+  this.value.theme=theme;this.value.themeChosen=true;await this.persist();
+ }
  /** Custom colours the user kept from the colour picker, newest first. */
  savedColors(){return [...(this.value.savedColors??[])];}
  async setSavedColors(colors:unknown){if(!Array.isArray(colors)||colors.length>60||colors.some(c=>typeof c!=='string'||!/^#[0-9a-f]{6}$/i.test(c)))throw new Error('Lista de cores inválida.');this.value.savedColors=[...new Set((colors as string[]).map(c=>c.toLowerCase()))];await this.persist();return this.savedColors();}

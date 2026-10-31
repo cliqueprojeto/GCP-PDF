@@ -1,5 +1,23 @@
 /** Trusted interface text only; PT-BR source → English, Spanish. */
 export const translations:Record<string,readonly [string,string]> = {
+"Lavanda": ["Lavender","Lavanda"],
+"Brisa": ["Breeze","Brisa"],
+"Areia": ["Sand","Arena"],
+"Ametista": ["Amethyst","Amatista"],
+"Oceano": ["Ocean","Océano"],
+"Floresta": ["Forest","Bosque"],
+"Temas claros": ["Light themes","Temas claros"],
+"Temas escuros": ["Dark themes","Temas oscuros"],
+"Seu espaço, suas cores": ["Your space, your colors","Tu espacio, tus colores"],
+"Escolha o tema para começar. Você pode mudar depois em Configurações › Aparência.": ["Choose a theme to get started. You can change it later in Settings › Appearance.","Elige un tema para empezar. Puedes cambiarlo después en Configuración › Apariencia."],
+"Escolha a palavra do trecho": ["Choose a word from the selection","Elige una palabra del fragmento"],
+"Digite uma palavra ou trecho para consultar.": ["Enter a word or passage to look up.","Escribe una palabra o fragmento para consultar."],
+"Sentido": ["Sense","Sentido"],
+"Copiado: {word}": ["Copied: {word}","Copiado: {word}"],
+"Clique em uma sugestão para copiar.": ["Click a suggestion to copy it.","Haz clic en una sugerencia para copiarla."],
+"Sinônimos: OpenWN-PT / VERO · WordNet · OpenThesaurus": ["Synonyms: OpenWN-PT / VERO · WordNet · OpenThesaurus","Sinónimos: OpenWN-PT / VERO · WordNet · OpenThesaurus"],
+"Tradução: WikDict · consulta local, palavra por palavra": ["Translation: WikDict · offline, word by word","Traducción: WikDict · consulta local, palabra por palabra"],
+"Sinônimos: OpenWN-PT e VERO (português), WordNet (inglês), OpenThesaurus (espanhol). Tradução: WikDict. Consultas locais, sem internet.": ["Synonyms: OpenWN-PT and VERO (Portuguese), WordNet (English), OpenThesaurus (Spanish). Translation: WikDict. Offline lookups.","Sinónimos: OpenWN-PT y VERO (portugués), WordNet (inglés), OpenThesaurus (español). Traducción: WikDict. Consultas locales, sin internet."],
   "Início": [
     "Home",
     "Inicio"

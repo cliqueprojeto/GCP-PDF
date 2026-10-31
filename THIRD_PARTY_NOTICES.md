@@ -17,3 +17,9 @@ A identidade visual, o ícone e a interface do GCP-PDF são próprios. Nenhum í
 ## Apoio ao projeto
 
 O botão "Apoie o projeto" mostra um QR Code PIX (chave aleatória de doação do autor) e um link de doação pelo Stripe. O programa não processa pagamentos nem recebe dados bancários: o link só é aberto no navegador quando você clica.
+
+## OpenWN-PT (sinônimos em português)
+
+Alexandre Rademaker, Valeria de Paiva e colaboradores. Dados do OpenWordnet-PT distribuídos pelo Open Multilingual Wordnet, snapshot 406bf83b3c507a3d1f26e88252d5d66893fd36bf, sob CC BY-SA 3.0 conforme a licença deste snapshot. Fonte, revisão, SHA-256 e transformação em `assets/dictionaries/openwordnet-source.json`; licença em `assets/dictionaries/licenses/OpenWN-PT.txt`. Grupos de lemas com o mesmo sentido foram convertidos para MyThes UTF-8, sem relações de antônimos/hiperônimos. O arquivo convertido permanece sob CC BY-SA 3.0.
+
+Fonte: https://github.com/omwn/omw-data/tree/406bf83b3c507a3d1f26e88252d5d66893fd36bf/wns/por

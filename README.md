@@ -10,11 +10,15 @@ Desenvolvido por **Bruno Albertini | [Gestão Cultural Pro](https://gestaocultur
 
 ## Telas
 
+Capturas do aplicativo em tema escuro.
+
 | | |
 |---|---|
 | ![Edição do texto e das imagens originais](docs/screenshots/02-editar.png)<br>**Editar** — texto e imagens originais da página | ![Comentários](docs/screenshots/03-comentarios.png)<br>**Comentário** — notas, destaques, carimbos, formas e medidas |
 | ![Organizar páginas](docs/screenshots/04-organizar.png)<br>**Organizar** — páginas em grade, girar, inserir, extrair e dividir | ![Formulários](docs/screenshots/05-formularios.png)<br>**Formulário** — criação de campos, reconhecimento e exportação |
 | ![Converter](docs/screenshots/06-converter.png)<br>**Converter** — Word, Excel, PowerPoint, imagens e OCR | ![Assinar](docs/screenshots/07-assinar.png)<br>**Assinar** — assinaturas, certificado digital ICP-Brasil e verificação |
+| ![Proteger documentos](docs/screenshots/08-proteger.png)<br>**Proteger** — senha e remoção de dados ocultos | ![Revisar documentos](docs/screenshots/09-revisar.png)<br>**Revisar** — sinônimos, tradução, comparação, estatísticas e propriedades |
+| ![Opções de exibição](docs/screenshots/10-exibicao.png)<br>**Exibição** — leitura, layout de páginas e filtros de visualização | ![Assistente de IA](docs/screenshots/11-ia.png)<br>**IA** — perguntas e explicações sobre o documento com o provedor configurado |
 
 ## Baixar
 
@@ -93,6 +97,13 @@ Os demais formatos Office além de `.docx`, `.xlsx` e `.txt` podem exigir LibreO
 - Reconhecimento de texto (OCR) em português, inglês e espanhol, feito no próprio computador e sem baixar modelos durante o uso. O idioma do sistema é detectado; em **Configurações › Idioma**, a interface e o OCR podem ser escolhidos separadamente. Idiomas não reconhecidos usam PT-BR.
 - Compressão de PDF em vários níveis, com prévia do tamanho final.
 
+### Aparência e revisão
+
+- Seis temas: Lavanda, Brisa e Areia (claros); Ametista, Oceano e Floresta (escuros). Escolha na primeira abertura e altere depois em **Configurações › Aparência**. Atualizações preservam o tema já escolhido.
+- Sinônimos e tradução disponíveis na aba **Revisar** e pelo menu do texto selecionado, em uma janela adaptável. Ao selecionar uma frase, escolha a palavra para consultar sinônimos.
+- Português com OpenWN-PT como fonte principal e VERO como alternativa; inglês com WordNet e espanhol com OpenThesaurus. Dicionários locais, sem internet. As sugestões dependem do sentido: revise antes de substituir no documento.
+- Tradução pelo WikDict é lexical, palavra por palavra. A tradução de frases com IA é opcional e informa o envio do trecho ao provedor.
+
 ## Privacidade
 
 Os documentos são abertos, editados e salvos localmente. O GCP-PDF não exige conta e não envia seus arquivos para servidores. A conexão com a internet só é usada para verificar atualizações no GitHub, abrir links que você escolher e recursos opcionais que você mesmo configurar.
@@ -118,7 +129,9 @@ Sugestões e problemas podem ser enviados na aba [Issues](https://github.com/cli
 
 ## Licença
 
-Copyright © 2026 Bruno Albertini | Gestão Cultural Pro.
+**Software livre — GPL-3.0-or-later.**
+
+**Autoria:** Bruno Albertini | Gestão Cultural Pro.
 
 O GCP-PDF é software livre: você pode redistribuí-lo e modificá-lo sob os termos da **GNU General Public License, versão 3 ou posterior**, publicada pela Free Software Foundation. Ele é distribuído na esperança de ser útil, mas **sem nenhuma garantia**. Veja o arquivo [LICENSE](LICENSE).
 

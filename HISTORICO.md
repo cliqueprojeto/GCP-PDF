@@ -1,5 +1,15 @@
 # Histórico de versões do GCP-PDF
 
+## 0.8.0 — 31/10/2026
+
+- Janela de sinônimos e tradução redesenhada: controles acessíveis, resultados por sentido e uma única área de rolagem quando necessária, tanto em Revisar quanto no texto selecionado.
+- Ao consultar sinônimos de um trecho, escolha a palavra desejada sem perder o texto original da seleção.
+- Novo dicionário principal de português OpenWN-PT, com 37.983 verbetes com sinônimos e VERO como alternativa; inglês e espanhol mantêm bases abertas locais. Termos relacionados e antônimos deixam de aparecer como sinônimos.
+- Tradução distingue palavras de siglas: “no” não é mais confundido com “NO” (noroeste).
+- Seis temas para escolher: Lavanda, Brisa e Areia (claros); Ametista, Oceano e Floresta (escuros). Novas instalações escolhem na primeira abertura e podem alterar depois em Configurações › Aparência. Atualizações preservam o tema anterior.
+- README com as capturas reais em tema escuro e legendas das funcionalidades.
+
+
 ## 0.7.1 — 31/10/2026
 
 - Leitor de EPUB mais seguro: conteúdos especiais de livros de origem desconhecida (seções CDATA) passam a ser exibidos só como texto.

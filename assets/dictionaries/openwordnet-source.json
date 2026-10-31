@@ -1,0 +1,10 @@
+{
+  "name": "OpenWN-PT",
+  "authors": "Alexandre Rademaker, Valeria de Paiva e colaboradores do OpenWordnet-PT",
+  "source": "https://raw.githubusercontent.com/omwn/omw-data/406bf83b3c507a3d1f26e88252d5d66893fd36bf/wns/por/wn-data-por.tab",
+  "revision": "406bf83b3c507a3d1f26e88252d5d66893fd36bf",
+  "sha256": "0ba180e2d2a5317e61b4ebe94a7e969e68eea2d9e60705e1e9053c6e2ac5e684",
+  "license": "CC-BY-SA-3.0",
+  "conversion": "Only lemma synsets with at least two members, converted to UTF-8 MyThes; sense boundaries preserved.",
+  "entries": 37983
+}

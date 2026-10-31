@@ -682,25 +682,33 @@
 .stamp-effect .field { flex: 1; }
 
 /* Revisar > Sinônimos / Tradução */
-.lookup { display: flex; flex-direction: column; gap: 12px; min-width: min(520px, 80vw); }
+.modal:has(.lookup) { width: min(820px, 94vw); display: flex; flex-direction: column; overflow: hidden; padding: 26px; }
+.modal:has(.lookup) .modal-heading { flex-shrink: 0; margin-bottom: 18px; }
+.lookup { display: flex; flex-direction: column; gap: 16px; min-width: 0; min-height: 0; }
+.lookup > :not(.lookup-results) { flex-shrink: 0; }
 .lookup-modes { display: inline-flex; gap: 4px; align-self: flex-start; padding: 3px; border-radius: 9px; background: var(--field, #f4f4f7); }
 .lookup-modes button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 0; border-radius: 7px; background: none; color: var(--muted); cursor: pointer; font-weight: 600; }
 .lookup-modes button.active { background: var(--surface, #fff); color: var(--purple); box-shadow: 0 1px 3px #0002; }
 .lookup-query { display: flex; gap: 8px; }
-.lookup-query input { flex: 1; }
+.lookup-query input { flex: 1; min-width: 0; width: 0; }
+.lookup-query .button { flex-shrink: 0; }
+.lookup-term select { width: 100%; min-width: 0; }
 .lookup-langs { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
 .lookup-langs .field.inline { display: inline-flex; flex-direction: column; gap: 3px; font-size: 11.5px; }
-.lookup-results { max-height: 46vh; overflow: auto; display: flex; flex-direction: column; gap: 12px; padding-right: 4px; }
-.lookup-group { display: flex; flex-direction: column; gap: 6px; }
+.lookup-results { min-height: 60px; overflow: auto; display: flex; flex-direction: column; gap: 14px; padding: 2px 6px 2px 0; scrollbar-gutter: stable; }
+.lookup-group { display: flex; flex-direction: column; gap: 9px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); }
 .lookup-label { font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: none; }
 .lookup-words { display: flex; flex-wrap: wrap; gap: 6px; }
-.lookup .chip { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface, #fff); color: inherit; cursor: pointer; font-size: 12.5px; }
+.lookup .chip { padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface, #fff); color: inherit; cursor: pointer; font-size: 12.5px; overflow-wrap: anywhere; max-width: 100%; }
 .lookup .chip:hover { border-color: var(--purple); color: var(--purple); }
 .lookup-note { margin: 0; color: var(--muted); font-size: 12.5px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .lookup-missing { color: var(--muted); font-size: 12px; font-style: italic; }
 .lookup-ai { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; border-top: 1px solid var(--border); padding-top: 10px; }
 .lookup-ai-answer { padding: 10px 12px; border-radius: 8px; background: var(--field, #f4f4f7); width: 100%; }
 .lookup-ai-answer p { margin: 0 0 6px; white-space: pre-wrap; }
+.lookup-footer { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.lookup-footer [role="status"] { color: var(--purple); }
+@media (max-height: 700px) { .modal:has(.lookup) { padding: 18px; max-height: 94vh; } .lookup { gap: 10px; } .modal:has(.lookup) .modal-heading { margin-bottom: 12px; } }
 .context-menu kbd { margin-left: auto; padding-left: 16px; font: 11px system-ui; color: var(--muted); }
 
 /* Converter > EPUB */

@@ -1,3 +1,5 @@
+import {ThemeOptions} from './Themes';
+import type {Theme} from '../shared/themes';
 import {t as translateUi} from "./i18n";
 import React, { useEffect, useRef, useState } from "react";
 import { UpdateSettings } from "./Updates";
@@ -62,10 +64,12 @@ export function Modal({
   wide?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") close.current();
       if (event.key === "Tab" && ref.current) {
         const nodes = ref.current.querySelectorAll<HTMLElement>(
           'button:not(:disabled),input:not(:disabled),select,textarea,[tabindex="0"]',
@@ -464,8 +468,8 @@ export function SettingsDialog({
   quickActions?: boolean;
   onUpdateFound?: (info: import("../shared/types").UpdateInfo) => void;
   onClose: () => void;
-  onTheme: (theme: "light" | "dark") => void;
-  theme: "light" | "dark";
+  onTheme: (theme: Theme) => void;
+  theme: Theme;
   labels?: "below" | "side" | "hidden";
   onLabels?: (labels: "below" | "side" | "hidden") => void;
 }) {
@@ -524,26 +528,7 @@ export function SettingsDialog({
             <UpdateSettings onFound={(info) => { onUpdateFound?.(info); }} />
           <section className="form-section">
             <h3>{translateUi("Aparência")}</h3>
-            <div className="theme-options">
-              <button
-                className={theme === "light" ? "selected" : ""}
-                onClick={() => onTheme("light")}
-              >
-                <div className="theme-preview light">
-                  <i />
-                  <i />
-                  <i />
-                </div>{" "}{translateUi("Tema claro")}{" "}</button>
-              <button
-                className={theme === "dark" ? "selected" : ""}
-                onClick={() => onTheme("dark")}
-              >
-                <div className="theme-preview dark">
-                  <i />
-                  <i />
-                  <i />
-                </div>{" "}{translateUi("Tema escuro")}{" "}</button>
-            </div>
+            <ThemeOptions theme={theme} onTheme={onTheme} />
           </section>
           {onLabels && (
             <section className="form-section">

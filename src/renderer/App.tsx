@@ -1,3 +1,5 @@
+import {applyTheme, ThemeWelcome} from './Themes';
+import {themeMode} from '../shared/themes';
 import {t as translateUi} from "./i18n";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import appIconUrl from "../../assets/icon.svg?url";
@@ -183,7 +185,7 @@ export default function App() {
     void window.gcp.listFonts().then(setFonts).catch(() => {});
     return () => { off(); offPrompt(); };
   }, []);
-  useEffect(() => { document.documentElement.dataset.theme = workspace.theme; }, [workspace.theme]);
+  useEffect(() => { applyTheme(workspace.theme); }, [workspace.theme]);
   useEffect(() => { releaseBases(new Set(workspace.documents.flatMap((doc) => doc.pages.map((ref) => ref.base)))); }, [workspace]);
   useEffect(() => { store("gcp.style", style); }, [style]);
   // Where each file was left (page and position), so reopening continues the reading.
@@ -269,6 +271,9 @@ export default function App() {
   }
   function deleteObjects(ids = [...selectedObjects]) { if (!ids.length) return; setSelectedObjects(new Set()); void operation({ type: "delete-objects", ids }); }
   const [bookToken, setBookToken] = useState<string | null>(null);
+  const [themeWelcomeDone, setThemeWelcomeDone] = useState(false);
+  const [themeWelcomeOpen, setThemeWelcomeOpen] = useState(false);
+  useEffect(() => { if (ready && workspace.themeChosen === false) setThemeWelcomeOpen(true); }, [ready, workspace.themeChosen]);
   const [pageContext, setPageContext] = useState<PageMenu | null>(null), [lookup, setLookup] = useState<{ text: string; mode: "synonyms" | "translate" } | null>(null);
   function pageSize(pageId: string) {
     const ref = active?.pages.find((p) => p.id === pageId), geo = ref ? pageGeometry(ref) : undefined;
@@ -408,7 +413,7 @@ export default function App() {
     reading: () => startReading(),
     fullscreen: () => toggleFullscreen(),
     sidebar: () => setSideOpen((open) => !open),
-    theme: () => void perform(() => window.gcp.setTheme(workspace.theme === "light" ? "dark" : "light")),
+    theme: () => void perform(() => window.gcp.setTheme(themeMode(workspace.theme) === "light" ? "dark" : "light")),
     compareFiles: () => { if (active) { setCompareFirst(active.id); setModal("compare"); } },
     stats: () => setModal("stats"),
     properties: () => setModal("properties"),
@@ -510,7 +515,7 @@ export default function App() {
     { id: "properties", label: "Propriedades e metadados", group: "Revisar", keywords: "titulo autor assunto palavras-chave", disabled: none, run: () => setModal("properties") },
     { id: "find", label: "Pesquisar no documento", group: "Ver", shortcut: "Ctrl+F", disabled: none, run: actions.find },
     { id: "ai", label: "Perguntar à IA", group: "IA", keywords: "resumo chatgpt gemini", run: actions.ai },
-    { id: "theme", label: "Alternar tema claro/escuro", group: "Ver", run: () => void perform(() => window.gcp.setTheme(workspace.theme === "light" ? "dark" : "light")) },
+    { id: "theme", label: "Alternar tema claro/escuro", group: "Ver", run: () => void perform(() => window.gcp.setTheme(themeMode(workspace.theme) === "light" ? "dark" : "light")) },
     { id: "settings", label: "Configurações", group: "Ver", keywords: "chave api preferencias", run: () => setModal("settings") },
     { id: "help", label: "Central de ajuda", group: "Ajuda", shortcut: "F1", run: () => { setHelpTopic(undefined); setModal("help"); } },
   ];
@@ -732,7 +737,7 @@ export default function App() {
         <button className="publisher-link" onClick={() => void window.gcp.openExternal(SITE)}>{translateUi("Gestão Cultural Pro")}{" "}<ArrowUpRight size={12} /></button>
         <div className="window-actions">
 
-          <IconButton title={workspace.theme === "light" ? translateUi("Ativar tema escuro") : translateUi("Ativar tema claro")} onClick={() => void perform(() => window.gcp.setTheme(workspace.theme === "light" ? "dark" : "light"))}>{workspace.theme === "light" ? <Moon size={17} /> : <Sun size={17} />}</IconButton>
+          <IconButton title={themeMode(workspace.theme) === "light" ? translateUi("Ativar tema escuro") : translateUi("Ativar tema claro")} onClick={() => void perform(() => window.gcp.setTheme(themeMode(workspace.theme) === "light" ? "dark" : "light"))}>{themeMode(workspace.theme) === "light" ? <Moon size={17} /> : <Sun size={17} />}</IconButton>
           <IconButton title={translateUi("Central de ajuda · F1")} onClick={() => { setHelpTopic(undefined); setModal("help"); }}><HelpCircle size={17} /></IconButton>
           <IconButton title={translateUi("Configurações")} onClick={() => setModal("settings")}><Settings size={17} /></IconButton>
         </div>
@@ -749,7 +754,7 @@ export default function App() {
         <RibbonModeMenu mode={ribbonMode} onMode={setRibbon} />
       </div>
       <div className="ribbon-panel" onClick={(e) => { if (ribbonMode === "collapsed" && (e.target as HTMLElement).closest(".tool-button")) setPeek(false); }}>
-        <Ribbon tab={tab} hasDocument={!showHome && !!active} canUndo={!!active?.canUndo} canRedo={!!active?.canRedo} tool={tool} setTool={setTool} style={style} selection={selectionObjects} source={sourceSelection} pagesSelected={selectedPages.length} zoom={zoom} fonts={fonts} labels={labels} actions={actions} ribbonMode={ribbonMode} layout={layout} filter={readingFilter} dark={workspace.theme === "dark"} />
+        <Ribbon tab={tab} hasDocument={!showHome && !!active} canUndo={!!active?.canUndo} canRedo={!!active?.canRedo} tool={tool} setTool={setTool} style={style} selection={selectionObjects} source={sourceSelection} pagesSelected={selectedPages.length} zoom={zoom} fonts={fonts} labels={labels} actions={actions} ribbonMode={ribbonMode} layout={layout} filter={readingFilter} dark={themeMode(workspace.theme) === "dark"} />
       </div>
       </div>
       {/* Abas dos documentos abertos, abaixo da faixa de opções e logo acima do documento. */}
@@ -1059,7 +1064,7 @@ export default function App() {
       )}
       {modal === "epub" && active && <EpubDialog doc={active} onClose={() => setModal(null)} onError={onError} onDone={(path) => { setModal(null); notify("EPUB salvo. Abrindo no modo Livro…"); void window.gcp.openBookFile(path).catch(onError); }} />}
       {bookToken && <BookReader key={bookToken} token={bookToken} onClose={() => setBookToken(null)} onError={onError} />}
-      {lookup && <LookupDialog text={lookup.text} mode={lookup.mode} onClose={() => setLookup(null)} onError={onError} onCopy={(text) => void window.gcp.copyText(text).then(() => notify(`“${text.length > 40 ? text.slice(0, 40) + "…" : text}” copiado.`)).catch(onError)} />}
+      {lookup && <LookupDialog text={lookup.text} mode={lookup.mode} onClose={() => setLookup(null)} onError={onError} onCopy={(text) => window.gcp.copyText(text)} />}
       {pageContext && active && (
         <div className="context-backdrop" onMouseDown={() => setPageContext(null)} onContextMenu={(e) => { e.preventDefault(); setPageContext(null); }}>
           <div className="context-menu" style={{ left: Math.min(pageContext.x, window.innerWidth - 250), top: Math.min(pageContext.y, window.innerHeight - 300) }} onMouseDown={(e) => e.stopPropagation()} onClick={() => setPageContext(null)}>
@@ -1148,6 +1153,7 @@ export default function App() {
           </div>
         </Modal>
       )}
+      {themeWelcomeOpen && !themeWelcomeDone && <ThemeWelcome theme={workspace.theme} onTheme={(theme) => void perform(() => window.gcp.setTheme(theme))} onClose={() => { void perform(() => window.gcp.setTheme(workspace.theme)); setThemeWelcomeDone(true); }} />}
       {modal === "settings" && <SettingsDialog theme={workspace.theme} quickActions={workspace.quickActions} onUpdateFound={(info) => { setModal(null); setUpdate(info); }} onTheme={(theme) => void perform(() => window.gcp.setTheme(theme))} labels={labels} onLabels={(value) => { setLabels(value); store("gcp.labels", value); }} onClose={() => setModal(null)} />}
       {modal === "signature" && <SignatureDialog onClose={() => setModal(null)} onSaved={setSignatures} />}
       {modal === "support" && <SupportDialog onClose={() => setModal(null)} />}

@@ -5,7 +5,7 @@ import type {DictionaryLanguage,SynonymResult,TranslationResult} from '../shared
 
 /** Offline synonym (MyThes) and translation (WikDict) dictionaries for Portuguese, English and Spanish.
  * Each file is read and indexed the first time it is used; lookups are then map reads. */
-type Index = {text:string;offsets:Map<string,number>};
+type Index = {text:string;offsets:Map<string,number>;exact:Map<string,number>};
 const LANGS:DictionaryLanguage[]=['pt','en','es'];
 
 /** Lowercase, outer punctuation removed, inner spaces collapsed. Accents are kept: they change words. */
@@ -31,31 +31,39 @@ export class Dictionaries {
   let entry=this.loaded.get(file);
   if(!entry){
    entry=readFile(join(this.folder(),file)).then(bytes=>{
-    const text=gunzipSync(bytes).toString('utf8'),offsets=new Map<string,number>();
+    const text=gunzipSync(bytes).toString('utf8'),offsets=new Map<string,number>(),exact=new Map<string,number>();
     // MyThes: "word|count" header lines, each followed by `count` meaning lines starting with "(".
-    // WikDict: "word<TAB>t1|t2". The first spelling of a word wins.
+    // WikDict: "word<TAB>t1|t2". Keep exact spelling separately: NO (northwest)
+    // must not shadow the Portuguese contraction "no" after case folding.
     for(let at=0;at<text.length;){
      let end=text.indexOf('\n',at);if(end<0)end=text.length;
      const cut=separator==='|'?text.lastIndexOf('|',end):text.indexOf('\t',at);
-     if(cut>at&&cut<end&&(separator==='\t'||/^\d+$/.test(text.slice(cut+1,end)))){const key=normalizeTerm(text.slice(at,cut));if(key&&!offsets.has(key))offsets.set(key,at);}
+     if(cut>at&&cut<end&&(separator==='\t'||/^\d+$/.test(text.slice(cut+1,end)))){
+      const source=text.slice(at,cut).normalize('NFC'),key=normalizeTerm(source);
+      if(key){if(separator==='	'&&!exact.has(source))exact.set(source,at);if(!offsets.has(key)||source===key)offsets.set(key,at);}
+     }
      at=end+1;
     }
-    return {text,offsets};
+    return {text,offsets,exact};
    });
    entry.catch(()=>this.loaded.delete(file));
    this.loaded.set(file,entry);
   }
   return entry;
  }
- private async find(file:string,separator:'|'|'\t',term:string,lang:DictionaryLanguage) {
+ private async find(file:string,separator:'|'|'\t',term:string,lang:DictionaryLanguage,spelling?:string) {
   const index=await this.index(file,separator);
+  if(spelling){const at=index.exact.get(spelling.normalize('NFC'));if(at!==undefined)return {index,at,word:term};}
   for(const candidate of [term,...baseForms(term,lang)]){const at=index.offsets.get(candidate);if(at!==undefined)return {index,at,word:candidate};}
   return null;
  }
  async synonyms(text:string,lang:DictionaryLanguage):Promise<SynonymResult> {
   const term=normalizeTerm(text);
   if(!term)return {term,lang,meanings:[]};
-  const found=await this.find(`synonyms-${lang}.dat.gz`,'|',term,lang);
+  // OpenWN-PT groups true synonyms by sense. VERO remains a fallback for headwords
+  // absent from OpenWN-PT; English/Spanish keep their native open thesauri.
+  const found=(lang==='pt'?await this.find('openwordnet-pt.dat.gz','|',term,lang):null)
+   ??await this.find(`synonyms-${lang}.dat.gz`,'|',term,lang);
   if(!found)return {term,lang,meanings:[]};
   const data=found.index.text,at=found.at;
   const header=data.slice(at,data.indexOf('\n',at)),count=Number(header.slice(header.lastIndexOf('|')+1))||0,meanings:SynonymResult['meanings']=[];
@@ -63,7 +71,8 @@ export class Dictionaries {
   for(let i=0;i<count&&cursor>0;i++){
    const end=data.indexOf('\n',cursor),line=data.slice(cursor,end<0?undefined:end);cursor=end+1;
    const parts=line.split('|'),label=/^\((.*?)\)/.exec(parts[0]??'')?.[1]??'',first=(parts[0]??'').replace(/^\(.*?\)/,'').replace(/^-$/,'').trim();
-   const words=[...new Set([first,...parts.slice(1)].map(w=>w.replace(/\s*\((generic|similar|related|antonym) term\)$/,'').trim()).filter(w=>w&&normalizeTerm(w)!==found.word))];
+   // MyThes/WordNet includes related and opposite terms. Do not present those as synonyms.
+   const words=[...new Set([first,...parts.slice(1)].filter(w=>! /\((?:generic|related|antonym)(?: term)?\)$/.test(w)).map(w=>w.replace(/\s*\(similar term\)$/,'').trim()).filter(w=>w&&normalizeTerm(w)!==found.word))];
    if(words.length)meanings.push({label:label.replace(/^Sinônimo$/i,''),words});
   }
   return {term,lang,...(found.word!==term?{base:found.word}:{}),meanings};
@@ -73,11 +82,11 @@ export class Dictionaries {
   const term=normalizeTerm(text);
   const source=from==='auto'?await this.detect(term,to):from;
   if(!term||source===to)return {term,from:source,to,entries:[]};
-  const file=`${source}-${to}.tsv.gz`,whole=await this.find(file,'\t',term,source);
+  const file=`${source}-${to}.tsv.gz`,whole=await this.find(file,'\t',term,source,text.trim());
   const read=(found:NonNullable<typeof whole>)=>{const data=found.index.text,end=data.indexOf('\n',found.at),line=data.slice(found.at,end<0?undefined:end);return line.slice(line.indexOf('\t')+1).split('|').filter(Boolean).slice(0,12);};
   if(whole)return {term,from:source,to,entries:[{word:whole.word,translations:read(whole)}]};
-  const words=[...new Set(term.split(/[^\p{L}\p{N}'-]+/u).filter(w=>w.length>1))].slice(0,40),entries:TranslationResult['entries']=[];
-  for(const word of words){const found=await this.find(file,'\t',word,source);entries.push({word,translations:found?read(found):[]});}
+  const words=[...new Set(text.normalize('NFC').split(/[^\p{L}\p{N}'-]+/u).filter(w=>w.length>1))].slice(0,40),entries:TranslationResult['entries']=[];
+  for(const word of words){const found=await this.find(file,'\t',normalizeTerm(word),source,word);entries.push({word,translations:found?read(found):[]});}
   return {term,from:source,to,entries};
  }
  /** The language whose dictionary knows most of the words, preferring the one that is not the target. */

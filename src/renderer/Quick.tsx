@@ -1,3 +1,4 @@
+import {applyTheme} from './Themes';
 import {t as translateUi} from "./i18n";
 import React, { useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Check, FileText, FolderOpen, Image as ImageIcon, Layers3, LoaderCircle, Plus, Trash2, X, FileInput, ExternalLink } from "lucide-react";
@@ -14,7 +15,7 @@ export default function Quick() {
     const offAction = window.gcp.onAction((action) => { if (action.startsWith("progress:")) setBusy(action.slice(9)); });
     return () => { offState(); offAction(); };
   }, []);
-  useEffect(() => { if (state) document.documentElement.dataset.theme = state.theme; }, [state?.theme]);
+  useEffect(() => { if (state) applyTheme(state.theme); }, [state?.theme]);
   useEffect(() => {
     if (!state) return;
     setOrder((old) => [...old.filter((path) => state.files.some((f) => f.path === path)), ...state.files.map((f) => f.path).filter((path) => !old.includes(path))]);

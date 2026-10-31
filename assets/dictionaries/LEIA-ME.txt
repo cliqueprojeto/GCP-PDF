@@ -10,3 +10,5 @@ Tradução (WikDict, https://www.wikdict.com, dados do Wiktionary):
 - pares pt-en, pt-es, en-pt, en-es, es-pt, es-en (tabela simple_translation).
 Licença: Creative Commons Atribuição-CompartilhaIgual 3.0 (CC BY-SA 3.0). Autores: colaboradores do Wiktionary.
 Formato: uma entrada por linha, "palavra<TAB>tradução1|tradução2|…", em ordem de relevância.
+
+Português: OpenWN-PT (fonte principal, 37.983 verbetes com sinônimos); VERO como alternativa para verbetes ausentes. Licença CC BY-SA 3.0 e proveniência em openwordnet-source.json e licenses/OpenWN-PT.txt. Transformação reproduzível: node scripts/prepare-openwordnet.mjs.

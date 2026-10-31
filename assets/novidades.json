@@ -1,5 +1,21 @@
 [
   {
+    "versao": "0.7.0",
+    "data": "2026-10-31",
+    "itens": [
+      "Editar títulos com espaçamento entre letras personalizado agora mantém o espaçamento na tela, ao gravar no PDF e ao converter para Word, PowerPoint e Excel (antes surgiam espaços entre as letras).",
+      "Novos controles de espaçamento entre linhas e entre caracteres ao editar o texto original.",
+      "Minhas cores: salve as cores escolhidas com o conta-gotas e exclua quando quiser; elas aparecem em todos os seletores de cor.",
+      "Carimbos de Situação com fundo sólido a 100% de opacidade e novo controle \"Efeito batido\", que imita falhas, concentração e vazamento de tinta de um carimbo de borracha.",
+      "Copiar, recortar, colar e duplicar formas, desenhos, caixas de texto, imagens e carimbos com Ctrl+C, Ctrl+X, Ctrl+V, Ctrl+D ou pelo botão direito.",
+      "O painel Propriedades não abre nem fecha mais sozinho: o botão à direita avisa quando há opções, e o painel desliza suavemente sobre a borda sem empurrar a página.",
+      "Sinônimos e tradução (português, inglês e espanhol) pelo botão direito sobre o texto e na aba Revisar, com dicionários abertos que funcionam sem internet. Os idiomas padrão ficam em Configurações.",
+      "Destacar, sublinhar e tachar agora aplicam assim que você seleciona o texto, e a ferramenta continua ativa para o próximo trecho.",
+      "Converter para EPUB: capítulos automáticos, sumário, notas de rodapé com links de ida e volta, capa gerada ou escolhida e metadados de título, autor, ano e gênero.",
+      "Novo modo Livro para ler EPUB: fontes, margens, temas, efeitos de virar página, passagem automática com tempo ajustável e retomada de onde você parou. Arquivos .epub abrem direto nesse modo."
+    ]
+  },
+  {
     "versao": "0.6.0",
     "data": "2026-10-31",
     "itens": [

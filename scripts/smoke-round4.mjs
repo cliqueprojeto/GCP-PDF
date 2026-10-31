@@ -66,6 +66,8 @@ try{
  await app.evaluate(({clipboard,nativeImage})=>{const img=nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAgCAYAAACinX6EAAAAQ0lEQVR42u3PMQ0AAAgDoC251a3gHFQgN1vTgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAPLPkBN6bVfXEAAAAASUVORK5CYII=');(clipboard.writeImage?clipboard.writeImage(img):clipboard.write({image:img}));});
  await page.locator('.canvas-scroll').click({position:{x:40,y:40}});await page.keyboard.press('Control+v');await page.waitForTimeout(1200);
  const after=await ws();check('Ctrl+V cola imagem na página',after.objects.length>before&&after.objects.some(o=>o.kind==='image'));
+ // The Properties panel opens only by hand (0.7).
+ if(!await page.locator('.properties-panel.open').count())await page.locator('.rail-right .icon-button').click();
  await page.locator('.property-bar .text-button',{hasText:'Editar imagem'}).click();await page.waitForSelector('.image-editor');
  check('editor de imagem abre',await page.locator('.image-editor canvas').count()===1);
  await page.screenshot({path:'evidence/ui/46-editor-imagem.png'});await page.locator('.modal-footer .button.secondary').click();

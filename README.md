@@ -49,16 +49,20 @@ Os demais formatos Office além de `.docx`, `.xlsx` e `.txt` podem exigir LibreO
 - Volta para a página e a posição onde você parou em cada arquivo.
 - Página inicial com arquivos recentes, busca e documentos abertos em abas; abas reorganizáveis e destacáveis em outra janela (inclusive arrastando a aba para baixo).
 - Pesquisa no documento direto na barra superior ou no painel, com navegação entre resultados; marcadores (criados à mão ou a partir dos títulos) e miniaturas das páginas.
-- Painel Propriedades encaixado à direita, que aparece ao escolher uma ferramenta ou selecionar um objeto, sem deslocar a leitura.
+- Painel Propriedades à direita, aberto e fechado por você, deslizando sobre a borda sem empurrar a página; o botão avisa quando há opções para o item selecionado.
+- Livros EPUB no modo Livro: fontes, tamanho, entrelinha, margens, temas claro/sépia/noturno, uma ou duas páginas, efeitos de virar página, passagem automática com tempo ajustável, sumário, notas de rodapé em janela e retomada de onde parou.
 
 ### Comentar e revisar
 - Comentários em balões com respostas, editar e excluir; os ícones ficam na margem, ao lado do texto, e podem ser arrastados.
-- Destaque, sublinhado e tachado de texto, salvos como anotações padrão reconhecidas por outros leitores.
-- Caixas de texto, carimbos, formas, desenho à mão livre e medidas de distância, perímetro e área em centímetros.
+- Destaque, sublinhado e tachado de texto aplicados assim que você seleciona o trecho (a ferramenta continua ativa), salvos como anotações padrão reconhecidas por outros leitores.
+- Sinônimos e tradução (português, inglês e espanhol) pelo botão direito sobre o texto ou na aba Revisar, com dicionários abertos que funcionam sem internet; idiomas padrão em Configurações.
+- Caixas de texto, carimbos (com fundo sólido e "Efeito batido" de carimbo de borracha), formas, desenho à mão livre e medidas de distância, perímetro e área em centímetros.
+- Copiar, recortar, colar e duplicar formas, desenhos, caixas de texto, imagens e carimbos (Ctrl+C, Ctrl+X, Ctrl+V, Ctrl+D ou botão direito).
+- "Minhas cores": cores escolhidas com o conta-gotas ficam salvas para usar de novo em qualquer seletor de cor.
 - Comparação de dois PDFs, mostrando o que entrou, saiu ou mudou.
 
 ### Editar
-- Edição do texto original da página, mantendo fonte, tamanho e cor, com blocos agrupados como num editor: parágrafos, listas e o texto de cada célula de tabela formam uma única caixa, editada, movida e formatada de uma vez, com desfazer e refazer.
+- Edição do texto original da página, mantendo fonte, tamanho, cor e o espaçamento entre letras e linhas de títulos personalizados, com blocos agrupados como num editor: parágrafos, listas e o texto de cada célula de tabela formam uma única caixa, editada, movida e formatada de uma vez, com desfazer e refazer.
 - Imagens originais do PDF: mover, redimensionar, girar, espelhar, substituir, recortar, ajustar cores e salvar como arquivo.
 - Inserção de texto, imagens e páginas em branco.
 
@@ -80,7 +84,8 @@ Os demais formatos Office além de `.docx`, `.xlsx` e `.txt` podem exigir LibreO
 
 ### Converter
 - Word em texto corrido para documentos: margens reais, parágrafos que se reorganizam ao editar, listas numeradas, tabelas reais com células mescladas e sombreadas, cabeçalho e rodapé com número de página automático. Cartazes, slides e digitalizações mantêm o layout da página.
-- Fontes reconhecidas mesmo quando o PDF esconde o nome; incorporadas ao Word quando a licença permite, para abrir igual em Windows, Linux e macOS.
+- Fontes reconhecidas mesmo quando o PDF esconde o nome; incorporadas ao Word quando a licença permite, para abrir igual em Windows, Linux e macOS. O espaçamento entre letras de títulos chega certo ao Word, ao PowerPoint e ao Excel.
+- EPUB (livro digital): capítulos automáticos pelos marcadores ou títulos, sumário, notas de rodapé com links de ida e volta, capa gerada (vários modelos), da primeira página ou de uma imagem, e metadados (título, autor, ano, gênero, editora, idioma) para organizar em bibliotecas como Apple Livros, Google Play Livros, Kobo e Calibre.
 - PowerPoint com formas, molduras e fundos editáveis; Excel com cada célula da tabela no seu lugar e números como números.
 - Páginas escaneadas são reconhecidas automaticamente (OCR) ao converter, com fonte, tamanho e negrito estimados e logotipos preservados.
 - Exportar para PDF de imagens.

@@ -1,7 +1,7 @@
 import {t as translateUi} from "./i18n";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Move, LoaderCircle } from "lucide-react";
-import type { FieldValue, PageObject, PageRef, Point, Rect, SourceObjects, SourceParagraph, ParagraphEdit } from "../shared/types";
+import type { FieldValue, PageObject, PageRef, Point, Rect, SourceObjects, SourceParagraph, ParagraphEdit, TrackedText } from "../shared/types";
 import { FormLayer } from "./FormLayer";
 import { NativeAnnotations } from "./NativeAnnotations";
 import { NoteBubble, commentAuthor, type PdfNote } from "./Comments";
@@ -13,8 +13,9 @@ import { uid, type Style, type Tool } from "./editor";
 export interface SourceSelection { page: string; paragraph: SourceParagraph; color: string; generation?:number; caret?: { x: number; y: number } }
 /** PDF.js text of the rendered page, kept so the paragraph editor can show the page's own embedded fonts. */
 interface PageText { items: { str: string; fontName: string; transform: number[]; width: number; hasEOL: boolean }[]; view: number[] }
-interface EditorRun { text: string; font: string; size: number }
+interface EditorRun { text: string; font: string; size: number; /** Letter spacing (points) of a tracked run. */ tracking?: number }
 interface EditorLine { runs: EditorRun[]; baseline: number; x: number; right: number }
+export interface PageMenu { x: number; y: number; page: string; point: Point; objectId?: string; text?: string }
 interface Props {
   annotations:import("../shared/types").PdfAnnotation[];
   onDeleteAnnotation:(a:import("../shared/types").PdfAnnotation)=>void;
@@ -50,6 +51,8 @@ interface Props {
   openNote?: string | null;
   onOpenNote?: (id: string | null) => void;
   onSourceImageEdit?: (page: string, image: number, rect: Rect) => void;
+  /** Right click on the page: the object under the pointer (selected first) or the selected text. */
+  onPageMenu?: (menu: PageMenu) => void;
   onError: (error: unknown) => void;
 }
 type Drag =
@@ -350,6 +353,19 @@ export function PageView(props: Props) {
     props.onAdd({ id: uid(), page: pageRef.id, kind: "markup", style: tool.style, rects: lines, color: tool.style === "highlight" ? style.highlight : style.stroke, opacity: tool.style === "highlight" ? style.highlightOpacity : 1 });
     return true;
   }
+  // Destacar/Sublinhar/Tachar act as soon as text is selected: on release anywhere in the window (a
+  // drag may end outside the page), and right away when the tool is picked over an existing selection.
+  const markupRef = useRef(markupFromSelection);
+  markupRef.current = markupFromSelection;
+  const markupStyle = tool.kind === "markup" ? tool.style : null;
+  useEffect(() => {
+    if (!markupStyle) return;
+    const inside = () => { const node = window.getSelection()?.anchorNode; return !!node && !!textLayer.current?.contains(node); };
+    if (inside()) markupRef.current();
+    const release = () => { textLayer.current?.classList.remove("selecting"); if (inside()) markupRef.current(); };
+    window.addEventListener("pointerup", release);
+    return () => window.removeEventListener("pointerup", release);
+  }, [markupStyle]);
   /** Where a comment icon goes so it does not cover the text: in the margin next to the text column, at the same height. */
   function besideText(p: Point, span?: Rect): Point {
     const icon = 22, gap = 6, spans = [...(textLayer.current?.querySelectorAll<HTMLElement>("span") ?? [])].map((el) => el.getBoundingClientRect()).filter((r) => r.width > 1 && r.height > 1).map((r) => normalize(pagePoint({ clientX: r.left, clientY: r.top }), pagePoint({ clientX: r.right, clientY: r.bottom })));
@@ -364,6 +380,14 @@ export function PageView(props: Props) {
     return { x: Math.max(0, Math.min(size.width - icon, toLeft ? left - gap - icon : right + gap)), y: top };
   }
   const creating = tool.kind === "text" || tool.kind === "shape" || tool.kind === "ink" || tool.kind === "stamp" || tool.kind === "field" || tool.kind === "sign-area" || tool.kind === "note";
+  function onContextMenu(e: React.MouseEvent) {
+    if (!props.onPageMenu || (e.target as HTMLElement).closest(".source-editor, .source-box, input, textarea, [contenteditable=true], .form-layer, .note-bubble")) return;
+    const selection = window.getSelection(), text = selection && !selection.isCollapsed && textLayer.current?.contains(selection.anchorNode) ? selection.toString().trim() : "";
+    const objectId = tool.kind === "select" ? (e.target as HTMLElement).closest<HTMLElement>("[data-object-id]")?.dataset.objectId : undefined;
+    e.preventDefault();
+    if (objectId && !props.selected.has(objectId)) props.onSelect([objectId], false);
+    props.onPageMenu({ x: e.clientX, y: e.clientY, page: pageRef.id, point: pagePoint(e), ...(objectId ? { objectId } : {}), ...(text ? { text } : {}) });
+  }
   function onPointerDown(e: React.PointerEvent) {
     if (e.button !== 0) return;
     if (tool.kind === "sign-place") { e.preventDefault(); const p = pagePoint(e); props.onArea(pageRef.id, { x: Math.max(0, Math.min(size.width - tool.width, p.x - tool.width / 2)), y: Math.max(0, Math.min(size.height - tool.height, p.y - tool.height / 2)), width: tool.width, height: tool.height }); return; }
@@ -479,7 +503,7 @@ export function PageView(props: Props) {
   }
   function onPointerUp(e: React.PointerEvent) {
     textLayer.current?.classList.remove("selecting");
-    if (!drag) { if (tool.kind === "markup") markupFromSelection(); return; }
+    if (!drag) return;
     outer.current?.releasePointerCapture(e.pointerId);
     const d = drag;
     if (d.kind === "create" && tool.kind === "shape" && (tool.shape === "polyline" || tool.shape === "polygon")) return;
@@ -537,6 +561,7 @@ export function PageView(props: Props) {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onDoubleClick={onDoubleClick}
+      onContextMenu={onContextMenu}
     >
       <canvas ref={canvas} style={{ width: display.width, height: display.height }} />
       <div ref={textLayer} className="textLayer" />
@@ -591,17 +616,17 @@ export function PageView(props: Props) {
                 </div>
               );
             })}
-            {activeParagraph?.members && <BlockEditor key={`${pageRef.id}:${activeParagraph.index}`} paragraph={activeParagraph} pageText={pageText.current} caret={props.sourceSelection?.caret} sample={sample} onCommit={async members=>{
+            {activeParagraph?.members && <BlockEditor key={`${pageRef.id}:${activeParagraph.index}`} paragraph={activeParagraph} pageText={pageText.current} spacing={source.spacing} caret={props.sourceSelection?.caret} sample={sample} onCommit={async members=>{
               if(!members.some(m=>m.text!==undefined)){props.onSourceSelect(null);return;}
               setEngineBusy(true);
               try{await window.gcp.editParagraph(props.docId,pageRef.id,{paragraph:activeParagraph.index,generation:source.generation,members});props.onSourceSelect(null);}finally{setEngineBusy(false);}
             }} onError={props.onError}/>}
-            {activeParagraph && !activeParagraph.members && <ParagraphEditor key={`${pageRef.id}:${activeParagraph.index}`} paragraph={activeParagraph} lines={paragraphLines(pageText.current, activeParagraph.rect)} caret={props.sourceSelection?.caret} colors={sample(activeParagraph.rect)} onCommit={async (text, width) => {
+            {activeParagraph && !activeParagraph.members && <ParagraphEditor key={`${pageRef.id}:${activeParagraph.index}`} paragraph={activeParagraph} lines={paragraphLines(pageText.current, activeParagraph.rect, source.spacing)} caret={props.sourceSelection?.caret} colors={sample(activeParagraph.rect)} onCommit={async (text, width, trackedLines) => {
               const resized = width !== undefined && Math.abs(width - activeParagraph.rect.width) > 0.5;
               if (text === activeParagraph.text && !resized) { props.onSourceSelect(null); return; }
               setEngineBusy(true);
               try {
-                await window.gcp.editParagraph(props.docId, pageRef.id, { paragraph: activeParagraph.index, text, ...(width !== undefined ? { width } : {}) });
+                await window.gcp.editParagraph(props.docId, pageRef.id, { paragraph: activeParagraph.index, text, ...(width !== undefined ? { width } : {}), ...paragraphSpacing(activeParagraph), ...(!activeParagraph.tracking && trackedLines.length ? { trackedLines } : {}) });
                 props.onSourceSelect(null);
               } finally { setEngineBusy(false); }
             }} onError={props.onError} />}
@@ -630,8 +655,10 @@ export function PageView(props: Props) {
   );
 }
 
-/** The PDF.js runs inside a paragraph's box, grouped into its printed lines (unrotated top-left points). */
-function paragraphLines(text: PageText | null, rect: Rect): EditorLine[] {
+/** The PDF.js runs inside a paragraph's box, grouped into its printed lines (unrotated top-left points).
+ * PDF.js invents spaces between tracked letters ("P R E S T A"); the main process's spacing facts give
+ * those runs back their real words and their letter spacing. */
+function paragraphLines(text: PageText | null, rect: Rect, spacing: TrackedText[] = []): EditorLine[] {
   if (!text) return [];
   const left = text.view[0]!, top = text.view[3]!, lines: EditorLine[] = [];
   const runs = text.items.map((item) => {
@@ -644,15 +671,26 @@ function paragraphLines(text: PageText | null, rect: Rect): EditorLine[] {
     const last = line.runs.at(-1), gap = run.x - line.right;
     // PDF.js often leaves out the space between runs; restore it from the gap.
     if (last && gap > run.size * 0.15 && !/\s$/.test(last.text) && !/^\s/.test(run.str)) last.text += " ";
-    if (last && last.font === run.fontName && Math.abs(last.size - run.size) < 0.2) last.text += run.str;
-    else line.runs.push({ text: run.str, font: run.fontName, size: run.size });
+    const tracked = spacing.find((t) => Math.abs(t.baseline - run.baseline) < 0.75 && Math.abs(t.x - run.x) < 0.75), str = tracked?.text ?? run.str;
+    if (last && last.font === run.fontName && Math.abs(last.size - run.size) < 0.2 && last.tracking === tracked?.tracking) last.text += str;
+    else line.runs.push({ text: str, font: run.fontName, size: run.size, ...(tracked ? { tracking: tracked.tracking } : {}) });
     line.x = Math.min(line.x, run.x); line.right = Math.max(line.right, run.x + run.width);
   }
   for (const line of lines) { const last = line.runs.at(-1); if (last) last.text = last.text.trimEnd(); }
   return lines.filter((l) => l.runs.some((r) => r.text.trim())).sort((a, b) => a.baseline - b.baseline);
 }
+/** Focus may move to these while a text is being edited: formatting it must not apply and close the draft. */
+const KEEPS_EDITOR = ".property-bar, .properties-panel, .rail-right";
+/** Horizontal scale of a paragraph, applied to each printed line. */
+function scaleStyle(paragraph: SourceParagraph): React.CSSProperties {
+  return paragraph.scale ? { display: "inline-block", transform: `scaleX(${paragraph.scale})`, transformOrigin: "left center" } : {};
+}
+/** Spacing the engine must keep when it rewrites a paragraph. */
+export function paragraphSpacing(paragraph: SourceParagraph): Pick<ParagraphEdit, "charSpacing" | "scale"> {
+  return { ...(paragraph.tracking ? { charSpacing: paragraph.tracking } : {}), ...(paragraph.scale ? { scale: paragraph.scale } : {}) };
+}
 /** Edits a paragraph in place: same embedded fonts, size, line pitch and justification as the page, with the caret where the user clicked. */
-function ParagraphEditor({ paragraph, lines, caret, colors, onCommit, onError }: { paragraph: SourceParagraph; lines: EditorLine[]; caret?: { x: number; y: number }; colors: { background: string; color: string }; onCommit: (text: string, width?: number) => Promise<void>; onError: (error: unknown) => void }) {
+function ParagraphEditor({ paragraph, lines, caret, colors, onCommit, onError }: { paragraph: SourceParagraph; lines: EditorLine[]; caret?: { x: number; y: number }; colors: { background: string; color: string }; onCommit: (text: string, width: number | undefined, trackedLines: { line: number; charSpacing: number }[]) => Promise<void>; onError: (error: unknown) => void }) {
   const box = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null), done = useRef(false), busy = useRef(false);
   const commitRef = useRef<() => Promise<boolean>>(() => Promise.resolve(true));
   const pendingCommit = useRef<Promise<boolean> | null>(null);
@@ -681,7 +719,7 @@ function ParagraphEditor({ paragraph, lines, caret, colors, onCommit, onError }:
     if (busy.current || drag.current) return false;
     busy.current = true; setSaving(true);
     try {
-      if (cancel) { await onCommit(paragraph.text); done.current = true; return true; }
+      if (cancel) { await onCommit(paragraph.text, undefined, []); done.current = true; return true; }
       const text = editedText(), flat = (v:string) => v.replace(/\s+/g," ").trim();
       let actualWidth = width;
       // Existing printed rows do not reflow in the browser. Grow to fit new glyphs unless the user
@@ -694,7 +732,9 @@ function ParagraphEditor({ paragraph, lines, caret, colors, onCommit, onError }:
         }
       }
       const changed = flat(text) !== flat(paragraph.text);
-      await onCommit(changed ? text : paragraph.text, changed || resized.current ? actualWidth : undefined);
+      // Lines printed with letter spacing keep it: each line of the draft is one child of the editor.
+      const trackedLines = Array.from(content.current?.children ?? []).flatMap((child, line) => { const value = Number((child as HTMLElement).dataset.tracking); return value ? [{ line, charSpacing: value }] : []; });
+      await onCommit(changed ? text : paragraph.text, changed || resized.current ? actualWidth : undefined, trackedLines);
       done.current = true;
       return true;
     } catch (error) { onError(error); content.current?.focus(); return false; }
@@ -714,8 +754,8 @@ function ParagraphEditor({ paragraph, lines, caret, colors, onCommit, onError }:
     <div ref={content} className="source-editor-content" contentEditable={!saving} suppressContentEditableWarning spellCheck={false}
       onPaste={e=>{e.preventDefault();document.execCommand("insertText",false,e.clipboardData.getData("text/plain"));}}
       onKeyDown={e=>{e.stopPropagation();if(e.key==="Escape"){e.preventDefault();void commit(true);}if(e.key==="Enter"&&e.ctrlKey){e.preventDefault();void commit(false);}}}
-      onBlur={e=>{const to=e.relatedTarget as HTMLElement|null, pointer=lastPointer.current;if(box.current?.contains(to)||to?.closest('.property-bar')||(pointer&&Date.now()-pointer.at<200&&pointer.target.closest('.property-bar')))return;void commit(false);}}>
-      {usable ? lines.map((line,i)=><div key={i} style={{marginLeft:line.x-paragraph.rect.x,minHeight:pitch}}>{line.runs.map((run,r)=><span key={r} style={{fontFamily:`"${run.font}", ${fallback}`,fontSize:run.size}}>{run.text}</span>)}</div>) : paragraph.text.split("\n").map((line,i)=><div key={i}>{line||<br/>}</div>)}
+      onBlur={e=>{const to=e.relatedTarget as HTMLElement|null, pointer=lastPointer.current;if(box.current?.contains(to)||to?.closest(KEEPS_EDITOR)||(pointer&&Date.now()-pointer.at<200&&pointer.target.closest(KEEPS_EDITOR)))return;void commit(false);}}>
+      {usable ? lines.map((line,i)=><div key={i} data-tracking={line.runs.every(r=>r.tracking&&r.tracking===line.runs[0]!.tracking)?line.runs[0]!.tracking:undefined} style={{marginLeft:line.x-paragraph.rect.x,minHeight:pitch,...scaleStyle(paragraph)}}>{line.runs.map((run,r)=><span key={r} style={{fontFamily:`"${run.font}", ${fallback}`,fontSize:run.size,...(run.tracking?{letterSpacing:run.tracking}:{})}}>{run.text}</span>)}</div>) : paragraph.text.split("\n").map((line,i)=><div key={i} style={{...scaleStyle(paragraph),...(paragraph.tracking?{letterSpacing:paragraph.tracking}:{})}}>{line||<br/>}</div>)}
     </div>
     <span className="source-width-handle" role="slider" aria-label={translateUi("Largura da caixa de texto")} aria-valuenow={Math.round(width)} tabIndex={0}
       title={translateUi("Arraste para ajustar a largura da caixa de texto")}
@@ -736,12 +776,12 @@ export function pendingParagraphEdit():Pick<ParagraphEdit,'text'|'members'> { co
 
 /** One selectable block, with native text regions retaining their own baselines and fonts. Keeping
  * editable regions separate also prevents a cell edit from swallowing a neighbouring source region. */
-function BlockEditor({paragraph,pageText,caret,sample,onCommit,onError}:{paragraph:SourceParagraph;pageText:PageText|null;caret?:{x:number;y:number};sample:(r:Rect)=>{background:string;color:string};onCommit:(members:NonNullable<ParagraphEdit['members']>)=>Promise<void>;onError:(error:unknown)=>void}) {
+function BlockEditor({paragraph,pageText,spacing,caret,sample,onCommit,onError}:{paragraph:SourceParagraph;pageText:PageText|null;spacing?:TrackedText[];caret?:{x:number;y:number};sample:(r:Rect)=>{background:string;color:string};onCommit:(members:NonNullable<ParagraphEdit['members']>)=>Promise<void>;onError:(error:unknown)=>void}) {
   const box=useRef<HTMLDivElement>(null),nodes=useRef(new Map<number,HTMLDivElement>()),done=useRef(false),pending=useRef<Promise<boolean>|null>(null),[saving,setSaving]=useState(false);
   const lastPointer=useRecentPointer();
   const members=paragraph.members!;
   const flat=(v:string)=>v.replace(/\s+/g,' ').trim();
-  const drafts=()=>members.map(p=>{const text=(nodes.current.get(p.index)?.innerText??p.text).replace(/\r\n?/g,'\n').replace(/\n$/,'');return {paragraph:p.index,...(flat(text)!==flat(p.text)?{text,width:p.rect.width}:{})};});
+  const drafts=()=>members.map(p=>{const text=(nodes.current.get(p.index)?.innerText??p.text).replace(/\r\n?/g,'\n').replace(/\n$/,'');return {paragraph:p.index,...(flat(text)!==flat(p.text)?{text,width:p.rect.width,...paragraphSpacing(p)}:{})};});
   const apply=():Promise<boolean>=>{
     if(done.current)return Promise.resolve(true);if(pending.current)return pending.current;
     setSaving(true);
@@ -756,14 +796,14 @@ function BlockEditor({paragraph,pageText,caret,sample,onCommit,onError}:{paragra
   });return()=>cancelAnimationFrame(frame);},[]);
   return <div ref={box} className="source-editor source-block-editor" data-saving={saving||undefined} style={{left:paragraph.rect.x-2,top:paragraph.rect.y-2,width:paragraph.rect.width+4,height:paragraph.rect.height+4}}
     onPointerDown={e=>e.stopPropagation()} onKeyDown={e=>{e.stopPropagation();if(e.key==='Escape'){e.preventDefault();done.current=true;void onCommit(members.map(p=>({paragraph:p.index})));}else if(e.key==='Enter'&&e.ctrlKey){e.preventDefault();void apply();}}}
-    onBlur={e=>{const to=e.relatedTarget as HTMLElement|null,pointer=lastPointer.current;if(box.current?.contains(to)||to?.closest('.property-bar')||(pointer&&Date.now()-pointer.at<200&&pointer.target.closest('.property-bar')))return;void apply();}}>
+    onBlur={e=>{const to=e.relatedTarget as HTMLElement|null,pointer=lastPointer.current;if(box.current?.contains(to)||to?.closest(KEEPS_EDITOR)||(pointer&&Date.now()-pointer.at<200&&pointer.target.closest(KEEPS_EDITOR)))return;void apply();}}>
     {members.map(p=>{
-      const lines=paragraphLines(pageText,p.rect),colors=sample(p.rect),fallback=p.family?`"${p.family}",Arial,sans-serif`:'Arial,sans-serif';
+      const lines=paragraphLines(pageText,p.rect,spacing),colors=sample(p.rect),fallback=p.family?`"${p.family}",Arial,sans-serif`:'Arial,sans-serif';
       const pitch=lines.length>1?(lines.at(-1)!.baseline-lines[0]!.baseline)/(lines.length-1):p.size*1.25;
       return <div key={p.index} data-member={p.index} ref={node=>{if(node)nodes.current.set(p.index,node);else nodes.current.delete(p.index);}} className="source-editor-content source-block-member" contentEditable={!saving} suppressContentEditableWarning spellCheck={false}
         style={{position:'absolute',left:p.rect.x-paragraph.rect.x+2,top:lines.length?lines[0]!.baseline-p.size*.8-(pitch-p.size)/2-paragraph.rect.y+2:p.rect.y-paragraph.rect.y+2,minWidth:p.rect.width,minHeight:p.rect.height,fontFamily:fallback,fontSize:p.size,lineHeight:`${pitch}px`,background:colors.background,color:colors.color}}
         onPaste={e=>{e.preventDefault();document.execCommand('insertText',false,e.clipboardData.getData('text/plain'));}}>
-        {lines.length?lines.map((line,i)=><div key={i} style={{marginLeft:line.x-p.rect.x,minHeight:pitch}}>{line.runs.map((r,j)=><span key={j} style={{fontFamily:`"${r.font}",${fallback}`,fontSize:r.size}}>{r.text}</span>)}</div>):p.text.split('\n').map((line,i)=><div key={i}>{line||<br/>}</div>)}
+        {lines.length?lines.map((line,i)=><div key={i} style={{marginLeft:line.x-p.rect.x,minHeight:pitch,...scaleStyle(p)}}>{line.runs.map((r,j)=><span key={j} style={{fontFamily:`"${r.font}",${fallback}`,fontSize:r.size,...(r.tracking?{letterSpacing:r.tracking}:{})}}>{r.text}</span>)}</div>):p.text.split('\n').map((line,i)=><div key={i} style={{...scaleStyle(p),...(p.tracking?{letterSpacing:p.tracking}:{})}}>{line||<br/>}</div>)}
       </div>;
     })}
   </div>;

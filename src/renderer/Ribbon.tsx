@@ -47,6 +47,9 @@ import {
   SquareCheck,
   CircleDot,
   ListCollapse,
+  BookMarked,
+  BookA,
+  Languages,
   List,
   RectangleHorizontal,
   ImagePlus,
@@ -92,6 +95,7 @@ import {
   Receipt,
   Ruler
 } from "lucide-react";
+import { SavedColors } from "./ColorLibrary";
 import { readHomeActions, UI_PREFERENCES_EVENT } from "../shared/shortcuts";
 import type { PageObject, ShapeKind, ExportFormat } from "../shared/types";
 import { PALETTE, SHAPES, type Style, type Tool } from "./editor";
@@ -149,6 +153,9 @@ export interface RibbonActions {
   quick(action: "combine" | "convert"): void;
   fiscalXml(): void;
   compare(): void;
+  epub(): void;
+  openBook(): void;
+  lookup(mode: "synonyms" | "translate"): void;
   exportAs(format?: ExportFormat): void;
   ocr(): void;
   find(): void;
@@ -239,6 +246,12 @@ function Big({
       <span>{translateUi(label)}</span>
     </button>
   );
+}
+/** A number applied on Enter or when leaving the field, only when it changed. */
+function SpacingField({ title, icon, step, min, max, value, placeholder, onApply }: { title: string; icon: React.ReactNode; step: number; min: number; max: number; value?: number; placeholder?: string; onApply: (value: number) => void }) {
+  const shown = value === undefined ? "" : String(Number(value.toFixed(2)));
+  const apply = (raw: string) => { const next = Number(raw); if (raw.trim() && Number.isFinite(next) && next >= min && next <= max && raw !== shown) onApply(next); };
+  return <label className="number-field spacing-field" title={title}>{icon}<input type="number" step={step} min={min} max={max} defaultValue={shown} placeholder={placeholder} onKeyDown={(e) => { if (e.key === "Enter") apply((e.target as HTMLInputElement).value); }} onBlur={(e) => apply(e.target.value)} /></label>;
 }
 function Small({
   icon,
@@ -496,6 +509,7 @@ function HighlightMenu({
                 onChange={(e) => restyle({ highlight: e.target.value })}
               />
             </label>
+            <SavedColors value={style.highlight} onPick={(color) => { restyle({ highlight: color }); setTool({ kind: "markup", style: "highlight" }); }} />
           </div>
           <label className="slider-row">{" "}{translateUi("Opacidade")}{" "}<input
               type="range"
@@ -547,6 +561,7 @@ function Swatches({
           onChange={(e) => onChange(e.target.value)}
         />
       </label>
+      <SavedColors value={value} onPick={onChange} />
     </div>
   );
 }
@@ -634,6 +649,7 @@ export function PropertyBar({
             onChange={(e) => actions.formatParagraph({ color: e.target.value })}
           />
         </label>
+        <SavedColors value={source.color} onPick={(color) => actions.formatParagraph({ color })} />
         <Small
           icon={<AlignLeft size={15} />}
           title={translateUi("Alinhar à esquerda")}
@@ -649,6 +665,8 @@ export function PropertyBar({
           title={translateUi("Alinhar à direita")}
           onClick={() => actions.formatParagraph({ align: "right" })}
         />
+        <SpacingField title={translateUi("Espaçamento entre linhas (múltiplo do tamanho)")} icon={<ListCollapse size={14} />} step={0.05} min={0.5} max={5} value={p.lineSpacing} placeholder={translateUi("auto")} onApply={(lineSpacing) => actions.formatParagraph({ lineSpacing })} />
+        <SpacingField title={translateUi("Espaçamento entre caracteres (pt)")} icon={<span className="spacing-glyph">AV</span>} step={0.1} min={-5} max={50} value={p.tracking ?? 0} onApply={(charSpacing) => actions.formatParagraph({ charSpacing })} />
         <span className="property-hint">{" "}{translateUi("Edite o texto na página · Ctrl+Enter aplica · Esc cancela · arraste o ícone para mover")}{" "}</span>
       </div>
     );
@@ -1353,6 +1371,13 @@ export function Ribbon(props: Props) {
             onClick={() => actions.exportAs("pptx")}
           />
           <Big
+            icon={<BookMarked size={18} />}
+            label={translateUi("Para EPUB")}
+            disabled={none}
+            onClick={actions.epub}
+            title={translateUi("Livro digital com capítulos, sumário, capa, metadados e notas de rodapé com links")}
+          />
+          <Big
             icon={<ImageIcon size={18} />}
             label={translateUi("Para imagem")}
             disabled={none}
@@ -1496,6 +1521,21 @@ export function Ribbon(props: Props) {
       </div>
     ),
     Revisar: (
+      <>
+      <div className="tool-group">
+        <Big
+          icon={<BookA size={18} />}
+          label={translateUi("Sinônimos")}
+          onClick={() => actions.lookup("synonyms")}
+          title={translateUi("Sinônimos da palavra selecionada (também no botão direito sobre o texto)")}
+        />
+        <Big
+          icon={<Languages size={18} />}
+          label={translateUi("Traduzir")}
+          onClick={() => actions.lookup("translate")}
+          title={translateUi("Tradução português, inglês e espanhol do texto selecionado (também no botão direito)")}
+        />
+      </div>
       <div className="tool-group">
         <Big
           icon={<SplitSquareHorizontal size={18} />}
@@ -1524,10 +1564,17 @@ export function Ribbon(props: Props) {
           title={translateUi("Título, autor, assunto, palavras-chave e demais metadados")}
         />
       </div>
+      </>
     ),
     Exibição: (
       <>
         <div className="tool-group">
+          <Big
+            icon={<BookMarked size={18} />}
+            label={translateUi("Livro (EPUB)")}
+            onClick={actions.openBook}
+            title={translateUi("Abrir um livro EPUB no modo Livro: fontes, margens, temas, virar páginas e retomada da leitura")}
+          />
           <Big
             icon={<BookOpenText size={18} />}
             label={translateUi("Modo leitura")}

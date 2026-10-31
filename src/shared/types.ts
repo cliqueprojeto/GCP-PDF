@@ -51,10 +51,23 @@ export interface UpdateStatus {frequency:UpdatePreferences['frequency'];lastChec
 export interface UpdateInfo {version:string;current:string;notes:string;published:string;size:number;assetUrl:string;assetName:string;sha256?:string;manual?:boolean}
 export interface WorkspaceState {windowId:number;documents:DocumentInfo[];activeDocumentId?:string;theme:'light'|'dark';quickActions:boolean}
 /** An existing paragraph or image of a page, in the page's unrotated top-left space. */
-export interface SourceParagraph {index:number;text:string;rect:Rect;size:number;font:string;family?:string;bold:boolean;italic:boolean;color:string;members?:SourceParagraph[]}
+export interface SourceParagraph {index:number;text:string;rect:Rect;size:number;font:string;family?:string;bold:boolean;italic:boolean;color:string;/** Letter spacing in points, when the printed text is tracked. */tracking?:number;/** Horizontal text scale (1 = none). */scale?:number;/** Baseline pitch as a multiple of the size, for several lines. */lineSpacing?:number;members?:SourceParagraph[]}
 export interface SourceImage {index:number;rect:Rect}
-export interface SourceObjects {generation:number;paragraphs:SourceParagraph[];images:SourceImage[]}
-export interface ParagraphEdit {paragraph:number;text?:string;size?:number;bold?:boolean;italic?:boolean;underline?:boolean;color?:string;align?:'left'|'center'|'right'|'justify';font?:'helvetica'|'times'|'courier';dx?:number;dy?:number;width?:number;generation?:number;members?:{paragraph:number;text?:string;width?:number}[]}
+/** A letter-spaced text run as printed (unrotated top-left points): its true words and its spacing. */
+export interface TrackedText {x:number;baseline:number;width:number;tracking:number;text:string}
+export interface SourceObjects {generation:number;paragraphs:SourceParagraph[];images:SourceImage[];spacing?:TrackedText[]}
+export interface ParagraphEdit {paragraph:number;text?:string;size?:number;bold?:boolean;italic?:boolean;underline?:boolean;color?:string;align?:'left'|'center'|'right'|'justify';font?:'helvetica'|'times'|'courier';dx?:number;dy?:number;width?:number;charSpacing?:number;scale?:number;lineSpacing?:number;/** Letter spacing of single lines (0-based, in the edited text), when only some lines are tracked. */trackedLines?:{line:number;charSpacing:number}[];generation?:number;members?:{paragraph:number;text?:string;width?:number;charSpacing?:number;scale?:number}[]}
+/** Languages of Revisar's synonym and translation dictionaries. */
+export type DictionaryLanguage='pt'|'en'|'es';
+export interface SynonymResult {term:string;lang:DictionaryLanguage;/** Dictionary form found when the word itself is inflected. */base?:string;meanings:{label:string;words:string[]}[]}
+export interface TranslationResult {term:string;from:DictionaryLanguage;to:DictionaryLanguage;entries:{word:string;translations:string[]}[]}
+export interface DictionaryPreferences {synonyms:DictionaryLanguage;from:DictionaryLanguage|'auto';to:DictionaryLanguage}
+/** A chapter of the EPUB: its title in the table of contents and the PDF page (0-based) where it starts. */
+export interface EpubChapter {title:string;page:number;level:1|2}
+export interface EpubAnalysis {pages:number;chapters:EpubChapter[];source:'outline'|'headings'|'none';title:string;author:string;footnotes:number}
+export interface EpubOptions {title:string;author:string;year?:string;genre?:string;publisher?:string;description?:string;language:'pt-BR'|'en'|'es';chapters:EpubChapter[];/** PNG or JPEG data URL. */cover?:string}
+/** An opened EPUB, sanitized: one HTML string of all chapters (ids prefixed per chapter) and the book's CSS. */
+export interface BookContent {token:string;name:string;id:string;title:string;author:string;language:string;cover?:string;toc:{title:string;chapter:number;anchor?:string;level:number}[];chapters:number;html:string;css:string}
 export interface Signature {id:string;name:string;dataUrl:string;createdAt:string}
 export interface AiConfig {provider:'openai'|'gemini'|'compatible';model:string;baseUrl:string;hasKey:boolean}
 export type ExportFormat='pdf'|'image-pdf'|'docx'|'xlsx'|'pptx'|'png'|'txt';
@@ -142,6 +155,18 @@ export interface GcpBridge {
  pathsForFiles(files:File[]):string[];
  replacePages(id:string,pages:number[],revision:number):Promise<void>;
  splitDocument(id:string,input:{every?:number;maxMb?:number}):Promise<string|null>;
+ analyzeEpub(id:string):Promise<EpubAnalysis>;
+ epubPagePreview(id:string,page:number):Promise<string>;
+ exportEpub(id:string,options:EpubOptions):Promise<string|null>;
+ openBookFile(path?:string):Promise<void>;
+ readBook(token:string):Promise<BookContent>;
+ getSavedColors():Promise<string[]>;
+ setSavedColors(colors:string[]):Promise<string[]>;
+ getDictionaryPreferences():Promise<DictionaryPreferences>;
+ lookupSynonyms(text:string,lang:DictionaryLanguage):Promise<SynonymResult>;
+ lookupTranslation(text:string,from:DictionaryLanguage|'auto',to:DictionaryLanguage):Promise<TranslationResult>;
+ translateWithAi(text:string,to:DictionaryLanguage):Promise<string>;
+ setDictionaryPreferences(preferences:DictionaryPreferences):Promise<DictionaryPreferences>;
  getSignatures():Promise<Signature[]>;
  saveSignature(signature:{id?:string;name:string;dataUrl:string}):Promise<Signature[]>;
  deleteSignature(id:string):Promise<Signature[]>;

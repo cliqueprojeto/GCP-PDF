@@ -20,6 +20,9 @@ import {addOcrTextLayer,combineSelections} from './pdf-engine';
 import {requestAnswer,listModels,probeModel,freeCandidates,paidCandidate} from './ai';
 import {PdfCraftSession} from './pdfcraft-session';
 import {EditorBlockReader} from './editor-blocks';
+import {Dictionaries} from './dictionary';
+import {analyzeEpub,toEpub} from './epub';
+import {readBook,type ParsedBook} from './epub-reader';
 import {CertificateFiles} from './certificate-files';
 import {installUnixIntegration,type DesktopOptions} from './desktop-integration';
 import {privateDirectory} from './pdfcraft-sidecar';
@@ -27,11 +30,17 @@ import {signatureList,signatureSummary,validateNewSignature,sameFilePath,refuses
 import {registerWindowsContextMenu,readInputPdf,INPUT_EXTENSIONS} from './system';
 import {toPage,fromPage} from '../shared/geometry';
 import {faceFor,faceForPostscript,fontFamilies} from './fonts';
-import type {AiConfig,UpdatePreferences,UpdateStatus,Bookmark,BookmarkEdit,FieldProps,Certificate,FieldType,ProtectOptions,SignOptions,CompressOptions,WorkspaceState,PdfOperation,ExportOptions,ParagraphEdit,SourceObjects,QuickState,Rect} from '../shared/types';
+import type {AiConfig,UpdatePreferences,UpdateStatus,Bookmark,BookmarkEdit,FieldProps,Certificate,FieldType,ProtectOptions,SignOptions,CompressOptions,WorkspaceState,PdfOperation,ExportOptions,ParagraphEdit,SourceObjects,QuickState,Rect,EpubOptions} from '../shared/types';
 app.setName('GCP-PDF');
 if(process.env.GCP_PDF_DATA_DIR)app.setPath('userData',resolve(process.env.GCP_PDF_DATA_DIR));
 const fontCache=()=>join(app.getPath('userData'),'font-catalog.json');
 const editorBlockReader=new EditorBlockReader();
+const dictionaries=new Dictionaries(()=>join(assets(),'dictionaries'));
+/** EPUB files the user opened, by an opaque token: the renderer never names paths to read. */
+const books=new Map<string,{path:string;parsed?:ParsedBook}>();
+const BOOK_EXTENSIONS=['.epub'];
+const OPENABLE=[...INPUT_EXTENSIONS,...BOOK_EXTENSIONS];
+function openBook(view:View,path:string){const token=randomUUID();books.set(token,{path});if(books.size>20)books.delete(books.keys().next().value!);action(view,'book:'+token);}
 const store=new DocumentStore(async(family,bold,italic)=>{const face=await faceFor(family,bold,italic,fontCache());return face?new Uint8Array(await readFile(face.file)):undefined;}),settings=new Settings();
 type View={window:BrowserWindow;ids:string[];active?:string;allowClose:boolean};
 type Quick={window:BrowserWindow;state:QuickState};
@@ -160,10 +169,11 @@ function createWindow(ids:string[]=[]){
 }
 function mainView(){return [...views.values()].find(view=>!view.window.isDestroyed())??createWindow();}
 async function openPaths(view:View,paths?:string[]){
- if(!paths){const result=await openDialog(view.window,{title:'Abrir arquivos',properties:['openFile','multiSelections'],filters:[{name:'Documentos e imagens',extensions:INPUT_EXTENSIONS.map(e=>e.slice(1))},{name:'Todos os arquivos',extensions:['*']}]});if(result.canceled)return;paths=result.filePaths;}
+ if(!paths){const result=await openDialog(view.window,{title:'Abrir arquivos',properties:['openFile','multiSelections'],filters:[{name:'Documentos, imagens e livros',extensions:OPENABLE.map(e=>e.slice(1))},{name:'Livro digital EPUB',extensions:['epub']},{name:'Todos os arquivos',extensions:['*']}]});if(result.canceled)return;paths=result.filePaths;}
  if(!Array.isArray(paths)||paths.length>200)throw new Error('Selecione até 200 arquivos por vez.');
  try{for(const [n,path] of paths.entries()){
   if(typeof path!=='string')throw new Error('Caminho de arquivo inválido.');
+  if(BOOK_EXTENSIONS.includes(extname(path).toLowerCase())){openBook(view,path);continue;}
   const existing=store.all().find(d=>d.path===path);
   if(existing){const owner=[...views.values()].find(v=>v.ids.includes(existing.id));if(owner){owner.active=existing.id;owner.window.focus();continue;}}
   const info=await stat(path).catch((error:NodeJS.ErrnoException)=>{throw new Error(error.code==='ENOENT'?'O arquivo não foi encontrado. Ele pode ter sido movido ou removido. Use Abrir documentos para localizá-lo novamente.':error.code==='EACCES'||error.code==='EPERM'?'O sistema não permitiu abrir esse arquivo. Verifique as permissões de acesso.':'Não foi possível acessar esse arquivo. Verifique se ele está disponível e tente novamente.');});if(!info.isFile()||info.size>512*1024*1024)throw new Error('Abra um arquivo de até 512 MB.');
@@ -363,6 +373,28 @@ function registerIpc(){
   redo:async(view,id)=>{own(view,id);try{await store.redo(id);}finally{notify();}},
   saveDocument:(view,id,saveAs)=>{action(view,'progress:Salvando…');return save(view,id,!!saveAs).finally(()=>action(view,'progress:'));},
   combineDocuments:async(view,ids:string[])=>{for(const id of ids)own(view,id);activate(view,await store.combine(ids));},
+  analyzeEpub:async(view,id)=>{own(view,id);action(view,'progress:Procurando capítulos e notas de rodapé…');try{return await analyzeEpub(await store.materialize(id),message=>action(view,'progress:'+message));}finally{action(view,'progress:');}},
+  epubPagePreview:async(view,id,page:number)=>{own(view,id);const image=await renderPdfPage(await store.materialize(id),page,110);return `data:image/png;base64,${Buffer.from(image.bytes).toString('base64')}`;},
+  exportEpub:async(view,id,options:EpubOptions)=>{
+   const doc=own(view,id);
+   if(!options||typeof options.title!=='string'||typeof options.author!=='string'||!['pt-BR','en','es'].includes(options.language)||!Array.isArray(options.chapters)||options.chapters.length>5000||options.chapters.some(c=>typeof c?.title!=='string'||!Number.isInteger(c.page)||![1,2].includes(c.level))||(options.cover!==undefined&&(typeof options.cover!=='string'||options.cover.length>30*1024*1024)))throw new Error('Dados do livro inválidos.');
+   const name=(options.title.trim()||basename(doc.name,extname(doc.name))).replace(/[\\/:*?"<>|]/g,'').slice(0,120);
+   const result=await saveDialog(view.window,{title:'Salvar livro digital (EPUB)',defaultPath:join(doc.path?dirname(doc.path):app.getPath('documents'),`${name}.epub`),filters:[{name:'Livro digital EPUB',extensions:['epub']}]});
+   if(result.canceled||!result.filePath)return null;
+   let path=result.filePath;if(!path.toLowerCase().endsWith('.epub'))path+='.epub';
+   action(view,'progress:Gerando o EPUB…');
+   try{await atomicWrite(path,await toEpub(await store.materialize(id),options,message=>action(view,'progress:'+message)));return path;}finally{action(view,'progress:');}
+  },
+  openBookFile:async(view,path?:string)=>{
+   if(path===undefined){const result=await openDialog(view.window,{title:'Abrir livro digital',properties:['openFile'],filters:[{name:'Livro digital EPUB',extensions:['epub']}]});if(result.canceled||!result.filePaths[0])return;path=result.filePaths[0];}
+   if(typeof path!=='string'||extname(path).toLowerCase()!=='.epub')throw new Error('Escolha um arquivo EPUB.');
+   openBook(view,path);
+  },
+  readBook:async(_view,token:string)=>{
+   const entry=typeof token==='string'?books.get(token):undefined;if(!entry)throw new Error('O livro não está mais disponível. Abra o arquivo de novo.');
+   if(!entry.parsed){const info=await stat(entry.path);if(info.size>300*1024*1024)throw new Error('Abra um livro de até 300 MB.');entry.parsed=readBook(new Uint8Array(await readFile(entry.path)));}
+   return {...entry.parsed,token,name:basename(entry.path)};
+  },
   exportDocument:async(view,id,options:ExportOptions)=>{
    const doc=own(view,id);
    if(!['pdf','image-pdf','docx','xlsx','pptx','png','txt'].includes(options?.format))throw new Error('Formato de exportação inválido.');
@@ -388,12 +420,16 @@ function registerIpc(){
    const found=await engine.objects(ref.base,()=>store.base(ref.base),ref.src);
    const faces=await Promise.all(found.paragraphs.map(p=>faceForPostscript(p.font,fontCache()).catch(()=>undefined)));
    const paragraphs=found.paragraphs.map((p,i)=>({index:p.index,text:p.text,rect:engineRect(size,p.rect),size:p.size,font:p.font.replace(/^[A-Z]{6}\+/,''),family:faces[i]?.legacy,bold:/bold|black|heavy|semibold|demi/i.test(p.font),italic:/italic|oblique/i.test(p.font),color:'#000000'}));
-   return {generation:found.generation,images:found.images.map(image=>({index:image.index,rect:engineRect(size,image.rect)})),paragraphs:await editorBlockReader.read(store.base(ref.base),ref.src,paragraphs,size.rotation)};
+   const blocks=await editorBlockReader.read(store.base(ref.base),ref.src,paragraphs,size.rotation);
+   return {generation:found.generation,images:found.images.map(image=>({index:image.index,rect:engineRect(size,image.rect)})),paragraphs:blocks,spacing:editorBlockReader.spacing(ref.src,size.rotation)};
   },
   editParagraph:(view,id,page:string,edit:ParagraphEdit)=>{
    if(!edit||!Number.isSafeInteger(edit.paragraph)||edit.paragraph<0)throw new Error('Escolha um parágrafo válido.');
    if(edit.text!==undefined&&(typeof edit.text!=='string'||edit.text.length>50_000))throw new Error('O texto do parágrafo é inválido.');
    if(edit.width!==undefined&&!(Number.isFinite(edit.width)&&edit.width>1&&edit.width<20_000))throw new Error('Largura de parágrafo inválida.');
+   const spacing=(v:{charSpacing?:number;scale?:number})=>(v.charSpacing===undefined||(Number.isFinite(v.charSpacing)&&Math.abs(v.charSpacing)<200))&&(v.scale===undefined||(Number.isFinite(v.scale)&&v.scale>.1&&v.scale<10));
+   if(edit.trackedLines!==undefined&&(!Array.isArray(edit.trackedLines)||edit.trackedLines.length>500||edit.trackedLines.some(l=>!Number.isSafeInteger(l?.line)||l.line<0||!(Number.isFinite(l.charSpacing)&&Math.abs(l.charSpacing)<200))))throw new Error('Espaçamento de linhas inválido.');
+   if(!spacing(edit)||(edit.lineSpacing!==undefined&&!(Number.isFinite(edit.lineSpacing)&&edit.lineSpacing>=.5&&edit.lineSpacing<=5))||(Array.isArray(edit.members)&&edit.members.some(m=>!spacing(m))))throw new Error('Espaçamento de texto inválido.');
    if(edit.members!==undefined&&(!Array.isArray(edit.members)||edit.members.length<2||edit.members.length>1000||!Number.isSafeInteger(edit.generation)||new Set(edit.members.map(m=>m.paragraph)).size!==edit.members.length||edit.members.some(m=>!Number.isSafeInteger(m.paragraph)||m.paragraph<0||(m.text!==undefined&&(typeof m.text!=='string'||m.text.length>50_000))||(m.width!==undefined&&!(Number.isFinite(m.width)&&m.width>1&&m.width<20_000)))))throw new Error('Bloco de texto inválido.');
    return engineEdit(view,id,page,(base,bytes,src,rotation)=>{const offset=edit.dx!==undefined||edit.dy!==undefined?engineOffset(rotation,edit.dx??0,edit.dy??0):undefined;return engine.editParagraph(base,bytes,src,{...edit,...(offset?{dx:offset.dx,dy:-offset.dy}:{})});});
   },
@@ -626,6 +662,10 @@ function registerIpc(){
     return folder;
    }finally{action(view,'progress:');}
   },
+  getSavedColors:()=>settings.savedColors(),setSavedColors:(_view,colors)=>settings.setSavedColors(colors),getDictionaryPreferences:()=>settings.dictionary(),
+  lookupSynonyms:(_view,text,lang)=>{if(typeof text!=='string'||text.length>200||!['pt','en','es'].includes(lang))throw new Error('Selecione uma palavra ou expressão curta.');return dictionaries.synonyms(text,lang);},
+  lookupTranslation:(_view,text,from,to)=>{if(typeof text!=='string'||text.length>2000||!['pt','en','es','auto'].includes(from)||!['pt','en','es'].includes(to))throw new Error('Selecione um texto de até 2.000 caracteres.');return dictionaries.translate(text,from,to);},
+  translateWithAi:(_view,text,to)=>{if(typeof text!=='string'||!text.trim()||text.length>8000||!['pt','en','es'].includes(to))throw new Error('Selecione um texto de até 8.000 caracteres.');const name={pt:'português do Brasil',en:'inglês',es:'espanhol'}[to as 'pt'|'en'|'es'];return (async()=>requestAnswer(settings.config(),await settings.secret(),`Traduza para ${name} o trecho a seguir, mantendo o sentido e o tom. Responda somente com a tradução, sem comentários.`,text,(async(url:string,options:RequestInit)=>{let response:Response;try{response=await fetch(url,options);}catch(error){await settings.recordAiUsage(0).catch(()=>{});throw error;}await settings.recordAiUsage(response.status).catch(()=>{});return response;}) as typeof fetch))();},setDictionaryPreferences:(_view,input)=>settings.setDictionary(input),
   getSignatures:()=>settings.signatures(),saveSignature:(_view,input)=>settings.saveSignature(input),deleteSignature:(_view,id)=>settings.deleteSignature(id),
   chooseImage:async view=>{const result=await openDialog(view.window,{title:'Escolher imagem',properties:['openFile'],filters:[{name:'Imagem',extensions:['png','jpg','jpeg']}]});if(result.canceled)return null;const path=result.filePaths[0]!;if((await stat(path)).size>20*1024*1024)throw new Error('Use uma imagem de até 20 MB.');return {name:basename(path),dataUrl:`data:image/${extname(path).toLowerCase()==='.png'?'png':'jpeg'};base64,${(await readFile(path)).toString('base64')}`};},
   setTheme:async(_view,theme)=>{await settings.setTheme(theme);nativeTheme.themeSource=theme;notify();},
@@ -812,7 +852,7 @@ function quickTarget(action:'combine'|'convert'){return [...quicks.values()].fin
 function flushBatch(){const {action,paths}=batch;batch.action=undefined;batch.paths=[];batch.timer=undefined;if(!action)return;const target=quickTarget(action);if(target){addQuickFiles(target,paths);target.window.focus();}else createQuickWindow(action,paths);}
 function handleLaunch(args:string[]){
  const quick=args.includes('--quick-combine')?'combine':args.includes('--quick-convert')?'convert':undefined;
- const paths=args.slice(1).filter(arg=>!arg.startsWith('-')&&existsSync(arg)&&INPUT_EXTENSIONS.includes(extname(arg).toLowerCase())).map(arg=>resolve(arg));
+ const paths=args.slice(1).filter(arg=>!arg.startsWith('-')&&existsSync(arg)&&OPENABLE.includes(extname(arg).toLowerCase())).map(arg=>resolve(arg));
  if(quick){if(batch.action&&batch.action!==quick)flushBatch();batch.action=quick;batch.paths.push(...paths.filter(path=>!batch.paths.includes(path)));if(batch.timer)clearTimeout(batch.timer);batch.timer=setTimeout(flushBatch,700);return;}
  const view=mainView();if(paths.length)void openPaths(view,paths).catch(error=>action(view,'error:'+(error instanceof Error?error.message:String(error))));view.window.show();view.window.focus();
 }

@@ -5,6 +5,7 @@ import { pageGrid, tableOf, insideTable, type GridTable, type GridEdge } from '.
 import type { PDFPageProxy } from 'pdfjs-dist/types/src/display/api';
 import { inspectPage, loadPdf, pdfjs } from './conversion';
 import { faceForPostscript, fontFamilies } from './fonts';
+import { letterSpacing, locateGlyphs, pageGlyphs } from './text-spacing';
 import { embeddedFaces, type EmbeddedFace } from './embedded-fonts';
 import { bodyStyle, flowPage, flowSection, type FlowPage } from './docx-flow';
 
@@ -13,7 +14,7 @@ import { bodyStyle, flowPage, flowSection, type FlowPage } from './docx-flow';
  * text and placed behind the page, and every text block is rebuilt on top as real, editable Word
  * text with its own font, size, weight, colour and alignment. */
 
-export interface Run { text: string; x: number; baseline: number; width: number; size: number; font: string; bold: boolean; italic: boolean; color: string; space: boolean }
+export interface Run { text: string; x: number; baseline: number; width: number; size: number; font: string; bold: boolean; italic: boolean; color: string; space: boolean; /** Letter spacing in points. */ tracking?: number; /** Horizontal text scale (1 = none). */ scale?: number }
 export interface Line { runs: Run[]; x: number; right: number; baseline: number; size: number }
 export interface Block { lines: Line[]; x: number; right: number; size: number; align: 'left' | 'center' | 'right' | 'justify'; flow: boolean }
 
@@ -208,23 +209,6 @@ export function wordFont(raw: string): { family: string; bold: boolean; italic: 
   const family = known[base] ?? base.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/(Bold|Regular|Medium|Light|Black|Semibold|Italic)$/i, '').trim();
   return { family: family || 'Arial', bold, italic };
 }
-/** The fill colour of every shown character, in content order, from the operator list. */
-async function characterColors(page: PDFPageProxy): Promise<{ chars: string[]; colors: string[] }> {
-  const engine = await pdfjs(), OPS = engine.OPS, ops = await page.getOperatorList(), chars: string[] = [], colors: string[] = [];
-  let fill = '#000000';
-  const stack: string[] = [];
-  for (let i = 0; i < ops.fnArray.length; i++) {
-    const fn = ops.fnArray[i], args = ops.argsArray[i] as any[];
-    if (fn === OPS.save) stack.push(fill);
-    else if (fn === OPS.restore) fill = stack.pop() ?? fill;
-    else if (fn === OPS.setFillRGBColor && typeof args?.[0] === 'string') fill = args[0];
-    else if (fn === OPS.setFillGray && typeof args?.[0] === 'string') fill = args[0];
-    else if (fn === OPS.showText || fn === OPS.showSpacedText) {
-      for (const glyph of args?.[0] ?? []) if (glyph && typeof glyph === 'object' && typeof glyph.unicode === 'string') for (const c of glyph.unicode) if (c.trim()) { chars.push(c); colors.push(fill); }
-    }
-  }
-  return { chars, colors };
-}
 /** Families with the same character widths, so text keeps its line breaks where the original is absent
  * (Linux and macOS ship these instead of the Microsoft fonts). */
 const METRIC_TWINS: Record<string, string[]> = {
@@ -265,16 +249,9 @@ export class FontContext {
 export async function pageRuns(page: PDFPageProxy, fonts: FontContext = new FontContext()): Promise<Run[]> {
   const engine = await pdfjs(), viewport = page.getViewport({ scale: 1 });
   // The operator list resolves the embedded fonts, so their real names are known for the text items.
-  const palette = await characterColors(page), content = await page.getTextContent();
+  const palette = await pageGlyphs(page), content = await page.getTextContent();
   const runs: Run[] = [];
   let cursor = 0, pendingSpace = false;
-  // Index of a character sequence in the coloured stream, searched forward from the cursor first.
-  const locate = (needle: string[]) => {
-    const fits = (at: number) => needle.every((c, i) => palette.chars[at + i] === c);
-    for (let at = cursor; at <= palette.chars.length - needle.length && at < cursor + 2000; at++) if (fits(at)) return at;
-    for (let at = 0; at <= palette.chars.length - needle.length; at++) if (fits(at)) return at;
-    return -1;
-  };
   for (const item of content.items) {
     if (!('str' in item)) continue;
     // Spaces often arrive as separate items; remember them for the next word.
@@ -289,10 +266,12 @@ export async function pageRuns(page: PDFPageProxy, fonts: FontContext = new Font
     const style = face ? { family: face.legacy, bold: /bold/i.test(face.legacyStyle), italic: face.italic } : own ? { family: own.family, bold: own.bold, italic: own.italic } : wordFont(raw || content.styles[item.fontName]?.fontFamily || 'Arial');
     if (!face) style.family = await fonts.family(style.family, content.styles[item.fontName]?.fontFamily, own);
     // The item's colour is the fill colour of its own characters, matched as a whole sequence.
-    const visible = [...item.str].filter((c) => c.trim()), at = locate(visible.slice(0, 8));
+    const visible = [...item.str].filter((c) => c.trim()), at = locateGlyphs(palette, visible.slice(0, 8), cursor);
     const color = at >= 0 ? palette.colors[at]! : palette.colors[cursor] ?? '#000000';
     if (at >= 0) cursor = at + visible.length;
-    runs.push({ text: item.str, x: t[4], baseline: t[5], width: Math.max(item.width, 0.5), size, font: style.family, bold: style.bold, italic: style.italic, color, space: pendingSpace });
+    // Letter-spaced text keeps its real words and its spacing instead of PDF.js's invented spaces.
+    const scale = Math.hypot(t[0], t[1]) / size || 1, spaced = letterSpacing(palette, at, visible.length, item.str, item.width, size, scale);
+    runs.push({ text: spaced?.text ?? item.str, x: t[4], baseline: t[5], width: Math.max(item.width, 0.5), size, font: style.family, bold: style.bold, italic: style.italic, color, space: pendingSpace, ...(spaced ? { tracking: spaced.tracking } : {}), ...(Math.abs(scale - 1) > 0.02 ? { scale } : {}) });
     pendingSpace = false;
   }
   return runs;
@@ -366,6 +345,10 @@ export function buildBlocks(lines: Line[]): Block[] {
  * space (justified lines stretch every gap alike); a gap several times wider keeps that many spaces,
  * as in form blanks like "[    ]". */
 export function spacesIn(gap: number, unit: number) { return gap > unit * 2.4 ? Math.min(60, Math.round(gap / unit)) : 1; }
+/** Letter spacing (twips) and horizontal scale (percent) of a run, as Word stores them. */
+export function runSpacing(run: Run): { characterSpacing?: number; scale?: number } {
+  return { ...(run.tracking ? { characterSpacing: Math.round(run.tracking * 20) } : {}), ...(run.scale ? { scale: Math.round(run.scale * 100) } : {}) };
+}
 /** Word runs for one line. In a header or footer, `fields` turns the page number (and the page count) the
  * PDF printed into Word's own page fields, so they count right after editing. */
 export function lineRuns(line: Line, leadingSpace: boolean, fields?: { page: string; total?: string }): TextRun[] {
@@ -375,7 +358,7 @@ export function lineRuns(line: Line, leadingSpace: boolean, fields?: { page: str
   return line.runs.flatMap((run, index) => {
     const previous = line.runs[index - 1], gap = previous ? run.x - (previous.x + previous.width) : 0;
     const space = (index === 0 && leadingSpace) || (index > 0 && run.space) || (gap > Math.max(0.8, run.size * 0.15) && !/^\s/.test(run.text) && !/\s$/.test(previous?.text ?? ''));
-    const style = { font: { ascii: run.font, hAnsi: run.font, cs: run.font, eastAsia: run.font }, size: Math.max(2, Math.round(run.size * 2)), bold: run.bold, italics: run.italic, color: run.color.replace('#', '').toUpperCase() };
+    const style = { font: { ascii: run.font, hAnsi: run.font, cs: run.font, eastAsia: run.font }, size: Math.max(2, Math.round(run.size * 2)), bold: run.bold, italics: run.italic, color: run.color.replace('#', '').toUpperCase(), ...runSpacing(run) };
     const text = (space ? ' '.repeat(index > 0 ? spacesIn(gap, unit) : 1) : '') + run.text;
     if (!fields) return [new TextRun({ text, ...style })];
     return text.split(/(\d+)/).filter(Boolean).map((piece) => piece === fields.page ? new TextRun({ children: [PageNumber.CURRENT], ...style }) : piece === fields.total ? new TextRun({ children: [PageNumber.TOTAL_PAGES], ...style }) : new TextRun({ text: piece, ...style }));
@@ -631,7 +614,7 @@ export async function toPptxLayout(bytes: Uint8Array, dpi: number, warnings: str
         const top = block.lines[0]!.baseline - block.size * 0.95, width = block.right - block.x + block.size * (block.flow ? 0.6 : 1.4), height = pitch * (block.lines.length - 1) + block.size * 1.35;
         const text = block.lines.flatMap((line, index) => line.runs.map((run, r) => {
           const previous = line.runs[r - 1], gap = previous ? run.x - (previous.x + previous.width) : 0, space = (r > 0 && run.space) || (gap > run.size * 0.15 && !/^\s/.test(run.text)) || (r === 0 && index > 0 && block.flow);
-          return { text: (space ? ' ' : '') + run.text, options: { fontFace: run.font, fontSize: Math.max(1, run.size * sy), color: run.color.replace('#', '').toUpperCase(), bold: run.bold, italic: run.italic, breakLine: !block.flow && r === line.runs.length - 1 && index < block.lines.length - 1 } };
+          return { text: (space ? ' ' : '') + run.text, options: { fontFace: run.font, fontSize: Math.max(1, run.size * sy), color: run.color.replace('#', '').toUpperCase(), bold: run.bold, italic: run.italic, ...(run.tracking ? { charSpacing: run.tracking * sx } : {}), breakLine: !block.flow && r === line.runs.length - 1 && index < block.lines.length - 1 } };
         }));
         slide.addText(text, { x: inch(Math.max(0, (block.align === 'center' ? (block.x + block.right) / 2 - width / 2 : block.x) * sx)), y: inch(Math.max(0, top * sy)), w: inch(width * sx), h: inch(height * sy), align: block.align, valign: 'top', margin: 0, lineSpacing: Math.max(1, pitch * sy), fit: 'none', wrap: true });
       }

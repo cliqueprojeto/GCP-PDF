@@ -110,6 +110,8 @@ try {
   await openTitle();
   const formatRevision = (await ws()).revision;
   await editor.fill("Documento cultural 7");
+  // The Properties panel opens only by hand (0.7).
+  if(!await page.locator('.properties-panel.open').count())await page.locator('.rail-right .icon-button').click();
   await page.locator(".property-bar .property-title").click();
   await page.waitForTimeout(200);
   check(

@@ -613,7 +613,16 @@
 
 /* Propriedades: painel encaixado à direita (o PDF se ajusta ao lado, nada cobre a leitura), com botão fixo na barra direita. */
 .rail.rail-right { width: 46px; min-width: 46px; border-right: 0; border-left: 1px solid var(--border); padding-top: 14px; }
-.properties-panel { width: 286px; min-width: 286px; display: flex; flex-direction: column; min-height: 0; background: var(--surface-2); border-left: 1px solid var(--border); }
+:has(> .properties-panel) { position: relative; }
+/* Opens over the page edge (no reflow of the document) and slides in and out gently. */
+.properties-panel { position: absolute; top: 0; bottom: 0; right: 46px; z-index: 25; width: 286px; display: flex; flex-direction: column; min-height: 0; background: var(--surface-2); border-left: 1px solid var(--border); box-shadow: -10px 0 28px -18px #0006; transform: translateX(calc(100% + 46px)); opacity: 0; visibility: hidden; transition: transform .28s cubic-bezier(.2,.8,.2,1), opacity .2s ease, visibility 0s linear .28s; }
+.properties-panel.open { transform: none; opacity: 1; visibility: visible; transition: transform .28s cubic-bezier(.2,.8,.2,1), opacity .2s ease, visibility 0s; }
+.properties-empty { margin: 18px 16px; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+/* The closed panel has options for the current item: a soft glow twice, then a steady dot. */
+.rail-right .icon-button.properties-signal { position: relative; color: var(--purple); animation: properties-glow 1.6s ease-out 2; }
+.rail-right .icon-button.properties-signal::after { content: ""; position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--purple); box-shadow: 0 0 0 2px var(--surface-2, #fff); }
+@keyframes properties-glow { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--purple) 45%, transparent); } 100% { box-shadow: 0 0 0 9px transparent; } }
+@media (prefers-reduced-motion: reduce) { .properties-panel, .properties-panel.open { transition: none; } .rail-right .icon-button.properties-signal { animation: none; } }
 .properties-panel .property-bar { flex-wrap: wrap; align-content: flex-start; gap: 10px 6px; padding: 14px 16px; min-height: 0; overflow: auto; white-space: normal; background: none; border: 0; flex: 1; }
 .properties-panel .property-title { flex-basis: 100%; margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--border); }
 .properties-panel .property-title:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
@@ -658,3 +667,102 @@
 .document-tabs-row .document-tabs { overflow-y: hidden; overflow-x: auto; }
 .document-tabs-row .document-tabs::-webkit-scrollbar { height: 4px; }
 .document-tabs-row .document-tabs::-webkit-scrollbar-thumb { border-width: 0; min-width: 32px; }
+
+/* Minhas cores: saved custom colours beside every picker. */
+.saved-colors { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; padding-left: 6px; margin-left: 2px; border-left: 1px solid var(--border); }
+.saved-color { position: relative; display: inline-flex; }
+.saved-color .saved-color-remove { position: absolute; top: -6px; right: -6px; width: 14px; height: 14px; padding: 0; border-radius: 50%; border: 1px solid var(--border); background: var(--panel, #fff); color: var(--muted); display: none; align-items: center; justify-content: center; cursor: pointer; }
+.saved-color:hover .saved-color-remove, .saved-color:focus-within .saved-color-remove { display: inline-flex; }
+.saved-color .saved-color-remove:hover { color: #dc2626; border-color: #dc2626; }
+.swatch.save-color { display: inline-flex; align-items: center; justify-content: center; background: var(--field, #f4f4f7); color: var(--purple); cursor: pointer; border-style: dashed; }
+.swatch.save-color:disabled { color: var(--muted); opacity: .45; cursor: default; }
+.spacing-field .spacing-glyph { font: 700 10px/1 system-ui; letter-spacing: 1px; }
+.spacing-field input { width: 52px; }
+.stamp-effect { display: flex; align-items: flex-end; gap: 6px; }
+.stamp-effect .field { flex: 1; }
+
+/* Revisar > Sinônimos / Tradução */
+.lookup { display: flex; flex-direction: column; gap: 12px; min-width: min(520px, 80vw); }
+.lookup-modes { display: inline-flex; gap: 4px; align-self: flex-start; padding: 3px; border-radius: 9px; background: var(--field, #f4f4f7); }
+.lookup-modes button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 0; border-radius: 7px; background: none; color: var(--muted); cursor: pointer; font-weight: 600; }
+.lookup-modes button.active { background: var(--surface, #fff); color: var(--purple); box-shadow: 0 1px 3px #0002; }
+.lookup-query { display: flex; gap: 8px; }
+.lookup-query input { flex: 1; }
+.lookup-langs { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.lookup-langs .field.inline { display: inline-flex; flex-direction: column; gap: 3px; font-size: 11.5px; }
+.lookup-results { max-height: 46vh; overflow: auto; display: flex; flex-direction: column; gap: 12px; padding-right: 4px; }
+.lookup-group { display: flex; flex-direction: column; gap: 6px; }
+.lookup-label { font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: none; }
+.lookup-words { display: flex; flex-wrap: wrap; gap: 6px; }
+.lookup .chip { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface, #fff); color: inherit; cursor: pointer; font-size: 12.5px; }
+.lookup .chip:hover { border-color: var(--purple); color: var(--purple); }
+.lookup-note { margin: 0; color: var(--muted); font-size: 12.5px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.lookup-missing { color: var(--muted); font-size: 12px; font-style: italic; }
+.lookup-ai { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; border-top: 1px solid var(--border); padding-top: 10px; }
+.lookup-ai-answer { padding: 10px 12px; border-radius: 8px; background: var(--field, #f4f4f7); width: 100%; }
+.lookup-ai-answer p { margin: 0 0 6px; white-space: pre-wrap; }
+.context-menu kbd { margin-left: auto; padding-left: 16px; font: 11px system-ui; color: var(--muted); }
+
+/* Converter > EPUB */
+.epub-dialog { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) 200px; gap: 16px; max-height: 62vh; }
+.modal:has(.epub-dialog) { width: min(1040px, 94vw); max-width: none; }
+.epub-dialog > section { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: auto; padding-right: 4px; }
+.epub-dialog h3 { margin: 0 0 2px; font-size: 13px; }
+.epub-chapter-list { display: flex; flex-direction: column; gap: 4px; overflow: auto; min-height: 120px; }
+.epub-chapter { display: flex; align-items: center; gap: 4px; }
+.epub-chapter.level-2 { padding-left: 18px; }
+.epub-chapter > input { flex: 1; min-width: 0; padding: 5px 7px; font-size: 12px; }
+.epub-page { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--muted); }
+.epub-page input { width: 54px; padding: 4px 5px; font-size: 12px; }
+.epub-cover-stage { display: flex; justify-content: center; }
+.epub-cover-preview { width: 130px; height: 208px; object-fit: cover; border-radius: 4px; box-shadow: 0 6px 18px #0003; background: var(--field); }
+.epub-cover-preview.empty { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; }
+.epub-designs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+.epub-cover .lookup-modes { flex-wrap: wrap; }
+.epub-designs button { padding: 0; border: 2px solid transparent; border-radius: 4px; background: none; cursor: pointer; }
+.epub-designs button.selected { border-color: var(--purple); }
+.epub-designs img { width: 100%; display: block; border-radius: 2px; }
+@media (max-width: 1000px) { .epub-dialog { grid-template-columns: 1fr; max-height: 70vh; } }
+
+/* Exibição > Livro (EPUB) */
+.book-reader { position: fixed; inset: 0; z-index: 900; display: flex; flex-direction: column; background: var(--book-bg); color: var(--book-ink); }
+.book-bar { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid color-mix(in srgb, var(--book-ink) 12%, transparent); }
+.book-bar .icon-button { color: inherit; }
+.book-bar .icon-button.active, .book-bar .icon-button[aria-pressed="true"] { background: color-mix(in srgb, var(--book-ink) 12%, transparent); }
+.book-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 13px; white-space: nowrap; overflow: hidden; }
+.book-title strong { overflow: hidden; text-overflow: ellipsis; }
+.book-title span { opacity: .65; overflow: hidden; text-overflow: ellipsis; }
+.book-body { flex: 1; min-height: 0; display: flex; position: relative; }
+.book-stage { flex: 1; min-width: 0; position: relative; perspective: 1800px; }
+.book-stage iframe { width: 100%; height: 100%; border: 0; display: block; background: var(--book-bg); transform-origin: left center; }
+.book-loading { margin: 30vh auto 0; text-align: center; display: flex; gap: 8px; justify-content: center; align-items: center; }
+.book-turn { width: 44px; border: 0; background: none; color: inherit; opacity: .35; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.book-turn:hover:not(:disabled) { opacity: .85; }
+.book-turn:disabled { opacity: .08; cursor: default; }
+.book-stage.effect-desvanecer iframe { transition: opacity .16s ease; }
+.book-stage.effect-desvanecer.out-next iframe, .book-stage.effect-desvanecer.out-prev iframe { opacity: 0; }
+.book-stage.effect-virar iframe { transition: transform .26s cubic-bezier(.4,.1,.3,1), filter .26s; }
+.book-stage.effect-virar.out-next iframe { transform: rotateY(-88deg); transform-origin: left center; filter: brightness(.82); }
+.book-stage.effect-virar.out-prev iframe { transform: rotateY(88deg); transform-origin: right center; filter: brightness(.82); }
+.book-stage.effect-virar.in-next iframe { animation: book-in-next .26s cubic-bezier(.2,.7,.3,1); }
+.book-stage.effect-virar.in-prev iframe { animation: book-in-prev .26s cubic-bezier(.2,.7,.3,1); }
+@keyframes book-in-next { from { transform: rotateY(88deg); transform-origin: right center; filter: brightness(.82); } to { transform: none; } }
+@keyframes book-in-prev { from { transform: rotateY(-88deg); transform-origin: left center; filter: brightness(.82); } to { transform: none; } }
+.book-panel { position: absolute; top: 0; bottom: 0; z-index: 2; width: 300px; overflow: auto; padding: 14px 16px; background: var(--book-bg); border-right: 1px solid color-mix(in srgb, var(--book-ink) 14%, transparent); box-shadow: 8px 0 24px -16px #0007; display: flex; flex-direction: column; gap: 10px; }
+.book-panel.book-type { right: 0; border-right: 0; border-left: 1px solid color-mix(in srgb, var(--book-ink) 14%, transparent); }
+.book-panel h3 { margin: 0; font-size: 14px; }
+.book-panel .field { color: inherit; }
+.book-toc button { text-align: left; border: 0; background: none; color: inherit; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.book-toc button.level-2 { padding-left: 22px; font-size: 12.5px; opacity: .85; }
+.book-toc button.level-3 { padding-left: 34px; font-size: 12px; opacity: .75; }
+.book-toc button:hover, .book-toc button.current { background: color-mix(in srgb, var(--book-ink) 10%, transparent); }
+.book-themes { display: flex; gap: 6px; margin-top: 4px; }
+.book-themes button { flex: 1; padding: 7px 4px; border-radius: 6px; border: 1px solid #8884; cursor: pointer; font-size: 12px; }
+.book-themes button.selected { outline: 2px solid var(--purple); outline-offset: 1px; }
+.book-note { position: absolute; left: 50%; bottom: 7%; transform: translateX(-50%); width: min(560px, 86%); max-height: 40%; overflow: auto; padding: 14px 40px 14px 16px; border-radius: 10px; background: var(--book-bg); color: var(--book-ink); border: 1px solid color-mix(in srgb, var(--book-ink) 20%, transparent); box-shadow: 0 12px 36px #0005; font-size: 14px; line-height: 1.5; }
+.book-note .icon-button { position: absolute; top: 6px; right: 6px; color: inherit; }
+.book-note p { margin: 0; }
+.book-progress { display: flex; align-items: center; gap: 12px; padding: 6px 16px 10px; font-size: 12px; opacity: .8; }
+.book-progress input { flex: 1; }
+.book-chapter { max-width: 34%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .book-stage iframe { transition: none !important; animation: none !important; } }

@@ -15,6 +15,17 @@ const MAX_OPEN = 4;
 
 /** One long-lived `pdfcraft-cli mcp` process. Source PDFs stay open between calls, so listing a
  * page or editing a paragraph costs milliseconds instead of a process start per action. */
+/** UTF-8 byte ranges of the given lines of `text`, as the engine's `ranges` expect, with their spacing. */
+export function lineRanges(text: string, lines: {line: number; charSpacing: number}[]) {
+ const rows = text.split('\n'), out: {range: [number, number]; char_spacing: number}[] = [];
+ let offset = 0;
+ rows.forEach((row, i) => {
+  const size = Buffer.byteLength(row, 'utf8'), wanted = lines.find(l => l.line === i);
+  if (wanted && size) out.push({range: [offset, offset + size], char_spacing: wanted.charSpacing});
+  offset += size + 1;
+ });
+ return out;
+}
 export class PdfCraftSession {
  private child?: ChildProcessWithoutNullStreams;
  private root?: string;
@@ -132,8 +143,12 @@ export class PdfCraftSession {
       if(!source||!expected||(source.editor_text??source.text)!==(expected.editor_text??expected.text)||JSON.stringify(source.rect)!==JSON.stringify(expected.rect))throw new Error('O bloco mudou. Selecione o texto novamente.');
       const args:Record<string,unknown>={doc,page:page+1,paragraph:member.paragraph+1};
       for(const key of ['size','bold','italic','underline','color','align','font','dx','dy'] as const)if(edit[key]!==undefined)args[key]=edit[key];
+      if(edit.lineSpacing!==undefined)args.line_spacing=edit.lineSpacing;
+      if(edit.charSpacing!==undefined)args.char_spacing=edit.charSpacing;
       if(member.text!==undefined)args.text=member.text;
       if(member.width!==undefined)args.width=member.width;
+      // Untouched members stay byte-identical: spacing only travels with a rewrite.
+      if(member.text!==undefined||member.width!==undefined){if(member.charSpacing!==undefined)args.char_spacing=member.charSpacing;if(member.scale!==undefined)args.scale=member.scale*100;}
       return args;
      });
      for(const args of planned)if(args.text!==undefined||args.width!==undefined||args.size!==undefined){
@@ -154,6 +169,11 @@ export class PdfCraftSession {
    }
    const args: Record<string, unknown> = {doc: entry.doc, page: page + 1, paragraph: edit.paragraph + 1};
    for (const key of ['text', 'size', 'bold', 'italic', 'underline', 'color', 'align', 'font', 'dx', 'dy', 'width'] as const) if (edit[key] !== undefined) args[key] = edit[key];
+   // The engine rewrites tracked or scaled text with neither unless told: keep what the page printed.
+   if (edit.charSpacing !== undefined) args.char_spacing = edit.charSpacing;
+   if (edit.scale !== undefined) args.scale = edit.scale * 100;
+   if (edit.lineSpacing !== undefined) args.line_spacing = edit.lineSpacing;
+   if (edit.trackedLines?.length && typeof edit.text === 'string') args.ranges = lineRanges(edit.text, edit.trackedLines);
    // Measure with the engine's font metrics before mutation. Refuse accidental reflow into
    // neighbouring content instead of committing a taller paragraph and losing the user's layout.
    if (edit.text !== undefined && edit.font === undefined) {

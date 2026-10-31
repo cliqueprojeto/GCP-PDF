@@ -31,6 +31,7 @@ interface Props {
   openNote?: string | null;
   onOpenNote?: (id: string | null) => void;
   onSourceImageEdit?: (page: string, image: number, rect: Rect) => void;
+  onPageMenu?: (menu: import("./PageView").PageMenu) => void;
   onCurrentPage: (index: number) => void;
   onZoom: (factor: number) => void;
   onError: (error: unknown) => void;
@@ -131,6 +132,7 @@ export const Viewer = forwardRef<ViewerHandle, Props>(function Viewer(props, han
               openNote={props.openNote}
               onOpenNote={props.onOpenNote}
               onSourceImageEdit={props.onSourceImageEdit}
+              onPageMenu={props.onPageMenu}
               onError={props.onError}
             />
           );

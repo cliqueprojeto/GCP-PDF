@@ -3,6 +3,7 @@ import {loadPdf} from './conversion';
 import {vectorShapes} from './word-layout';
 import {strokes, frames, frameTable} from './table-geometry';
 import {toPage} from '../shared/geometry';
+import {trackedItems} from './text-spacing';
 
 const right = (r:Rect) => r.x+r.width;
 const bottom = (r:Rect) => r.y+r.height;
@@ -14,12 +15,12 @@ export class EditorBlockReader {
  private source?:Uint8Array;
  private pdf?:Awaited<ReturnType<typeof loadPdf>>;
  private queue:Promise<unknown>=Promise.resolve();
- private pages=new Map<string,{cells:Rect[];segments:ReturnType<typeof strokes>['segments']}>();
+ private pages=new Map<string,{cells:Rect[];segments:ReturnType<typeof strokes>['segments'];spacing:Awaited<ReturnType<typeof trackedItems>>}>();
  read(bytes:Uint8Array,pageNumber:number,paragraphs:SourceParagraph[],rotation:number):Promise<SourceParagraph[]> {
   const task=this.queue.then(async()=>{
     if(this.source!==bytes){await this.release();this.pdf=await loadPdf(bytes);this.source=bytes;}
     const key=`${pageNumber}:${rotation}`,known=this.pages.get(key);
-    if(known)return groupEditorParagraphs(paragraphs,known.cells,known.segments);
+    if(known)return groupEditorParagraphs(withSpacing(paragraphs,known.spacing),known.cells,known.segments);
     const page=await this.pdf!.getPage(pageNumber+1);
     const {shapes}=await vectorShapes(page);
     const parsed=strokes(shapes),{shades}=parsed;
@@ -37,15 +38,34 @@ export class EditorBlockReader {
       for(let i=0;i<cells.length;i++){const c=cells[i]!,a=point(c.x,c.y),b=point(right(c),bottom(c));cells[i]={x:Math.min(a.x,b.x),y:Math.min(a.y,b.y),width:Math.abs(b.x-a.x),height:Math.abs(b.y-a.y)};}
       segments=segments.map(s=>{const a=s.horizontal?point(s.from,s.at):point(s.at,s.from),b=s.horizontal?point(s.to,s.at):point(s.at,s.to),horizontal=Math.abs(a.y-b.y)<.01;return {...s,horizontal,at:horizontal?a.y:a.x,from:horizontal?Math.min(a.x,b.x):Math.min(a.y,b.y),to:horizontal?Math.max(a.x,b.x):Math.max(a.y,b.y)};});
     }
+    const spacing=await trackedItems(page);
     page.cleanup();
-    this.pages.set(key,{cells,segments});
+    this.pages.set(key,{cells,segments,spacing});
     if(this.pages.size>32)this.pages.delete(this.pages.keys().next().value!);
-    return groupEditorParagraphs(paragraphs,cells,segments);
+    return groupEditorParagraphs(withSpacing(paragraphs,spacing),cells,segments);
   });
   this.queue=task.catch(()=>{});return task;
  }
+ /** Letter-spaced runs of the page last read for `read` (same source and rotation). */
+ spacing(pageNumber:number,rotation:number){return (this.pages.get(`${pageNumber}:${rotation}`)?.spacing??[]).filter(i=>i.tracking).map(({x,baseline,width,tracking,text})=>({x,baseline,width,tracking:Math.round(tracking*100)/100,text}));}
  private async release(){if(this.pdf)await this.pdf.loadingTask.destroy();this.pdf=undefined;this.source=undefined;this.pages.clear();}
  dispose(){const task=this.queue.then(()=>this.release());this.queue=task.catch(()=>{});return task;}
+}
+
+/** Letter spacing and horizontal scale the engine does not report: most of a paragraph's printed
+ * characters must share them, so a single tracked word does not respace the whole paragraph. */
+export function withSpacing(paragraphs:SourceParagraph[],items:{x:number;baseline:number;width:number;size:number;tracking:number;scale:number;text?:string}[]):SourceParagraph[] {
+  return paragraphs.map(p=>{
+    const inside=items.filter(i=>i.x>=p.rect.x-1&&i.x+i.width<=right(p.rect)+Math.max(2,i.size*.3)&&i.baseline>=p.rect.y&&i.baseline<=bottom(p.rect)+i.size*.3);
+    const total=inside.reduce((n,i)=>n+i.width,0);if(!total)return p;
+    const share=(pick:(i:typeof inside[number])=>boolean)=>inside.filter(pick).reduce((n,i)=>n+i.width,0)/total;
+    const median=(values:number[])=>values.sort((a,b)=>a-b)[Math.floor(values.length/2)]!;
+    const tracked=share(i=>i.tracking!==0)>.6?median(inside.filter(i=>i.tracking!==0).map(i=>i.tracking)):0;
+    const scale=share(i=>Math.abs(i.scale-1)>.02)>.6?median(inside.map(i=>i.scale)):1;
+    const baselines=[...new Set(inside.map(i=>Math.round(i.baseline*2)/2))].sort((a,b)=>a-b).filter((b,i,all)=>i===0||b-all[i-1]!>p.size*.5);
+    const lineSpacing=baselines.length>1?(baselines.at(-1)!-baselines[0]!)/(baselines.length-1)/p.size:undefined;
+    return {...p,...(tracked?{tracking:Math.round(tracked*100)/100}:{}),...(scale!==1?{scale:Math.round(scale*1000)/1000}:{}),...(lineSpacing?{lineSpacing:Math.round(lineSpacing*100)/100}:{})};
+  });
 }
 
 export function groupEditorParagraphs(paragraphs:SourceParagraph[],cells:Rect[],walls:{horizontal:boolean;at:number;from:number;to:number}[]=[]):SourceParagraph[] {

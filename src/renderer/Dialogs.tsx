@@ -22,7 +22,7 @@ import {
   FolderCog,
   ScanText,
 } from "lucide-react";
-import {LanguageOptions} from "./LanguageOptions";
+import {LanguageOptions, DictionaryOptions} from "./LanguageOptions";
 import QRCode from "qrcode";
 import {
   HOME_ACTIONS,
@@ -520,6 +520,7 @@ export function SettingsDialog({
       ) : tab === "general" ? (
         <>
           <LanguageOptions />
+          <DictionaryOptions />
             <UpdateSettings onFound={(info) => { onUpdateFound?.(info); }} />
           <section className="form-section">
             <h3>{translateUi("Aparência")}</h3>

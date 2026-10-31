@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { Eye, EyeOff, LoaderCircle, Lock, ShieldCheck, BadgeCheck, ExternalLink, FileSignature, AlertTriangle, CheckCircle2, XCircle, HelpCircle } from "lucide-react";
 import type { Certificate, FieldProps, ProtectOptions, Rect, Signature } from "../shared/types";
 import { Modal } from "./Dialogs";
+import { SavedColors } from "./ColorLibrary";
 
 const ITI = "https://validar.iti.gov.br/";
 function Password({ label, value, onChange, disabled }: { label: string; value: string; onChange: (v: string) => void; disabled?: boolean }) {
@@ -146,6 +147,7 @@ function ColorPick({ label, value, onChange }: { label: string; value: string; o
       <div className="swatches">
         {SWATCHES.map((c) => <button key={c} title={c === "none" ? translateUi("Sem cor") : c} className={`swatch ${value === c ? "selected" : ""} ${c === "none" ? "none" : ""}`} style={c === "none" ? undefined : { background: c }} onClick={() => onChange(c)} />)}
         <input type="color" value={value === "none" ? "#ffffff" : value} onChange={(e) => onChange(e.target.value)} title={translateUi("Outra cor")} />
+        <SavedColors value={value} onPick={onChange} />
       </div>
     </div>
   );

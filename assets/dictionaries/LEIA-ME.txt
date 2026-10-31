@@ -1,0 +1,12 @@
+Dicionários do GCP-PDF (uso local, sem internet)
+
+Sinônimos (formato MyThes, documentado em https://github.com/LibreOffice/dictionaries):
+- Português (Brasil): th_pt_BR — Projeto VERO / Raimundo Moura e comunidade LibreOffice Brasil. LGPLv3 e MPL.
+- Espanhol: th_es_v2 — OpenThesaurus Tesauro Español, Marcelo Garrone. LGPL 2.1.
+- Inglês (EUA): th_en_US_v2 — baseado no WordNet 2.x, Princeton University. Licença WordNet (permissiva).
+Convertidos para UTF-8, sem outras alterações de conteúdo.
+
+Tradução (WikDict, https://www.wikdict.com, dados do Wiktionary):
+- pares pt-en, pt-es, en-pt, en-es, es-pt, es-en (tabela simple_translation).
+Licença: Creative Commons Atribuição-CompartilhaIgual 3.0 (CC BY-SA 3.0). Autores: colaboradores do Wiktionary.
+Formato: uma entrada por linha, "palavra<TAB>tradução1|tradução2|…", em ordem de relevância.

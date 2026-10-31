@@ -32,6 +32,8 @@ try{
  // Font change from the formatting bar while editing keeps the editor and applies text + font together.
  await page.waitForTimeout(1500);const box2=sheet.locator('.source-box.text').nth(1);await box2.click();await page.waitForTimeout(400);
  await page.keyboard.type(' teste');const rev2=(await ws()).revision;
+ // The Properties panel opens only by hand (0.7).
+ if(!await page.locator('.properties-panel.open').count())await page.locator('.rail-right .icon-button').click();
  await page.locator('.property-bar select').first().selectOption('times');
  for(let i=0;i<60&&(await ws()).revision<=rev2;i++)await page.waitForTimeout(500);
  const bar=await page.locator('.property-bar').textContent().catch(()=>'');

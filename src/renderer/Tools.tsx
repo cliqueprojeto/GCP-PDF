@@ -9,6 +9,7 @@ import { PageThumb } from "./Viewer";
 import { Modal } from "./Dialogs";
 import { loadPage } from "./pdf";
 import { uid } from "./editor";
+import { SavedColors } from "./ColorLibrary";
 
 export interface OrganizeActions {
   rotate(degrees: number, pages: number[]): void;
@@ -164,7 +165,7 @@ export function NumberingDialog({ doc, selection, onClose, onApply }: { doc: Doc
             <label className="field">{translateUi("Começar em")}<input type="number" min={0} value={start} onChange={(e) => setStart(Math.max(0, Number(e.target.value) || 0))} /></label>
             <label className="field">{translateUi("Tamanho (pt)")}<input type="number" min={6} max={48} value={size} onChange={(e) => setSize(Math.max(6, Math.min(48, Number(e.target.value) || 10)))} /></label>
             <label className="field">{translateUi("Margem (pt)")}<input type="number" min={6} max={120} value={margin} onChange={(e) => setMargin(Math.max(6, Math.min(120, Number(e.target.value) || 28)))} /></label>
-            <label className="field">{translateUi("Cor")}<input type="color" value={color} onChange={(e) => setColor(e.target.value)} /></label>
+            <label className="field">{translateUi("Cor")}<input type="color" value={color} onChange={(e) => setColor(e.target.value)} /><SavedColors value={color} onPick={setColor} /></label>
           </div>
           <div className="field-row">
             <label className="radio-inline"><input type="radio" checked={scope === "all"} onChange={() => setScope("all")} />{" "}{translateUi("Todas as páginas")}</label>

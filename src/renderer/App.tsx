@@ -5,7 +5,7 @@ import {
   FileText, FolderOpen, Plus, X, Settings, Sun, Moon, ChevronLeft, ChevronRight, RotateCw, RotateCcw, Trash2, PanelLeftClose,
   Search, Check, Sparkles, Send, Heart, Layers3, Files, LoaderCircle, GripVertical, MoveUpRight, Signature as SignatureIcon,
   MessageSquare, ShieldCheck, SplitSquareHorizontal, PenLine, ArrowUpRight, Copy, Maximize2, Minimize2, FilePlus2, HelpCircle, ZoomIn, ZoomOut, Scissors, ClipboardPaste, FileOutput, Replace,
-  ArrowDownRight, Lightbulb, Bookmark as BookmarkIcon, Pin, ChevronsUp, ChevronsDown, EyeOff, SlidersHorizontal, PanelRightClose } from "lucide-react";
+  CopyPlus, BookA, Languages, ArrowDownRight, Lightbulb, Bookmark as BookmarkIcon, Pin, ChevronsUp, ChevronsDown, EyeOff, SlidersHorizontal, PanelRightClose } from "lucide-react";
 import type { AppPrompt, PageObject, PdfOperation, Signature, WorkspaceState, ExportFormat, ExportOptions } from "../shared/types";
 import { ExportDialog, Modal, PromptDialog, SettingsDialog, SignatureDialog, SupportDialog, SITE } from "./Dialogs";
 import { Viewer, PageThumb, type ViewerHandle } from "./Viewer";
@@ -13,6 +13,9 @@ import { OrganizeView, NumberingDialog, CompressDialog, type OrganizeActions } f
 import { ProtectDialog, CertificateDialog, FieldOptionsDialog, FieldPropsDialog, SignaturesDialog , type PlacedSignature } from "./Security";
 import { CommandPalette, HelpDialog, type Command } from "./Palette";
 import { StampDialog } from "./Stamps";
+import { LookupDialog } from "./Lookup";
+import { EpubDialog } from "./Epub";
+import { BookReader } from "./BookReader";
 import { ImageEditor } from "./ImageEditor";
 import { PrintDialog } from "./Print";
 import { BookmarksPanel } from "./Bookmarks";
@@ -25,7 +28,9 @@ import { AiUsagePanel } from "./AiUsage";
 import { Markdown } from "./Markdown";
 import { DEFAULT_STYLE, uid, type Style, type Tool } from "./editor";
 import { loadAsset, loadPage, pageGeometry, releaseBases } from "./pdf";
-import { commitPendingParagraph, pendingParagraphEdit, type SourceSelection } from "./PageView";
+import { commitPendingParagraph, pendingParagraphEdit, paragraphSpacing, type PageMenu, type SourceSelection } from "./PageView";
+import { cloneObjects, copyable } from "../shared/object-clipboard";
+import { objectBounds, translateObject } from "../shared/geometry";
 import { Home, useRecentFiles } from "./Home";
 
 type Panel = "comments" | "pages" | "bookmarks" | "search" | "signatures" | "ai";
@@ -94,6 +99,11 @@ function restyled(o: PageObject, s: Partial<Style>): PageObject {
     default: return o;
   }
 }
+/** Objects copied with Ctrl+C / Recortar. Kept per window so they paste into any open tab; the system
+ * clipboard only carries a marker, so text and images copied elsewhere afterwards still win. */
+const OBJECT_MIME = "application/x-gcp-pdf-objects";
+let objectClipboard: { token: string; objects: PageObject[]; pastes: number } | null = null;
+
 export default function App() {
   const [workspace, setWorkspace] = useState<WorkspaceState>(initial), [ready, setReady] = useState(false);
   const [home, setHome] = useState(false);
@@ -112,7 +122,7 @@ export default function App() {
   const [resizing, setResizing] = useState(false);
   const [tool, setToolState] = useState<Tool>({ kind: "select" }), [style, setStyle] = useState<Style>(() => ({ ...DEFAULT_STYLE, ...stored("gcp.style", {}) }));
   const [tab, setTab] = useState<Tab>("Início"), [labels, setLabels] = useState<"below" | "side" | "hidden">(() => stored("gcp.labels", "below"));
-  const [modal, setModal] = useState<"export" | "settings" | "support" | "signature" | "combine" | "numbering" | "compress" | "split" | "protect" | "certificate" | "signatures-check" | "field-options" | "palette" | "help" | "stamps" | "compare" | "stats" | "properties" | "print" | null>(null), [signArea, setSignArea] = useState<{ page: string; rect: import("../shared/types").Rect } | null>(null), [pendingField, setPendingField] = useState<{ page: string; rect: import("../shared/types").Rect; type: "combo" | "list" } | null>(null), [splitEvery, setSplitEvery] = useState(1), [splitMode, setSplitMode] = useState<"pages" | "size">("pages"), [splitMb, setSplitMb] = useState(5), [exportFormat, setExportFormat] = useState<ExportFormat | undefined>();
+  const [modal, setModal] = useState<"export" | "epub" | "settings" | "support" | "signature" | "combine" | "numbering" | "compress" | "split" | "protect" | "certificate" | "signatures-check" | "field-options" | "palette" | "help" | "stamps" | "compare" | "stats" | "properties" | "print" | null>(null), [signArea, setSignArea] = useState<{ page: string; rect: import("../shared/types").Rect } | null>(null), [pendingField, setPendingField] = useState<{ page: string; rect: import("../shared/types").Rect; type: "combo" | "list" } | null>(null), [splitEvery, setSplitEvery] = useState(1), [splitMode, setSplitMode] = useState<"pages" | "size">("pages"), [splitMb, setSplitMb] = useState(5), [exportFormat, setExportFormat] = useState<ExportFormat | undefined>();
   const [busy, setBusy] = useState(""), [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
   const [signatures, setSignatures] = useState<Signature[]>([]), [fonts, setFonts] = useState<string[]>([]);
   const [query, setQuery] = useState(""), [activeSearch, setActiveSearch] = useState(""), [matches, setMatches] = useState<{ page: number; count: number }[]>([]), [hit, setHit] = useState(0), [searching, setSearching] = useState(false);
@@ -234,9 +244,11 @@ export default function App() {
   const propertiesResource = propertiesContext({ tool, selection: selectionObjects, source: sourceSelection });
   const propertiesKey = active && propertiesResource ? JSON.stringify([active.id, tab, propertiesResource]) : null;
   const propertiesAvailable = !showHome && !!active && !reading && !modal && !imageEdit && !fieldProps && tab !== "Organizar" && propertiesKey !== null;
-  const [closedPropertiesKey, setClosedPropertiesKey] = useState<string | null>(null);
-  const propertiesClosed = propertiesKey !== null && closedPropertiesKey === propertiesKey;
-  useEffect(() => { setClosedPropertiesKey(null); }, [propertiesKey]);
+  // The panel opens and closes only by the user's hand; when options exist and it is closed, the
+  // button signals them instead of the panel pushing the page aside.
+  const [propertiesOpen, setPropertiesOpenState] = useState<boolean>(() => stored("gcp.properties-open", false));
+  const setPropertiesOpen = (open: boolean) => { setPropertiesOpenState(open); store("gcp.properties-open", open); };
+  const propertiesVisible = !showHome && !!active && !reading && tab !== "Organizar";
   // A tab dragged from this window below the tab row opens in its own window.
   const draggingTab = useRef<string | null>(null), [tabDetachHint, setTabDetachHint] = useState(false);
   useEffect(() => {
@@ -256,6 +268,47 @@ export default function App() {
     });
   }
   function deleteObjects(ids = [...selectedObjects]) { if (!ids.length) return; setSelectedObjects(new Set()); void operation({ type: "delete-objects", ids }); }
+  const [bookToken, setBookToken] = useState<string | null>(null);
+  const [pageContext, setPageContext] = useState<PageMenu | null>(null), [lookup, setLookup] = useState<{ text: string; mode: "synonyms" | "translate" } | null>(null);
+  function pageSize(pageId: string) {
+    const ref = active?.pages.find((p) => p.id === pageId), geo = ref ? pageGeometry(ref) : undefined;
+    if (!ref || !geo) return undefined;
+    return ((geo.rotation + ref.rotate) % 180) ? { width: geo.height, height: geo.width } : { width: geo.width, height: geo.height };
+  }
+  /** Ctrl+C / Ctrl+X / Recortar: shapes, drawings, text boxes, images and stamps go to the object clipboard. */
+  function copyObjects(cut: boolean) {
+    const objects = selectionObjects.filter(copyable);
+    if (!objects.length) return false;
+    const token = uid();
+    objectClipboard = { token, objects: structuredClone(objects), pastes: 0 };
+    const mark = (event: ClipboardEvent) => { event.clipboardData?.setData(OBJECT_MIME, token); event.clipboardData?.setData("text/plain", ""); event.preventDefault(); };
+    document.addEventListener("copy", mark, { once: true });
+    if (!document.execCommand("copy")) document.removeEventListener("copy", mark);
+    if (cut) deleteObjects(objects.map((o) => o.id));
+    notify(`${objects.length} ${objects.length > 1 ? "objetos copiados" : "objeto copiado"}${cut ? " (recortado)" : ""}. Ctrl+V cola.`);
+    return true;
+  }
+  /** Pastes the object clipboard on `pageId` (the page being read by default), each paste a little lower. */
+  function pasteObjects(pageId = active?.pages[page]?.id, at?: { x: number; y: number }) {
+    if (!active || !objectClipboard || !pageId) return false;
+    const clip = objectClipboard, samePage = clip.objects.every((o) => o.page === pageId);
+    let copies = cloneObjects(clip.objects, pageId, at ? 0 : samePage ? 14 * ++clip.pastes : 0, uid, pageSize(pageId));
+    if (at && copies.length) { const left = Math.min(...copies.map((o) => objectBounds(o).x)), top = Math.min(...copies.map((o) => objectBounds(o).y)); copies = copies.map((o) => translateObject(o, at.x - left, at.y - top)); }
+    if (!copies.length) return false;
+    void perform(async () => { await window.gcp.applyOperation(active.id, { type: "add-objects", objects: copies } as PdfOperation, active.revision); setToolState({ kind: "select" }); setSelectedObjects(new Set(copies.map((o) => o.id))); });
+    return true;
+  }
+  /** Ctrl+D / Duplicar: copies of the selection beside the originals, without touching the clipboard. */
+  function duplicateObjects() {
+    if (!active) return false;
+    const objects = selectionObjects.filter(copyable);
+    if (!objects.length) return false;
+    const byPage = new Map<string, PageObject[]>();
+    for (const o of objects) byPage.set(o.page, [...(byPage.get(o.page) ?? []), o]);
+    const copies = [...byPage].flatMap(([pageId, list]) => cloneObjects(list, pageId, 14, uid, pageSize(pageId)));
+    void perform(async () => { await window.gcp.applyOperation(active.id, { type: "add-objects", objects: copies } as PdfOperation, active.revision); setSelectedObjects(new Set(copies.map((o) => o.id))); });
+    return true;
+  }
   function showPanel(next: Panel) { if (active) setHome(false); setPanel(next); setSideOpen(true); }
   async function exportDocument(options: ExportOptions) {
     if (!active) return;
@@ -303,13 +356,14 @@ export default function App() {
     }
     return false;
   }
-  const pasteRef = useRef(pasteClipboard);
-  pasteRef.current = pasteClipboard;
+  const pasteRef = useRef(pasteClipboard), pasteObjectsRef = useRef(() => pasteObjects());
+  pasteRef.current = pasteClipboard; pasteObjectsRef.current = () => pasteObjects();
   useEffect(() => {
     const onPaste = (event: ClipboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (!event.clipboardData || target?.closest("input, textarea, select, [contenteditable=true], [contenteditable=''], .modal, .thumbnails-scroll, .organize-grid")) return;
       const data = event.clipboardData;
+      if (objectClipboard && data.getData(OBJECT_MIME) === objectClipboard.token && pasteObjectsRef.current()) { event.preventDefault(); return; }
       if ([...data.items].some((item) => item.kind === "file" && item.type.startsWith("image/")) || data.getData("text/plain").trim()) { event.preventDefault(); void pasteRef.current(data); }
     };
     window.addEventListener("paste", onPaste);
@@ -370,6 +424,9 @@ export default function App() {
     checkSignatures: () => active && setModal("signatures-check"),
     palette: () => setModal("palette"),
     stamps: () => active && setModal("stamps"),
+    epub: () => active && setModal("epub"),
+    openBook: () => void window.gcp.openBookFile().catch(onError),
+    lookup: (mode) => setLookup({ text: window.getSelection()?.toString().trim().slice(0, 2000) ?? "", mode }),
     numbering: () => active && setModal("numbering"),
     restyle: (patch) => {
       setStyle((s) => ({ ...s, ...patch }));
@@ -378,7 +435,7 @@ export default function App() {
     formatParagraph: (patch) => {
       if (!active || !sourceSelection) return;
       const target = sourceSelection, draft = pendingParagraphEdit();
-      void perform(async () => {await window.gcp.editParagraph(active.id, target.page, { paragraph: target.paragraph.index, ...draft, ...(target.paragraph.members?{generation:target.generation}:{}), ...patch });setSourceSelection(null);}, "Aplicando formatação…");
+      void perform(async () => {await window.gcp.editParagraph(active.id, target.page, { paragraph: target.paragraph.index, ...draft, ...(target.paragraph.members?{generation:target.generation}:paragraphSpacing(target.paragraph)), ...patch });setSourceSelection(null);}, "Aplicando formatação…");
     },
   };
   const organize: OrganizeActions = {
@@ -448,6 +505,8 @@ export default function App() {
     { id: "night", label: "Filtro noturno para leitura", group: "Exibição", keywords: "escuro sepia filtro olhos", disabled: none, run: () => actions.filter("night") },
     { id: "compare", label: "Comparar dois PDFs", group: "Revisar", keywords: "diferencas versoes alteracoes", disabled: none, run: () => actions.compareFiles() },
     { id: "stats", label: "Estatísticas do documento", group: "Revisar", keywords: "contar palavras caracteres paginas tamanho", disabled: none, run: () => setModal("stats") },
+    { id: "synonyms", label: "Sinônimos (dicionário)", group: "Revisar", keywords: "sinonimo dicionario tesauro palavra parecida", run: () => actions.lookup("synonyms") },
+    { id: "translate", label: "Traduzir (português, inglês, espanhol)", group: "Revisar", keywords: "traducao traduzir ingles espanhol idioma dicionario", run: () => actions.lookup("translate") },
     { id: "properties", label: "Propriedades e metadados", group: "Revisar", keywords: "titulo autor assunto palavras-chave", disabled: none, run: () => setModal("properties") },
     { id: "find", label: "Pesquisar no documento", group: "Ver", shortcut: "Ctrl+F", disabled: none, run: actions.find },
     { id: "ai", label: "Perguntar à IA", group: "IA", keywords: "resumo chatgpt gemini", run: actions.ai },
@@ -465,6 +524,7 @@ export default function App() {
     if (action.startsWith("progress:")) { setBusy(action.slice(9)); return; }
     if (action === "update-available") { void window.gcp.pendingUpdate().then((info) => info && setUpdate(info)); return; }
     if (action.startsWith("error:")) { notify(action.slice(6), true); return; }
+    if (action.startsWith("book:")) { setBookToken(action.slice(5)); return; }
     switch (action) {
       case "open": actions.open(); break;
       case "new": void perform(() => window.gcp.newDocument()); break;
@@ -492,6 +552,11 @@ export default function App() {
       if (event.key === "F11" && !typing) { event.preventDefault(); void window.gcp.setFullscreen(); return; }
 
       if(event.defaultPrevented)return;
+      // With objects selected (and no text selected), Ctrl+C/X/D act on them, as in drawing programs.
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && !typing && selectedObjectsRef.current.size && !(event.target as HTMLElement)?.closest(".thumbnails-scroll,.organize-grid") && !window.getSelection()?.toString().trim()) {
+        const key = event.key.toLowerCase();
+        if (["c", "x", "d"].includes(key) && objectKeyRef.current(key)) { event.preventDefault(); return; }
+      }
       const mapped=resolveShortcut(event,readShortcuts());
       if(mapped&&(!typing||['save','save-as','open','find'].includes(mapped))){if(mapped==='delete-pages'&&!(event.target as HTMLElement)?.closest('.thumbnails-scroll,.organize-grid'))return;event.preventDefault();shortcutAction.current(mapped);return;}
       if (event.key === "F1" && event.ctrlKey) { event.preventDefault(); ribbonKey.current(); return; }
@@ -515,6 +580,8 @@ export default function App() {
   ribbonKey.current = () => setRibbon(ribbonMode === "pinned" ? "collapsed" : "pinned");
   // The thumbnail list follows the page being read in the main view.
   useEffect(() => { document.querySelector<HTMLElement>(".thumbnails-scroll .thumbnail-item.current")?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, [page, sideOpen, panel]);
+  const objectKeyRef = useRef<(key: string) => boolean>(() => false);
+  objectKeyRef.current = (key) => key === "d" ? duplicateObjects() : copyObjects(key === "x");
   const selectedObjectsRef = useRef(selectedObjects), deleteRef = useRef(() => deleteObjects()), pageKeyRef = useRef((_key: string, _shift: boolean) => {});
   pageKeyRef.current = (key, shift) => { if (key === "delete") actions.deletePages(); else if (key === "c") pageTools.copy(false); else if (key === "x") pageTools.copy(true); else pageTools.paste(!shift); };
   selectedObjectsRef.current = selectedObjects; deleteRef.current = () => deleteObjects();
@@ -918,12 +985,13 @@ export default function App() {
                 onSourceSelect={setSourceSelection}
                 onEditText={setEditingText}
                 onSelect={(ids) => setSelectedObjects(new Set(ids))}
-                onAdd={(object, dataUrl) => void perform(async () => { await window.gcp.applyOperation(active.id, { type: "add-object", object, ...(dataUrl ? { dataUrl } : {}) } as PdfOperation, active.revision); setToolState({kind:"select"}); })}
+                onAdd={(object, dataUrl) => void perform(async () => { await window.gcp.applyOperation(active.id, { type: "add-object", object, ...(dataUrl ? { dataUrl } : {}) } as PdfOperation, active.revision); if (object.kind !== "markup") setToolState({kind:"select"}); })}
                 onUpdate={(objects) => { for (const object of objects) void operation({ type: "update-object", object }); }}
                 onDelete={(ids) => deleteObjects(ids)}
                 onFields={(values) => void operation({ type: "set-fields", values })}
                 searchFocus={focus}
                 onFieldMenu={(page, name, type) => setFieldProps({ page, name, type })}
+                onPageMenu={setPageContext}
                 onFormButton={(pageId, action) => {
                   if (action.image) { void perform(() => window.gcp.setFieldImage(active.id, pageId, action.field), "Colocando a imagem no campo…"); return; }
                   if (action.url) { void perform(() => window.gcp.openFormLink(action.url!)); return; }
@@ -956,18 +1024,18 @@ export default function App() {
           ) : null}
           </div>
         </main>
-        {propertiesAvailable && !propertiesClosed && (
-          <aside className="properties-panel" aria-label={translateUi("Propriedades")}>
+        {propertiesVisible && (
+          <aside className={`properties-panel ${propertiesOpen ? "open" : ""}`} aria-label={translateUi("Propriedades")} aria-hidden={!propertiesOpen} inert={!propertiesOpen || undefined}>
             <div className="sidebar-heading">
               <h2>{translateUi("Propriedades")}</h2>
-              <IconButton title={translateUi("Recolher painel")} onClick={() => setClosedPropertiesKey(propertiesKey)}><PanelRightClose size={16} /></IconButton>
+              <IconButton title={translateUi("Recolher painel")} onClick={() => setPropertiesOpen(false)}><PanelRightClose size={16} /></IconButton>
             </div>
-            <PropertyBar tool={tool} style={style} selection={selectionObjects} source={sourceSelection} actions={actions} fonts={fonts} />
+            {propertiesAvailable ? <PropertyBar tool={tool} style={style} selection={selectionObjects} source={sourceSelection} actions={actions} fonts={fonts} /> : <p className="properties-empty">{translateUi("Selecione um objeto, um texto ou uma ferramenta para ver as opções aqui.")}</p>}
           </aside>
         )}
         {!showHome && active && !reading && (
           <nav className="rail rail-right" aria-label={translateUi("Painéis de propriedades")}>
-            <IconButton title={propertiesAvailable ? translateUi("Propriedades") : translateUi("Propriedades (selecione um objeto ou ferramenta)")} disabled={!propertiesAvailable} active={propertiesAvailable && !propertiesClosed} onClick={() => setClosedPropertiesKey(propertiesClosed ? null : propertiesKey)}><SlidersHorizontal size={19} /></IconButton>
+            <IconButton key={propertiesAvailable && !propertiesOpen ? propertiesKey ?? "" : "idle"} className={propertiesAvailable && !propertiesOpen ? "properties-signal" : ""} title={propertiesOpen ? translateUi("Fechar Propriedades") : propertiesAvailable ? translateUi("Propriedades: há opções para o item selecionado") : translateUi("Propriedades (selecione um objeto ou ferramenta)")} active={propertiesOpen} onClick={() => setPropertiesOpen(!propertiesOpen)}><SlidersHorizontal size={19} /></IconButton>
           </nav>
         )}
       </div>
@@ -987,6 +1055,30 @@ export default function App() {
           {toast.error ? <X size={17} /> : <Check size={17} />}
           <span>{toast.text}</span>
           <button aria-label={translateUi("Fechar aviso")} onClick={() => setToast(null)}><X size={15} /></button>
+        </div>
+      )}
+      {modal === "epub" && active && <EpubDialog doc={active} onClose={() => setModal(null)} onError={onError} onDone={(path) => { setModal(null); notify("EPUB salvo. Abrindo no modo Livro…"); void window.gcp.openBookFile(path).catch(onError); }} />}
+      {bookToken && <BookReader key={bookToken} token={bookToken} onClose={() => setBookToken(null)} onError={onError} />}
+      {lookup && <LookupDialog text={lookup.text} mode={lookup.mode} onClose={() => setLookup(null)} onError={onError} onCopy={(text) => void window.gcp.copyText(text).then(() => notify(`“${text.length > 40 ? text.slice(0, 40) + "…" : text}” copiado.`)).catch(onError)} />}
+      {pageContext && active && (
+        <div className="context-backdrop" onMouseDown={() => setPageContext(null)} onContextMenu={(e) => { e.preventDefault(); setPageContext(null); }}>
+          <div className="context-menu" style={{ left: Math.min(pageContext.x, window.innerWidth - 250), top: Math.min(pageContext.y, window.innerHeight - 300) }} onMouseDown={(e) => e.stopPropagation()} onClick={() => setPageContext(null)}>
+            {pageContext.text && <>
+              <div className="context-title">{translateUi("Texto selecionado")}</div>
+              <button onClick={() => void window.gcp.copyText(pageContext.text!)}><Copy size={14} />{" "}{translateUi("Copiar texto")}</button>
+              <button onClick={() => setLookup({ text: pageContext.text!, mode: "synonyms" })}><BookA size={14} />{" "}{translateUi("Sinônimos…")}</button>
+              <button onClick={() => setLookup({ text: pageContext.text!, mode: "translate" })}><Languages size={14} />{" "}{translateUi("Traduzir…")}</button>
+            </>}
+            {!pageContext.text && selectionObjects.some(copyable) && <>
+              <div className="context-title">{selectionObjects.length > 1 ? `${selectionObjects.length} ${translateUi("objetos")}` : translateUi("Objeto")}</div>
+              <button onClick={() => copyObjects(false)}><Copy size={14} />{" "}{translateUi("Copiar")}<kbd>Ctrl+C</kbd></button>
+              <button onClick={() => copyObjects(true)}><Scissors size={14} />{" "}{translateUi("Recortar")}<kbd>Ctrl+X</kbd></button>
+              <button onClick={() => duplicateObjects()}><CopyPlus size={14} />{" "}{translateUi("Duplicar")}<kbd>Ctrl+D</kbd></button>
+            </>}
+            {!pageContext.text && objectClipboard && <button onClick={() => pasteObjects(pageContext.page, pageContext.objectId ? undefined : pageContext.point)}><ClipboardPaste size={14} />{" "}{translateUi("Colar aqui")}<kbd>Ctrl+V</kbd></button>}
+            {!pageContext.text && selectionObjects.length > 0 && <><hr /><button className="danger" onClick={() => deleteObjects()}><Trash2 size={14} />{" "}{translateUi("Excluir")}<kbd>Del</kbd></button></>}
+            {!pageContext.text && !selectionObjects.length && !objectClipboard && <div className="context-title">{translateUi("Selecione um objeto ou um texto")}</div>}
+          </div>
         </div>
       )}
       {pageMenu && active && (

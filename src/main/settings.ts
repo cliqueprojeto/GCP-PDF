@@ -3,12 +3,12 @@ import {app,safeStorage} from 'electron';
 import {readFile,mkdir,writeFile,rename,unlink} from 'node:fs/promises';
 import {join,dirname} from 'node:path';
 import {randomUUID} from 'node:crypto';
-import type {Signature,AiConfig,UpdatePreferences} from '../shared/types';
+import type {Signature,AiConfig,UpdatePreferences,DictionaryPreferences} from '../shared/types';
 import {usageToday,recordUsage,type AiUsage} from '../shared/ai-usage';
 /** Works on a free Google AI Studio key; "Encontrar melhor modelo" upgrades it when the key has billing. */
 export const DEFAULT_GEMINI_MODEL='gemini-3.5-flash-lite';
 export async function atomicWrite(path:string,bytes:Uint8Array|string){const temp=path+'.gcp-'+randomUUID()+'.tmp';try{await writeFile(temp,bytes,{flag:'wx',mode:0o600});await rename(temp,path);}catch(error){await unlink(temp).catch(()=>{});throw error;}}
-type Preferences={language?:LanguagePreference;ocrLanguage?:LanguagePreference;theme:'light'|'dark';signatures:Signature[];ai:Omit<AiConfig,'hasKey'>;keys:Record<string,string>;quickActions?:boolean;updates?:UpdatePreferences;seenVersion?:string;aiUsage?:AiUsage};
+type Preferences={language?:LanguagePreference;ocrLanguage?:LanguagePreference;theme:'light'|'dark';signatures:Signature[];ai:Omit<AiConfig,'hasKey'>;keys:Record<string,string>;quickActions?:boolean;updates?:UpdatePreferences;seenVersion?:string;aiUsage?:AiUsage;savedColors?:string[];dictionary?:DictionaryPreferences};
 export class Settings {
  private value:Preferences={theme:'light',signatures:[],ai:{provider:'gemini',model:DEFAULT_GEMINI_MODEL,baseUrl:'https://generativelanguage.googleapis.com/v1beta'},keys:{}};
  private queue:Promise<unknown>=Promise.resolve();
@@ -30,6 +30,11 @@ export class Settings {
  get quickActions(){return this.value.quickActions!==false;}
  async setQuickActions(enabled:boolean){this.value.quickActions=enabled;await this.persist();}
  async setTheme(theme:'light'|'dark'){if(theme!=='light'&&theme!=='dark')throw new Error('Tema inválido.');this.value.theme=theme;await this.persist();}
+ /** Custom colours the user kept from the colour picker, newest first. */
+ savedColors(){return [...(this.value.savedColors??[])];}
+ async setSavedColors(colors:unknown){if(!Array.isArray(colors)||colors.length>60||colors.some(c=>typeof c!=='string'||!/^#[0-9a-f]{6}$/i.test(c)))throw new Error('Lista de cores inválida.');this.value.savedColors=[...new Set((colors as string[]).map(c=>c.toLowerCase()))];await this.persist();return this.savedColors();}
+ dictionary():DictionaryPreferences{const d=this.value.dictionary;return {synonyms:d?.synonyms==='en'||d?.synonyms==='es'?d.synonyms:'pt',from:['pt','en','es','auto'].includes(d?.from??'')?d!.from:'auto',to:['pt','en','es'].includes(d?.to??'')?d!.to:'en'};}
+ async setDictionary(input:DictionaryPreferences){const langs=['pt','en','es'];if(!input||!langs.includes(input.synonyms)||![...langs,'auto'].includes(input.from)||!langs.includes(input.to))throw new Error('Idiomas do dicionário inválidos.');this.value.dictionary={synonyms:input.synonyms,from:input.from,to:input.to};await this.persist();return this.dictionary();}
  signatures(){return structuredClone(this.value.signatures);}
  async saveSignature(input:{id?:string;name:string;dataUrl:string}){if(!input||typeof input.name!=='string'||!input.name.trim())throw new Error('Dê um nome à assinatura.');if(typeof input.dataUrl!=='string'||!/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=\r\n]+$/.test(input.dataUrl)||input.dataUrl.length>28*1024*1024)throw new Error('Use uma imagem PNG ou JPEG de até 20 MB.');const signature:Signature={id:input.id||randomUUID(),name:input.name.trim().slice(0,120),dataUrl:input.dataUrl,createdAt:new Date().toISOString()};const found=this.value.signatures.findIndex(s=>s.id===signature.id);if(found>=0)this.value.signatures[found]=signature;else this.value.signatures.push(signature);await this.persist();return this.signatures();}
  async deleteSignature(id:string){this.value.signatures=this.value.signatures.filter(s=>s.id!==id);await this.persist();return this.signatures();}

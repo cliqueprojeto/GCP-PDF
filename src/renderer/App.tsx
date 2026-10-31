@@ -1114,7 +1114,7 @@ export default function App() {
                 <button onClick={() => markPassage(pageContext, "strike")}><Strikethrough size={14} />{" "}{translateUi("Tachar")}</button>
                 <button onClick={() => markPassage(pageContext, "squiggly")}><Waves size={14} />{" "}{translateUi("Sublinhado ondulado")}</button>
                 <hr />
-                <button onClick={() => commentPassage(pageContext)}><MessageSquarePlus size={14} />{" "}{translateUi("Adicionar nota ao texto")}</button>
+                <button onClick={() => commentPassage(pageContext)}><MessageSquarePlus size={14} />{" "}{translateUi("Adicionar comentário")}</button>
                 <button onClick={() => bookmarkPassage(pageContext)}><BookmarkPlus size={14} />{" "}{translateUi("Adicionar marcador")}</button>
               </>}
               <hr />

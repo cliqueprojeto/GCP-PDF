@@ -61,7 +61,7 @@ Os demais formatos Office além de `.docx`, `.xlsx` e `.txt` podem exigir LibreO
 
 ### Comentar e revisar
 - Comentários em balões com respostas, editar e excluir; os ícones ficam na margem, ao lado do texto, e podem ser arrastados. Uma seta liga o balão ao comentário, mesmo quando você arrasta o balão para o lado.
-- Comentários presos ao texto: selecione um trecho, clique com o botão direito e escolha "Adicionar nota ao texto". O trecho fica marcado na página, aparece resumido no balão e no painel Comentários, e o clique no painel leva direto a ele.
+- Comentários presos ao texto: selecione um trecho, clique com o botão direito e escolha "Adicionar comentário". O trecho fica marcado na página, aparece resumido no balão e no painel Comentários, e o clique no painel leva direto a ele.
 - Botão direito sobre o texto selecionado: copiar, selecionar tudo na página, destacar, sublinhar, tachar, sublinhado ondulado, nota ao texto, marcador, sinônimos e traduzir. O painel mostra o trecho de cada destaque, inclusive dos feitos em outros programas.
 - Destaque, sublinhado, tachado e sublinhado ondulado de texto aplicados assim que você seleciona o trecho (a ferramenta continua ativa), salvos como anotações padrão reconhecidas por outros leitores.
 - Sinônimos e tradução (português, inglês e espanhol) pelo botão direito sobre o texto ou na aba Revisar, com dicionários abertos que funcionam sem internet; idiomas padrão em Configurações.

@@ -20,9 +20,9 @@ try{
  const first=await select(0,1);
  await page.mouse.click(first.a.x+first.a.width/2,first.a.y+first.a.height/2,{button:'right'});await page.waitForSelector('.context-menu');
  const items=await page.locator('.context-menu button').allTextContents();
- check('botão direito no texto: copiar, destacar, sublinhar, tachar, ondulado, nota, marcador, sinônimos, traduzir',['Copiar','Destacar','Sublinhar','Tachar','ondulado','nota ao texto','marcador','Sinônimos','Traduzir'].every(w=>items.some(t=>t.includes(w))),JSON.stringify(items));
+ check('botão direito no texto: copiar, destacar, sublinhar, tachar, ondulado, nota, marcador, sinônimos, traduzir',['Copiar','Destacar','Sublinhar','Tachar','ondulado','comentário','marcador','Sinônimos','Traduzir'].every(w=>items.some(t=>t.includes(w))),JSON.stringify(items));
  await page.screenshot({path:'evidence/comments/01-menu-texto.png'});
- await page.locator('.context-menu button',{hasText:'nota ao texto'}).click();await page.waitForSelector('.note-bubble textarea');
+ await page.locator('.context-menu button',{hasText:'comentário'}).click();await page.waitForSelector('.note-bubble textarea');
  const quote=await page.locator('.note-bubble .note-quote').textContent();
  check('balão mostra o trecho comentado',!!quote&&quote.length>2&&first.text.startsWith(quote.slice(0,6)),JSON.stringify({quote,selected:first.text}));
  await page.keyboard.type('Conferir esta frase');await page.locator('.note-bubble .button.primary').click();await page.waitForTimeout(400);

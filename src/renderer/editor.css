@@ -846,3 +846,10 @@
 .comic-reader .check { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 @keyframes comic-in { from { opacity: .2; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .comic-spread { animation: none; } }
+
+.book-bookmarked { color: #dc2626 !important; }
+.book-bookmarked svg, svg.book-bookmarked { fill: #dc262633; }
+.book-bookmark-page { display: block; color: #dc2626; margin-bottom: 3px; }
+.book-menu { max-height: calc(100vh - 16px); overflow-y: auto; }
+.book-menu-heading { display: flex; align-items: center; justify-content: space-between; padding-left: 10px; color: var(--muted); font-size: 11px; }
+.book-menu .book-menu-heading .icon-button { width: 28px; padding: 5px; }

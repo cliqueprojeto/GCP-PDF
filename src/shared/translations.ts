@@ -3720,5 +3720,8 @@ export const translations:Record<string,readonly [string,string]> = {
   "{time} no livro": ["{time} in book","{time} en el libro"],
   "Justificado": ["Justified","Justificado"],
   "Centralizado": ["Centered","Centrado"],
-  "Leitura": ["Reading","Lectura"]
+  "Leitura": ["Reading","Lectura"],
+  "Pesquisar na Wikipédia": ["Search Wikipedia","Buscar en Wikipedia"],
+  "Pesquisar na Internet": ["Search the Internet","Buscar en Internet"],
+  "Rolagem automática ativada": ["Automatic scrolling enabled","Desplazamiento automático activado"],
 };

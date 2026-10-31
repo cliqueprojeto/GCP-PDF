@@ -1,5 +1,14 @@
 # Histórico de versões do GCP-PDF
 
+## 0.9.1 — 31/10/2026
+
+- Livros e quadrinhos: os painéis de opções recolhem ao clicar fora.
+- Pesquisa no livro com botão para limpar o texto e os resultados.
+- Marcadores vermelhos no leitor de livros, com a página identificada no painel de anotações.
+- A leitura automática ativa a rolagem contínua e mostra um aviso em livros e quadrinhos.
+- No PDF, a ação do trecho selecionado passa a se chamar "Adicionar comentário".
+- O menu de seleção do livro tem botão de fechar, fecha ao clicar fora e permite pesquisar o trecho na Wikipédia e na Internet.
+
 ## 0.9.0 — 31/10/2026
 
 - Comentários presos ao texto: selecione um trecho, clique com o botão direito e escolha "Adicionar nota ao texto". O trecho fica marcado na página e aparece resumido no balão e no painel Comentários.

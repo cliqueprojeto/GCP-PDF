@@ -1,9 +1,10 @@
 import {t as translateUi, getLocale} from "./i18n";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { X, List, Type, Play, Pause, ChevronLeft, ChevronRight, LoaderCircle, BookOpen, Copy, BookA, Languages, Underline, MessageSquarePlus, BookmarkPlus, Bookmark as BookmarkIcon, NotebookPen, Trash2, Timer, ListTree, Highlighter, Search, Maximize2, Minimize2, Minus, Plus, AlignLeft, AlignJustify, AlignCenter, BookText, Columns2, FileText, ScrollText } from "lucide-react";
+import { X, List, Type, Play, Pause, ChevronLeft, ChevronRight, LoaderCircle, BookOpen, Copy, BookA, Languages, Underline, MessageSquarePlus, BookmarkPlus, Bookmark as BookmarkIcon, NotebookPen, Trash2, Timer, ListTree, Highlighter, Search, Maximize2, Minimize2, Minus, Plus, AlignLeft, AlignJustify, AlignCenter, BookText, Columns2, FileText, ScrollText, Globe } from "lucide-react";
 import type { BookContent } from "../shared/types";
 import { LookupDialog, type LookupMode } from "./Lookup";
 import { recordRecentFile } from "./Home";
+import { readerSearchUrl } from "../shared/reader-search";
 
 /** Exibição > Livro: reads EPUB books page by page or as one scroll. The book's sanitized HTML lives in a
  * sandboxed iframe without scripts; CSS columns make the pages, and the reader remembers where each book
@@ -12,8 +13,8 @@ type Theme = "claro" | "sepia" | "noturno";
 type Effect = "deslizar" | "virar" | "desvanecer" | "nenhum";
 type Align = "original" | "left" | "justify" | "center";
 type Layout = "paginas" | "rolagem";
-interface Prefs { font: "original" | "serif" | "sans" | "legivel"; size: number; leading: number; margin: number; theme: Theme; spread: 1 | 2; effect: Effect; seconds: number; align: Align; layout: Layout; duration: number; scrollSpeed: number }
-const DEFAULTS: Prefs = { font: "original", size: 100, leading: 1.55, margin: 6, theme: "claro", spread: 1, effect: "deslizar", seconds: 30, align: "original", layout: "paginas", duration: 300, scrollSpeed: 40 };
+interface Prefs { font: "original" | "serif" | "sans" | "legivel"; size: number; leading: number; margin: number; theme: Theme; spread: 1 | 2; effect: Effect; align: Align; layout: Layout; duration: number; scrollSpeed: number }
+const DEFAULTS: Prefs = { font: "original", size: 100, leading: 1.55, margin: 6, theme: "claro", spread: 1, effect: "deslizar", align: "original", layout: "paginas", duration: 300, scrollSpeed: 40 };
 const FONTS: Record<Prefs["font"], string | null> = { original: null, serif: 'Georgia, "Iowan Old Style", "Times New Roman", serif', sans: '"Segoe UI", Inter, "Helvetica Neue", Arial, sans-serif', legivel: 'Verdana, "Atkinson Hyperlegible", Tahoma, sans-serif' };
 const THEMES: Record<Theme, { bg: string; ink: string; link: string }> = { claro: { bg: "#ffffff", ink: "#1d1d1f", link: "#5b2bc0" }, sepia: { bg: "#f4ecd8", ink: "#433422", link: "#8a4b14" }, noturno: { bg: "#15151b", ink: "#d8d6e2", link: "#a99bff" } };
 const COLORS = ["#ffd43b", "#69db7c", "#74c0fc", "#f783ac"];
@@ -23,7 +24,7 @@ const save = (key: string, value: unknown) => { try { localStorage.setItem(key, 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
 
 /** A highlight, underline or bookmark: a character range in one chapter's text (end = start for a bookmark). */
-interface BookMark { id: string; kind: "mark" | "bookmark"; chapter: number; start: number; end: number; text: string; color: string; style: "highlight" | "underline"; note?: string; createdAt: string }
+interface BookMark { id: string; kind: "mark" | "bookmark"; chapter: number; start: number; end: number; text: string; color: string; style: "highlight" | "underline"; note?: string; fraction?: number; createdAt: string }
 /** Where the reader was: the chapter and the first character of the page; the fraction is the fallback of older versions. */
 interface Spot { chapter: number; fraction: number; start?: number }
 type TocEntry = BookContent["toc"][number];
@@ -150,12 +151,20 @@ export function BookReader({ token, onClose, onError }: { token: string; onClose
   const [marks, setMarksState] = useState<BookMark[]>([]), [menu, setMenu] = useState<Menu | null>(null), [editing, setEditing] = useState<{ id: string; x: number; y: number } | null>(null);
   const [lookup, setLookup] = useState<{ text: string; mode: LookupMode } | null>(null), [mapped, setMapped] = useState<TocEntry[] | null>(null), [banner, setBanner] = useState(false);
   const [tocPages, setTocPages] = useState<number[]>([]), [speed, setSpeed] = useState(() => load("gcp.reading-speed", { msPerChar: 48 }).msPerChar), [charsPerPage, setCharsPerPage] = useState(0);
+  const [documentRevision, setDocumentRevision] = useState(0);
+  const loadedHtml = useRef<string | null>(null);
   const frame = useRef<HTMLIFrameElement>(null), stage = useRef<HTMLDivElement>(null), starts = useRef<number[]>([]), pageRef = useRef(0), restoring = useRef<Spot | null>(null), lastSpot = useRef<Spot | null>(null);
   const userMoved = useRef(false), anim = useRef(0), animating = useRef(false), saveTimer = useRef(0), lastTurn = useRef(Date.now());
   const { width, height } = size, paged = prefs.layout === "paginas";
-  const setPrefs = (patch: Partial<Prefs>) => setPrefsState((p) => { const next = { ...p, ...patch }; save("gcp.reader", next); return next; });
+  const setPrefs = (patch: Partial<Prefs>) => { if (patch.layout === "paginas") setAuto(false); setPrefsState((p) => { const next = { ...p, ...patch }; save("gcp.reader", next); return next; }); };
   const setMarks = (next: BookMark[]) => { setMarksState(next); if (book) save(`gcp.book-notes:${book.id}`, next.slice(-5000)); const d = doc(); if (d) paint(d, next); };
   const toc = mapped ?? book?.toc ?? [];
+  const dismissMenu = () => { setMenu(null); doc()?.getSelection()?.removeAllRanges(); };
+  useEffect(() => {
+    const outside = (e: PointerEvent) => { if (!(e.target as Element).closest(".book-panel,[data-reader-panel]")) setPanel(null); };
+    document.addEventListener("pointerdown", outside);
+    return () => document.removeEventListener("pointerdown", outside);
+  }, []);
   useEffect(() => {
     void window.gcp.readBook(token).then((b) => {
       setBook(b); restoring.current = load<Spot>(`gcp.book:${b.id}`, { chapter: 0, fraction: 0 }); document.title = `${b.title} — GCP-PDF`;
@@ -238,7 +247,9 @@ export function BookReader({ token, onClose, onError }: { token: string; onClose
     }
   };
   const next = () => go(pageRef.current + 1, 1), previous = () => go(pageRef.current - 1, -1);
+  const spotOfMark = (m: BookMark): Spot => ({ chapter: m.chapter, ...(m.fraction === undefined ? { start: m.start } : {}), fraction: m.fraction ?? 0 });
   const goToMark = (m: BookMark) => {
+    if (m.kind === "bookmark") { const p = pageOfSpot(spotOfMark(m), pages); go(p, p >= pageRef.current ? 1 : -1); return; }
     const d = doc(), section = d?.getElementById(`c${m.chapter}`); if (!d || !section) return;
     const r = rangeAt(section, m.start, Math.max(m.end, m.start + 1)), rect = r?.getClientRects()[0]; if (!rect) return;
     go(pageOfRect(rect), pageOfRect(rect) >= pageRef.current ? 1 : -1);
@@ -250,6 +261,9 @@ export function BookReader({ token, onClose, onError }: { token: string; onClose
     const d = doc(); if (!d || !book) return;
     if (localStorage.getItem(`gcp.book-map:${book.id}`)) { const entries = mapChapters(d); if (entries.length) setMapped(entries); }
     paint(d, marks);
+    loadedHtml.current = html;
+    setDocumentRevision((v) => v + 1);
+    d.addEventListener("pointerdown", () => setPanel(null));
     const spot = restoring.current ?? lastSpot.current ?? fractionSpot(pageRef.current);
     restoring.current = null; userMoved.current = false;
     // Images and fonts may still move the text after the first frame: settle on the saved character a few
@@ -338,13 +352,13 @@ export function BookReader({ token, onClose, onError }: { token: string; onClose
     window.setTimeout(() => { const s = d.getSelection(); s?.removeAllRanges(); s?.addRange(r); }, prefs.duration + 30);
   }
   useEffect(() => { const handler = (e: KeyboardEvent) => { if ((e.target as HTMLElement).closest("input,select,textarea,.modal-backdrop")) return; keys.current(e); }; window.addEventListener("keydown", handler); return () => window.removeEventListener("keydown", handler); }, []);
-  // Automatic reading: page turns at the chosen pace, or a steady scroll in scroll mode; it stops at the end.
+  // Wait for the scroll document to load before starting; the previous paged document has no vertical scroll.
   useEffect(() => {
-    if (!auto) return;
-    if (paged) { const timer = window.setInterval(() => { if (pageRef.current >= pages - 1) setAuto(false); else next(); }, Math.max(3, prefs.seconds) * 1000); return () => window.clearInterval(timer); }
+    if (!auto || paged || loadedHtml.current !== html) return;
     let frameId = 0, last = performance.now(), carry = 0;
     const step = (now: number) => {
       const root = doc()?.documentElement; if (!root) return;
+      userMoved.current = true;
       carry += (prefs.scrollSpeed * (now - last)) / 1000; last = now;
       if (carry >= 1) { const whole = Math.floor(carry); carry -= whole; root.scrollTop += whole; }
       if (root.scrollTop + root.clientHeight >= root.scrollHeight - 2) { setAuto(false); return; }
@@ -352,7 +366,7 @@ export function BookReader({ token, onClose, onError }: { token: string; onClose
     };
     frameId = requestAnimationFrame(step);
     return () => cancelAnimationFrame(frameId);
-  }, [auto, prefs.seconds, prefs.scrollSpeed, pages, paged]);
+  }, [auto, prefs.scrollSpeed, paged, documentRevision, html]);
   useEffect(() => () => { document.title = "GCP-PDF"; window.clearTimeout(saveTimer.current); cancelAnimationFrame(anim.current); }, []);
 
   function addMark(style: BookMark["style"], color: string, withNote = false) {
@@ -367,7 +381,7 @@ export function BookReader({ token, onClose, onError }: { token: string; onClose
     const chapter = p?.chapter ?? spot?.chapter ?? chapterAt(pageRef.current), start = p?.start ?? spot?.start ?? 0;
     let text = menu?.text ?? "";
     if (!text) { const section = doc()?.getElementById(`c${chapter}`); text = section ? (rangeAt(section, start, start + 160)?.toString() ?? "") : ""; }
-    setMarks([...marks, { id: uid(), kind: "bookmark", chapter, start, end: start, text: text.replace(/\s+/g, " ").trim().slice(0, 300), color: THEMES[prefs.theme].link, style: "highlight", createdAt: new Date().toISOString() }]);
+    setMarks([...marks, { id: uid(), kind: "bookmark", chapter, start, end: start, ...(!p && spot?.start === undefined ? { fraction: fractionSpot(pageRef.current).fraction } : {}), text: text.replace(/\s+/g, " ").trim().slice(0, 300), color: "#dc2626", style: "highlight", createdAt: new Date().toISOString() }]);
     setMenu(null); doc()?.getSelection()?.removeAllRanges();
   }
   /** The note box of a highlight, beside where it was clicked (stage coordinates are the iframe's). */
@@ -390,18 +404,20 @@ export function BookReader({ token, onClose, onError }: { token: string; onClose
     setMapped(entries); setBanner(false); setPanel("toc");
   }
   function unmap() { if (!book) return; try { localStorage.removeItem(`gcp.book-map:${book.id}`); } catch {} setMapped(null); }
+  const markPage = (m: BookMark) => pageOfSpot(spotOfMark(m), pages);
+  const bookmarked = marks.some((m) => m.kind === "bookmark" && markPage(m) === page);
   const sorted = [...marks].sort((a, b) => a.chapter - b.chapter || a.start - b.start);
   return (
     <div className={`book-reader theme-${prefs.theme}`} style={{ ["--book-bg" as string]: theme.bg, ["--book-ink" as string]: theme.ink }} role="dialog" aria-label={translateUi("Leitor de livros")}>
       <header className="book-bar">
-        <button className="icon-button" title={translateUi("Sumário")} aria-pressed={panel === "toc"} onClick={() => setPanel(panel === "toc" ? null : "toc")}><List size={18} /></button>
+        <button className="icon-button" title={translateUi("Sumário")} data-reader-panel aria-pressed={panel === "toc"} onClick={() => setPanel(panel === "toc" ? null : "toc")}><List size={18} /></button>
         <div className="book-title"><BookOpen size={15} /><strong>{book?.title ?? translateUi("Abrindo livro…")}</strong>{book?.author && <span>{book.author}</span>}</div>
         <button className="icon-button" title={fullscreen ? translateUi("Sair da tela cheia") : translateUi("Tela cheia")} onClick={() => { const next = !fullscreen; setFullscreen(next); void window.gcp.setFullscreen(next); }}>{fullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button>
-        <button className="icon-button" title={translateUi("Pesquisar no livro")} aria-pressed={panel === "search"} onClick={() => setPanel(panel === "search" ? null : "search")}><Search size={17} /></button>
-        <button className="icon-button" title={translateUi("Opções de exibição")} aria-pressed={panel === "type"} onClick={() => setPanel(panel === "type" ? null : "type")}><Type size={18} /></button>
-        <button className="icon-button" title={translateUi("Destaques, notas e marcadores")} aria-pressed={panel === "notes"} onClick={() => setPanel(panel === "notes" ? null : "notes")}><NotebookPen size={17} /></button>
-        <button className="icon-button" title={translateUi("Adicionar marcador nesta página")} onClick={addBookmark}><BookmarkPlus size={17} /></button>
-        <button className={`icon-button ${auto ? "active" : ""}`} title={auto ? translateUi("Parar a leitura automática") : paged ? translateUi("Passar páginas automaticamente (a cada {seconds} s)", { seconds: prefs.seconds }) : translateUi("Rolar automaticamente")} onClick={() => setAuto(!auto)}>{auto ? <Pause size={17} /> : <Play size={17} />}</button>
+        <button className="icon-button" title={translateUi("Pesquisar no livro")} data-reader-panel aria-pressed={panel === "search"} onClick={() => setPanel(panel === "search" ? null : "search")}><Search size={17} /></button>
+        <button className="icon-button" title={translateUi("Opções de exibição")} data-reader-panel aria-pressed={panel === "type"} onClick={() => setPanel(panel === "type" ? null : "type")}><Type size={18} /></button>
+        <button className="icon-button" title={translateUi("Destaques, notas e marcadores")} data-reader-panel aria-pressed={panel === "notes"} onClick={() => setPanel(panel === "notes" ? null : "notes")}><NotebookPen size={17} /></button>
+        <button className={`icon-button ${bookmarked ? "book-bookmarked" : ""}`} aria-pressed={bookmarked} title={translateUi("Adicionar marcador nesta página")} onClick={addBookmark}><BookmarkPlus size={17} /></button>
+        <button className={`icon-button ${auto ? "active" : ""}`} title={auto ? translateUi("Parar a leitura automática") : translateUi("Rolar automaticamente")} onClick={() => { if (!auto && paged) setPrefs({ layout: "rolagem" }); setAuto(!auto); }}>{auto ? <Pause size={17} /> : <Play size={17} />}</button>
         <button className="icon-button" title={translateUi("Fechar o livro (Esc)")} onClick={() => { if (fullscreen) void window.gcp.setFullscreen(false); onClose(); }}><X size={18} /></button>
       </header>
       <div className="book-body">
@@ -417,7 +433,7 @@ export function BookReader({ token, onClose, onError }: { token: string; onClose
         {panel === "search" && book && (
           <aside className="book-panel book-type book-search">
             <h3>{translateUi("Pesquisar no livro")}</h3>
-            <form onSubmit={(e) => { e.preventDefault(); search(query); }}><input autoFocus value={query} placeholder={translateUi("Palavra ou trecho")} onChange={(e) => setQuery(e.target.value)} /><button className="icon-button" title={translateUi("Pesquisar")}><Search size={15} /></button></form>
+            <form onSubmit={(e) => { e.preventDefault(); search(query); }}><input aria-label={translateUi("Pesquisar no livro")} autoFocus value={query} placeholder={translateUi("Palavra ou trecho")} onChange={(e) => { setQuery(e.target.value); if (!e.target.value) setFound(null); }} />{query && <button type="button" className="icon-button" aria-label={translateUi("Limpar pesquisa")} title={translateUi("Limpar pesquisa")} onClick={(e) => { setQuery(""); setFound(null); doc()?.getSelection()?.removeAllRanges(); e.currentTarget.form?.querySelector("input")?.focus(); }}><X size={15} /></button>}<button className="icon-button" title={translateUi("Pesquisar")}><Search size={15} /></button></form>
             {found && <small>{found.length >= 500 ? translateUi("Mais de 500 resultados") : translateUi("{count} resultados", { count: found.length })}</small>}
             {found?.map((r, i) => <button key={i} className="book-search-result" onClick={() => goToRange(r.chapter, r.start, r.end)}><small>{titleOf(r.chapter)}</small><span>…{r.before}<mark>{r.match}</mark>{r.after}…</span></button>)}
           </aside>
@@ -430,8 +446,8 @@ export function BookReader({ token, onClose, onError }: { token: string; onClose
               <div key={m.id} className="book-note-item">
                 {(i === 0 || sorted[i - 1]!.chapter !== m.chapter) && <h4>{titleOf(m.chapter)}</h4>}
                 <button className="book-note-open" onClick={() => { goToMark(m); setPanel(null); }}>
-                  {m.kind === "bookmark" ? <BookmarkIcon size={14} className="book-note-icon" /> : <span className={`book-note-swatch ${m.style}`} style={{ ["--mark" as string]: m.color }} />}
-                  <span><q>{m.text || translateUi("Marcador")}</q>{m.note && <em>{m.note}</em>}</span>
+                  {m.kind === "bookmark" ? <BookmarkIcon size={14} className="book-note-icon book-bookmarked" /> : <span className={`book-note-swatch ${m.style}`} style={{ ["--mark" as string]: m.color }} />}
+                  <span>{m.kind === "bookmark" && <small className="book-bookmark-page">{translateUi(paged ? "Página" : "Tela")} {markPage(m) + 1}</small>}<q>{m.text || translateUi("Marcador")}</q>{m.note && <em>{m.note}</em>}</span>
                 </button>
                 <span className="book-note-actions">
                   {m.kind === "mark" && <button className="icon-button" title={m.note ? translateUi("Editar nota") : translateUi("Adicionar nota")} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); openNote(m.id, r.right + 8, r.top, true); }}><MessageSquarePlus size={13} /></button>}
@@ -457,9 +473,7 @@ export function BookReader({ token, onClose, onError }: { token: string; onClose
             <label className="field">{translateUi("Margens")} · {prefs.margin}%<input type="range" min={2} max={20} step={1} value={prefs.margin} onChange={(e) => setPrefs({ margin: Number(e.target.value) })} /></label>
             {paged && <label className="field">{translateUi("Efeito ao passar a página")}<select value={prefs.effect} onChange={(e) => setPrefs({ effect: e.target.value as Effect })}><option value="deslizar">{translateUi("Deslizar")}</option><option value="virar">{translateUi("Virar página")}</option><option value="desvanecer">{translateUi("Desvanecer")}</option><option value="nenhum">{translateUi("Nenhum")}</option></select></label>}
             <label className="field">{translateUi("Velocidade da animação")} · {(prefs.duration / 1000).toFixed(2)} s<input type="range" min={80} max={1500} step={20} value={prefs.duration} onChange={(e) => setPrefs({ duration: Number(e.target.value) })} /></label>
-            {paged
-              ? <label className="field">{translateUi("Passar automaticamente a cada")} · {prefs.seconds} s<input type="range" min={5} max={180} step={5} value={prefs.seconds} onChange={(e) => setPrefs({ seconds: Number(e.target.value) })} /></label>
-              : <label className="field">{translateUi("Velocidade da rolagem automática")} · {prefs.scrollSpeed} px/s<input type="range" min={5} max={200} step={5} value={prefs.scrollSpeed} onChange={(e) => setPrefs({ scrollSpeed: Number(e.target.value) })} /></label>}
+            <label className="field">{translateUi("Velocidade da rolagem automática")} · {prefs.scrollSpeed} px/s<input type="range" min={5} max={200} step={5} value={prefs.scrollSpeed} onChange={(e) => setPrefs({ scrollSpeed: Number(e.target.value) })} /></label>
           </aside>
         )}
         {paged && <button className="book-turn previous" aria-label={translateUi("Página anterior")} disabled={page <= 0} onClick={previous}><ChevronLeft size={26} /></button>}
@@ -473,20 +487,24 @@ export function BookReader({ token, onClose, onError }: { token: string; onClose
         {paged && <button className="book-turn next" aria-label={translateUi("Próxima página")} disabled={page >= pages - 1} onClick={next}><ChevronRight size={26} /></button>}
       </div>
       <footer className="book-progress">
+        {auto && <span role="status">{translateUi("Rolagem automática ativada")}</span>}
         <span className="book-chapter" title={chapter ? `${label(chapter.title)} · ${translateUi("Capítulo")} ${chapterIndex + 1} ${translateUi("de")} ${toc.length}` : ""}>{chapter ? label(chapter.title) : ""}</span>
         <input type="range" min={0} max={Math.max(0, pages - 1)} value={page} aria-label={translateUi("Posição no livro")} onChange={(e) => go(Number(e.target.value), Number(e.target.value) >= page ? 1 : -1)} />
         {charsPerPage > 0 && <span className="book-stats" title={translateUi("Estimativa pelo seu ritmo de leitura")}><Timer size={13} />{" "}{translateUi("{time} no capítulo", { time: duration(remainingChapter) })} · {translateUi("{time} no livro", { time: duration(remainingBook) })}</span>}
         <span>{translateUi(paged ? "Página" : "Tela")} {page + 1} {translateUi("de")} {pages} · {Math.round(((page + 1) / pages) * 100)}%</span>
       </footer>
       {menu && (
-        <div className="context-backdrop" onMouseDown={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null); }}>
-          <div className="context-menu book-menu" style={{ left: Math.max(8, Math.min(menu.x, window.innerWidth - 260)), top: Math.max(8, Math.min(menu.y, window.innerHeight - (menu.text ? 420 : 160))) }} onMouseDown={(e) => e.stopPropagation()}>
+        <div className="context-backdrop" onMouseDown={dismissMenu} onContextMenu={(e) => { e.preventDefault(); dismissMenu(); }}>
+          <div className="context-menu book-menu" style={{ left: Math.max(8, Math.min(menu.x, window.innerWidth - 260)), top: Math.max(8, Math.min(menu.y, window.innerHeight - (menu.text ? 520 : 200))) }} onMouseDown={(e) => e.stopPropagation()}>
+            <div className="book-menu-heading"><span>{translateUi(menu.text ? "Texto selecionado" : menu.markId ? "Destaque" : "Marcador")}</span><button className="icon-button" aria-label={translateUi("Fechar")} title={translateUi("Fechar")} onClick={dismissMenu}><X size={15} /></button></div>
             {menu.text && <>
-              {menu.passage && <button onClick={() => addMark("highlight", COLORS[0]!, true)}><MessageSquarePlus size={14} />{" "}{translateUi("Adicionar nota ao texto")}</button>}
+              {menu.passage && <button onClick={() => addMark("highlight", COLORS[0]!, true)}><MessageSquarePlus size={14} />{" "}{translateUi("Adicionar comentário")}</button>}
               <button onClick={() => { void window.gcp.copyText(menu.text); setMenu(null); }}><Copy size={14} />{" "}{translateUi("Copiar texto")}</button>
               <button onClick={() => { setLookup({ text: menu.text, mode: "translate" }); setMenu(null); }}><Languages size={14} />{" "}{translateUi("Traduzir…")}</button>
               <button onClick={() => { setLookup({ text: menu.text, mode: "synonyms" }); setMenu(null); }}><BookA size={14} />{" "}{translateUi("Sinônimos…")}</button>
               <button onClick={() => { setQuery(menu.text.slice(0, 120)); search(menu.text.slice(0, 120)); setPanel("search"); setMenu(null); }}><Search size={14} />{" "}{translateUi("Pesquisar no livro")}</button>
+              <button onClick={() => { void window.gcp.openExternal(readerSearchUrl(menu.text, "wikipedia", getLocale())).catch(onError); dismissMenu(); }}><BookOpen size={14} />{" "}{translateUi("Pesquisar na Wikipédia")}</button>
+              <button onClick={() => { void window.gcp.openExternal(readerSearchUrl(menu.text, "internet", getLocale())).catch(onError); dismissMenu(); }}><Globe size={14} />{" "}{translateUi("Pesquisar na Internet")}</button>
               {menu.passage && <>
                 <button onClick={() => addMark("underline", theme.link)}><Underline size={14} />{" "}{translateUi("Sublinhar")}</button>
                 <button onClick={addBookmark}><BookmarkPlus size={14} />{" "}{translateUi("Adicionar marcador")}</button>

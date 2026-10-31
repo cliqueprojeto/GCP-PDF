@@ -61,6 +61,13 @@ try{
  check('reabre na mesma página',['4','5','6'].includes(resumed),resumed);
  const recent=await page.evaluate(()=>JSON.parse(localStorage.getItem('gcp.recent-files')||'[]').find(r=>r.path.endsWith('.cbz')));
  check('quadrinho nos recentes com o progresso',!!recent?.book?.percent,JSON.stringify(recent));
+ await page.locator('.book-bar button[title="Opções de exibição"]').click();
+ await page.locator('.comic-stage').click({position:{x:400,y:100}});
+ check('clique fora recolhe opções do quadrinho',await page.locator('.book-panel').count()===0);
+ await page.locator('.book-bar button[title="Rolar automaticamente"]').click();await page.waitForTimeout(400);
+ const top=await page.locator('.comic-stage').evaluate(s=>s.scrollTop);await page.waitForTimeout(500);
+ check('automática troca para vertical e rola com aviso',await page.locator('.comic-strip').count()===1&&await page.locator('[role="status"]',{hasText:'Rolagem automática ativada'}).count()===1&&await page.locator('.comic-stage').evaluate(s=>s.scrollTop)>top);
+ await page.locator('.book-bar button[title="Parar a leitura automática"]').click();
  await page.keyboard.press('Escape');
-}finally{if(errors.length)console.log('ERROS:',errors.join(' | '));await app.evaluate(()=>{for(const v of globalThis.__gcpTest.views.values())v.allowClose=true;}).catch(()=>{});await app.close();}
+}catch(error){const p=await app.firstWindow();await p.screenshot({path:'evidence/comics/failure.png'});console.log((await p.locator('body').innerText()).slice(-3000));throw error;}finally{if(errors.length)console.log('ERROS:',errors.join(' | '));await app.evaluate(()=>{for(const v of globalThis.__gcpTest.views.values())v.allowClose=true;}).catch(()=>{});await app.close();}
 process.exitCode=failed||errors.length?1:0;

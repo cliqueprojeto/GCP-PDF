@@ -9,8 +9,8 @@ import { recordRecentFile } from "./Home";
 type Layout = "uma" | "duas" | "vertical";
 type Fit = "pagina" | "largura" | "original";
 type Background = "escuro" | "cinza" | "claro";
-interface Prefs { layout: Layout; manga: boolean; cover: boolean; fit: Fit; background: Background; duration: number; seconds: number; scrollSpeed: number }
-const DEFAULTS: Prefs = { layout: "uma", manga: false, cover: true, fit: "pagina", background: "escuro", duration: 220, seconds: 20, scrollSpeed: 60 };
+interface Prefs { layout: Layout; manga: boolean; cover: boolean; fit: Fit; background: Background; duration: number; scrollSpeed: number }
+const DEFAULTS: Prefs = { layout: "uma", manga: false, cover: true, fit: "pagina", background: "escuro", duration: 220, scrollSpeed: 60 };
 const BACKGROUNDS: Record<Background, { bg: string; ink: string }> = { escuro: { bg: "#111114", ink: "#e4e2ee" }, cinza: { bg: "#3a3a40", ink: "#f1f0f6" }, claro: { bg: "#f3f2f7", ink: "#1d1d1f" } };
 const load = <T,>(key: string, fallback: T): T => { try { const raw = localStorage.getItem(key); return raw ? { ...fallback, ...JSON.parse(raw) } : fallback; } catch { return fallback; } };
 const save = (key: string, value: unknown) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} };
@@ -30,7 +30,12 @@ export function ComicReader({ token, onClose, onError }: { token: string; onClos
   const [page, setPage] = useState(0), [zoom, setZoom] = useState(1), [hand, setHand] = useState(false), [panel, setPanel] = useState(false), [auto, setAuto] = useState(false), [fullscreen, setFullscreen] = useState(false);
   const [urls, setUrls] = useState<Map<number, string>>(new Map()), [sizes, setSizes] = useState<Map<number, { w: number; h: number }>>(new Map()), [box, setBox] = useState({ width: 0, height: 0 }), [turn, setTurn] = useState(0);
   const stage = useRef<HTMLDivElement>(null), requested = useRef(new Set<number>()), live = useRef(true), all = useRef(new Map<number, string>());
-  const setPrefs = (patch: Partial<Prefs>) => setPrefsState((p) => { const next = { ...p, ...patch }; save("gcp.comic-reader", next); return next; });
+  const setPrefs = (patch: Partial<Prefs>) => { if (patch.layout && patch.layout !== "vertical") setAuto(false); setPrefsState((p) => { const next = { ...p, ...patch }; save("gcp.comic-reader", next); return next; }); };
+  useEffect(() => {
+    const outside = (e: PointerEvent) => { if (!(e.target as Element).closest(".book-panel,[data-reader-panel]")) setPanel(false); };
+    document.addEventListener("pointerdown", outside);
+    return () => document.removeEventListener("pointerdown", outside);
+  }, []);
   const count = comic?.names.length ?? 0, vertical = prefs.layout === "vertical";
   const groups = spreads(count, prefs.layout, prefs.cover), groupIndex = Math.max(0, groups.findIndex((g) => g.includes(page))), current = groups[groupIndex] ?? [0];
   useEffect(() => {
@@ -132,14 +137,13 @@ export function ComicReader({ token, onClose, onError }: { token: string; onClos
     requestAnimationFrame(() => node.querySelector<HTMLElement>(`[data-comic-page="${page}"]`)?.scrollIntoView({ block: "start" }));
     return () => { seen.disconnect(); node.removeEventListener("scroll", onScroll); };
   }, [vertical, comic]);
-  // Automatic reading: next page at a set pace, or a steady scroll of the strip.
+  // Automatic reading always uses the vertical strip and stops at the end.
   useEffect(() => {
-    if (!auto) return;
-    if (!vertical) { const timer = window.setInterval(() => { if (groupIndex >= groups.length - 1) setAuto(false); else next(); }, Math.max(3, prefs.seconds) * 1000); return () => window.clearInterval(timer); }
+    if (!auto || !vertical) return;
     let frame = 0, last = performance.now(), carry = 0;
     const tick = (now: number) => { const node = stage.current; if (!node) return; carry += (prefs.scrollSpeed * (now - last)) / 1000; last = now; if (carry >= 1) { node.scrollTop += Math.floor(carry); carry %= 1; } if (node.scrollTop + node.clientHeight >= node.scrollHeight - 2) { setAuto(false); return; } frame = requestAnimationFrame(tick); };
     frame = requestAnimationFrame(tick); return () => cancelAnimationFrame(frame);
-  }, [auto, vertical, groupIndex, prefs.seconds, prefs.scrollSpeed]);
+  }, [auto, vertical, prefs.scrollSpeed]);
   function close() { if (fullscreen) void window.gcp.setFullscreen(false); onClose(); }
   /** Size of one page on screen for the chosen fit and zoom. */
   const pageStyle = (i: number, together: number): React.CSSProperties => {
@@ -164,9 +168,9 @@ export function ComicReader({ token, onClose, onError }: { token: string; onClos
         <button className="icon-button" title={translateUi("Aumentar zoom")} onClick={() => step(1)}><ZoomIn size={17} /></button>
         <button className="icon-button" title={prefs.fit === "pagina" ? translateUi("Ajustado à página — clique para ajustar à largura") : prefs.fit === "largura" ? translateUi("Ajustado à largura — clique para o tamanho original") : translateUi("Tamanho original — clique para ajustar à página")} onClick={() => { setPrefs({ fit: prefs.fit === "pagina" ? "largura" : prefs.fit === "largura" ? "original" : "pagina" }); setZoom(1); }}>{prefs.fit === "pagina" ? <Scan size={17} /> : prefs.fit === "largura" ? <MoveHorizontal size={17} /> : <Expand size={17} />}</button>
         <button className={`icon-button ${hand ? "active" : ""}`} aria-pressed={hand} title={translateUi("Mão: arraste para mover a página ampliada")} onClick={() => setHand(!hand)}><Hand size={17} /></button>
-        <button className={`icon-button ${auto ? "active" : ""}`} title={auto ? translateUi("Parar a leitura automática") : vertical ? translateUi("Rolar automaticamente") : translateUi("Passar páginas automaticamente (a cada {seconds} s)", { seconds: prefs.seconds })} onClick={() => setAuto(!auto)}>{auto ? <Pause size={17} /> : <Play size={17} />}</button>
+        <button className={`icon-button ${auto ? "active" : ""}`} title={auto ? translateUi("Parar a leitura automática") : translateUi("Rolar automaticamente")} onClick={() => { if (!auto && !vertical) { setPrefs({ layout: "vertical" }); setZoom(1); } setAuto(!auto); }}>{auto ? <Pause size={17} /> : <Play size={17} />}</button>
         <button className="icon-button" title={fullscreen ? translateUi("Sair da tela cheia") : translateUi("Tela cheia")} onClick={() => { const v = !fullscreen; setFullscreen(v); void window.gcp.setFullscreen(v); }}>{fullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button>
-        <button className="icon-button" title={translateUi("Opções de exibição")} aria-pressed={panel} onClick={() => setPanel(!panel)}><Settings2 size={17} /></button>
+        <button className="icon-button" title={translateUi("Opções de exibição")} data-reader-panel aria-pressed={panel} onClick={() => setPanel(!panel)}><Settings2 size={17} /></button>
         <button className="icon-button" title={translateUi("Fechar (Esc)")} onClick={close}><X size={18} /></button>
       </header>
       <div className="book-body">
@@ -179,9 +183,7 @@ export function ComicReader({ token, onClose, onError }: { token: string; onClos
             <div className="field">{translateUi("Ajuste")}<div className="book-segments comic-segments">{(["pagina", "largura", "original"] as Fit[]).map((f) => <button key={f} className={prefs.fit === f ? "selected" : ""} onClick={() => { setPrefs({ fit: f }); setZoom(1); }}>{translateUi(f === "pagina" ? "Página inteira" : f === "largura" ? "Largura" : "Original")}</button>)}</div></div>
             <div className="field">{translateUi("Fundo")}<div className="book-themes">{(Object.keys(BACKGROUNDS) as Background[]).map((b) => <button key={b} className={prefs.background === b ? "selected" : ""} style={{ background: BACKGROUNDS[b].bg, color: BACKGROUNDS[b].ink }} onClick={() => setPrefs({ background: b })}>{translateUi(b === "escuro" ? "Escuro" : b === "cinza" ? "Cinza" : "Claro")}</button>)}</div></div>
             <label className="field">{translateUi("Velocidade da animação")} · {(prefs.duration / 1000).toFixed(2)} s<input type="range" min={0} max={1200} step={20} value={prefs.duration} onChange={(e) => setPrefs({ duration: Number(e.target.value) })} /></label>
-            {vertical
-              ? <label className="field">{translateUi("Velocidade da rolagem automática")} · {prefs.scrollSpeed} px/s<input type="range" min={10} max={400} step={10} value={prefs.scrollSpeed} onChange={(e) => setPrefs({ scrollSpeed: Number(e.target.value) })} /></label>
-              : <label className="field">{translateUi("Passar automaticamente a cada")} · {prefs.seconds} s<input type="range" min={3} max={120} step={1} value={prefs.seconds} onChange={(e) => setPrefs({ seconds: Number(e.target.value) })} /></label>}
+            <label className="field">{translateUi("Velocidade da rolagem automática")} · {prefs.scrollSpeed} px/s<input type="range" min={10} max={400} step={10} value={prefs.scrollSpeed} onChange={(e) => setPrefs({ scrollSpeed: Number(e.target.value) })} /></label>
             <p className="comic-help">{translateUi("Dica: Ctrl + roda do mouse ou duplo clique ampliam; com a mão, arraste para mover a página.")}</p>
           </aside>
         )}
@@ -195,7 +197,7 @@ export function ComicReader({ token, onClose, onError }: { token: string; onClos
         </div>
         {!vertical && <button className="book-turn next" aria-label={prefs.manga ? translateUi("Página anterior") : translateUi("Próxima página")} onClick={right}><ChevronRight size={26} /></button>}
       </div>
-      <footer className="book-progress">
+      <footer className="book-progress">{auto && <span role="status">{translateUi("Rolagem automática ativada")}</span>}
         <input type="range" className={prefs.manga ? "manga" : ""} min={0} max={Math.max(0, count - 1)} value={page} aria-label={translateUi("Posição no quadrinho")} onChange={(e) => goToPage(Number(e.target.value))} />
         <span>{translateUi("Página")} {shown.join("–")} {translateUi("de")} {count} · {count ? Math.round(((page + 1) / count) * 100) : 0}%</span>
       </footer>

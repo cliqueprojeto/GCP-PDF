@@ -1,3 +1,4 @@
+import {isReaderSearchUrl} from "../shared/reader-search";
 import {themeMode} from '../shared/themes';
 import {localize} from '../shared/localize';
 import {resolveLocale,OCR_LANGUAGES} from '../shared/locale';
@@ -720,7 +721,7 @@ function registerIpc(){
    finally{action(view,'progress:');notify();}
   },
   installContextMenu:async(_view,enabled)=>{await installQuickActions(!!enabled);await settings.setQuickActions(!!enabled);notify();},
-  openExternal:async(_view,url)=>{const allowed=['https://validar.iti.gov.br/','https://gestaoculturalpro.com.br/','https://donate.stripe.com/fZu4gzeBSfhbd7451F6Ri00','https://aistudio.google.com/apikey','https://platform.openai.com/api-keys'];if(!allowed.includes(url))throw new Error('Este link externo não é permitido.');await shell.openExternal(url);},
+  openExternal:async(_view,url)=>{const allowed=['https://validar.iti.gov.br/','https://gestaoculturalpro.com.br/','https://donate.stripe.com/fZu4gzeBSfhbd7451F6Ri00','https://aistudio.google.com/apikey','https://platform.openai.com/api-keys'];if(!allowed.includes(url)&&!isReaderSearchUrl(url))throw new Error('Este link externo não é permitido.');await shell.openExternal(url);},
   copyText:(_view,text)=>{if(typeof text!=='string'||text.length>200000)throw new Error('Texto inválido.');clipboard.writeText(text);},
   getProperties:async(view,id)=>{
    const doc=own(view,id),first=doc.model.pages[0]!,base=store.baseInfo(first.base).pages[first.src]!;

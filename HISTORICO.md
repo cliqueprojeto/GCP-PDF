@@ -1,5 +1,10 @@
 # Histórico de versões do GCP-PDF
 
+## 0.7.1 — 31/10/2026
+
+- Leitor de EPUB mais seguro: conteúdos especiais de livros de origem desconhecida (seções CDATA) passam a ser exibidos só como texto.
+
+
 ## 0.7.0 — 31/10/2026
 
 - Editar títulos com espaçamento entre letras personalizado agora mantém o espaçamento na tela, ao gravar no PDF e ao converter para Word, PowerPoint e Excel (antes surgiam espaços entre as letras).

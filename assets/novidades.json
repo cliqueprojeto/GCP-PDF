@@ -1,5 +1,12 @@
 [
   {
+    "versao": "0.7.1",
+    "data": "2026-10-31",
+    "itens": [
+      "Leitor de EPUB mais seguro: conteúdos especiais de livros de origem desconhecida (seções CDATA) passam a ser exibidos só como texto."
+    ]
+  },
+  {
     "versao": "0.7.0",
     "data": "2026-10-31",
     "itens": [

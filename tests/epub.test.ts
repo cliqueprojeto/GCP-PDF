@@ -55,11 +55,13 @@ test('EPUB reader removes active content and keeps CSS inside its style element'
   'META-INF/container.xml':strToU8('<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="c.opf"/></rootfiles></container>'),
   'c.opf':strToU8('<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>X</dc:title></metadata><manifest><item id="a" href="a.xhtml" media-type="application/xhtml+xml"/><item id="s" href="s.css" media-type="text/css"/></manifest><spine><itemref idref="a"/></spine></package>'),
   's.css':strToU8('p{color:red}</style><img src=x onerror=alert(1)><style>'),
-  'a.xhtml':strToU8('<html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" href="s.css"/></head><body><p id="n" onclick="x()">Oi</p><script>alert(1)</script><a href="https://exemplo.com">site</a><iframe src="https://x"/></body></html>'),
+  'a.xhtml':strToU8('<html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" href="s.css"/></head><body><p id="n" onclick="x()">Oi</p><p><![CDATA[x><img src=x onerror=alert(1)>]]></p><!-- c --><script>alert(1)</script><a href="https://exemplo.com">site</a><iframe src="https://x"/></body></html>'),
  });
  const book=readEpub(epub);
  assert.ok(!book.css.includes('<'),book.css);
  assert.doesNotMatch(book.html,/script|onclick|iframe|href="https/i);
+ assert.doesNotMatch(book.html,/<img|CDATA|<!--/);
+ assert.match(book.html,/x&gt;&lt;img/);
  assert.match(book.html,/id="c0-n"/);
  assert.match(book.html,/data-external="https:\/\/exemplo.com"/);
 });

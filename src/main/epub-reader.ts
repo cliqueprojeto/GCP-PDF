@@ -45,8 +45,10 @@ export function readBook(bytes:Uint8Array):ParsedBook {
   const body=doc.getElementsByTagName('body')[0];if(!body)return `<section class="gcp-chapter" id="c${i}" data-chapter="${i}"></section>`;
   const clean=(node:any)=>{
    for(const child of Array.from(node.childNodes as ArrayLike<any>)){
-    if(child.nodeType===8||child.nodeType===7){node.removeChild(child);continue;}
-    if(child.nodeType!==1)continue;
+    // CDATA would be serialized as markup the HTML parser re-reads: keep its words as plain text. Only
+    // elements and text survive; comments, processing instructions and the rest are dropped.
+    if(child.nodeType===4){node.replaceChild(child.ownerDocument.createTextNode(child.data),child);continue;}
+    if(child.nodeType!==1){if(child.nodeType!==3)node.removeChild(child);continue;}
     const tag=String(child.localName??child.nodeName).toLowerCase();
     if(DROP.has(tag)||tag==='style'){node.removeChild(child);continue;}
     for(const attr of Array.from(child.attributes as ArrayLike<any>)){

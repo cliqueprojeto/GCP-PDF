@@ -1624,6 +1624,10 @@ export const translations:Record<string,readonly [string,string]> = {
     "Drag to reorder tabs, down to open in a new window, or to another window.",
     "Arrastre para reorganizar las pestañas, hacia abajo para abrir en una ventana nueva o a otra ventana."
   ],
+  "Pesquisar no PDF": [
+    "Search the PDF",
+    "Buscar en el PDF"
+  ],
   "Solte para abrir em uma nova janela": [
     "Drop to open in a new window",
     "Suelte para abrir en una ventana nueva"

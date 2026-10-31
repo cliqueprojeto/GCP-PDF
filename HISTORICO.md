@@ -1,5 +1,12 @@
 # Histórico de versões do GCP-PDF
 
+## 0.5.1 — 30/10/2026
+
+- As abas dos documentos agora ficam logo abaixo da faixa de ferramentas, acima do documento, como nos leitores de PDF de mesa.
+- Nova caixa Pesquisar no PDF na barra do logo: ao digitar, o painel Pesquisar abre e a busca acontece sozinha; o X limpa a busca e fecha o painel.
+- Salvar como ganhou um ícone próprio, diferente de Salvar.
+
+
 ## 0.5.0 — 30/10/2026
 
 - Comentários não cobrem mais o texto: o ícone de um comentário fica na margem, ao lado do trecho comentado, inclusive nos comentários vindos de outros leitores.

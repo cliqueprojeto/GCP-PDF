@@ -8,6 +8,7 @@ import {
   X,
   FolderOpen,
   Save,
+  SavePen,
   Printer,
   FilePlus2,
   PencilLine,
@@ -68,6 +69,7 @@ export interface Command {
 const ICONS: Record<string, LucideIcon> = {
   open: FolderOpen,
   save: Save,
+  "save-as": SavePen,
   print: Printer,
   new: FilePlus2,
   "edit-all": PencilLine,

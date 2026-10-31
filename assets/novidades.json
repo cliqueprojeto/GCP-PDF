@@ -1,5 +1,14 @@
 [
   {
+    "versao": "0.5.1",
+    "data": "2026-10-30",
+    "itens": [
+      "As abas dos documentos agora ficam logo abaixo da faixa de ferramentas, acima do documento, como nos leitores de PDF de mesa.",
+      "Nova caixa Pesquisar no PDF na barra do logo: ao digitar, o painel Pesquisar abre e a busca acontece sozinha; o X limpa a busca e fecha o painel.",
+      "Salvar como ganhou um ícone próprio, diferente de Salvar."
+    ]
+  },
+  {
     "versao": "0.5.0",
     "data": "2026-10-30",
     "itens": [

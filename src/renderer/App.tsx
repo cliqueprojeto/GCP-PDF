@@ -221,7 +221,8 @@ export default function App() {
     const ids = new Set(active.objects.map((o) => o.id));
     setSelectedObjects((old) => { const next = new Set([...old].filter((id) => ids.has(id))); return next.size === old.size ? old : next; });
   }, [active?.revision]);
-  useEffect(() => { if (panel === "search") searchRef.current?.focus(); }, [panel]);
+  // The search box in the logo bar keeps the focus while it opens the Pesquisar panel.
+  useEffect(() => { if (panel === "search" && !document.activeElement?.closest(".title-search")) searchRef.current?.focus(); }, [panel]);
 
   const operation = useCallback((op: PdfOperation, label = "") => {
     if (!active) return Promise.resolve(undefined);
@@ -535,6 +536,10 @@ export default function App() {
     if(data?.documentId){dragEndInside.current=true;await perform(async()=>{if(data.sourceWindowId!==workspace.windowId)await window.gcp.attachDocument(data.documentId,data.sourceWindowId);await window.gcp.moveDocumentTab(data.documentId,beforeId);});}
   }
   function clearSearch() { setQuery(""); setActiveSearch(""); setMatches([]); setHit(0); }
+  // Typing in the logo bar search opens Pesquisar and searches as you type; clearing it closes the panel it opened.
+  const titleSearch = useRef(false), searchOpenedByTitle = useRef(false);
+  function closeTitleSearch() { clearSearch(); if (searchOpenedByTitle.current) { searchOpenedByTitle.current = false; setSideOpen(false); } }
+  useEffect(() => { if (!titleSearch.current || !query.trim() || !active) return; const timer = setTimeout(() => void findText(), 450); return () => clearTimeout(timer); }, [query]);
   async function findText() {
     if (!active || !query.trim()) return;
     setSearching(true);
@@ -592,13 +597,13 @@ export default function App() {
       onDragLeave={(e) => { if (isFileDrag(e) && --fileDragDepth.current <= 0) { fileDragDepth.current = 0; setFileDrag(false); } }}
       onDragOver={(e) => {
         if (isFileDrag(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; return; }
-        if (draggingTab.current && e.dataTransfer.types.includes(TAB_MIME) && !(e.target as HTMLElement).closest(".titlebar")) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setTabDetachHint(true); }
+        if (draggingTab.current && e.dataTransfer.types.includes(TAB_MIME) && !(e.target as HTMLElement).closest(".document-tabs-row")) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setTabDetachHint(true); }
         else if (tabDetachHint) setTabDetachHint(false);
       }}
       onDrop={(e) => {
         if (isFileDrag(e)) { dropFiles(e, "open"); return; }
         const id = draggingTab.current;
-        if (id && e.dataTransfer.types.includes(TAB_MIME) && !(e.target as HTMLElement).closest(".titlebar")) { e.preventDefault(); dragEndInside.current = true; setTabDetachHint(false); void perform(() => window.gcp.detachDocument(id)); }
+        if (id && e.dataTransfer.types.includes(TAB_MIME) && !(e.target as HTMLElement).closest(".document-tabs-row")) { e.preventDefault(); dragEndInside.current = true; setTabDetachHint(false); void perform(() => window.gcp.detachDocument(id)); }
       }}
     >
       {tabDetachHint && <div className="tab-detach-hint"><MoveUpRight size={26} /><strong>{translateUi("Solte para abrir em uma nova janela")}</strong><span>{translateUi("Volte para a barra de abas para apenas reorganizar")}</span></div>}
@@ -635,6 +640,54 @@ export default function App() {
           <span>{translateUi("GCP")}<span className="brand-divider">/</span>{translateUi("PDF")}</span>
           <span className="brand-edition">{translateUi("LOCAL")}</span>
         </button>
+        <div className="titlebar-spacer" />
+        {!showHome && active && (
+          <div className="title-document" title={active.path || active.name}>
+            {docDirty ? <span className="unsaved-label">{translateUi("Não salvo")}</span> : <span className="saved-label"><Check size={12} />{" "}{translateUi("Salvo")}</span>}
+            <div className="viewer-controls">
+              <IconButton title={translateUi("Página anterior")} disabled={page <= 0} onClick={() => choosePage(page - 1)}><ChevronLeft size={16} /></IconButton>
+              <label className="page-input">
+                <input aria-label={translateUi("Número da página")} key={page} defaultValue={page + 1} onKeyDown={(e) => { if (e.key === "Enter") { const n = Number((e.target as HTMLInputElement).value); if (n >= 1 && n <= active.pageCount) choosePage(n - 1); } }} />
+                <span>/ {active.pageCount}</span>
+              </label>
+              <IconButton title={translateUi("Próxima página")} disabled={page >= active.pageCount - 1} onClick={() => choosePage(page + 1)}><ChevronRight size={16} /></IconButton>
+            </div>
+          </div>
+        )}
+        <div className="title-search search-box">
+          <Search size={14} />
+          <input aria-label={translateUi("Pesquisar no PDF")} placeholder={translateUi("Pesquisar no PDF")} value={query} disabled={showHome || !active}
+            onFocus={() => { titleSearch.current = true; }} onBlur={() => { titleSearch.current = false; }}
+            onChange={(e) => { const value = e.target.value; setQuery(value); if (!value.trim()) { closeTitleSearch(); return; } if (!(sideOpen && panel === "search")) { searchOpenedByTitle.current = true; showPanel("search"); } }}
+            onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); closeTitleSearch(); e.currentTarget.blur(); return; } if (e.key === "Enter") { if (activeSearch === query.trim() && totalHits) goHit(hit + (e.shiftKey ? -1 : 1)); else void findText(); } }} />
+          {query && <button className="search-clear" title={translateUi("Limpar busca e destaques · Esc")} aria-label={translateUi("Limpar busca e destaques · Esc")} onClick={closeTitleSearch}><X size={14} /></button>}
+        </div>
+        <button className="tool-finder" onClick={() => setModal("palette")}><Search size={14} />{" "}{translateUi("Localizar ferramentas")}{" "}<kbd>{translateUi("Ctrl+K")}</kbd></button>
+        <button className="publisher-link" onClick={() => void window.gcp.openExternal(SITE)}>{translateUi("Gestão Cultural Pro")}{" "}<ArrowUpRight size={12} /></button>
+        <div className="window-actions">
+
+          <IconButton title={workspace.theme === "light" ? translateUi("Ativar tema escuro") : translateUi("Ativar tema claro")} onClick={() => void perform(() => window.gcp.setTheme(workspace.theme === "light" ? "dark" : "light"))}>{workspace.theme === "light" ? <Moon size={17} /> : <Sun size={17} />}</IconButton>
+          <IconButton title={translateUi("Central de ajuda · F1")} onClick={() => { setHelpTopic(undefined); setModal("help"); }}><HelpCircle size={17} /></IconButton>
+          <IconButton title={translateUi("Configurações")} onClick={() => setModal("settings")}><Settings size={17} /></IconButton>
+        </div>
+      </header>
+      <div className="menu-row">
+        <div className="ribbon-tabs">
+          {TABS.map((label) => (
+            <button className={tab === label ? "active" : ""} key={translateUi(label)} onDoubleClick={() => setRibbon(ribbonMode === "pinned" ? "collapsed" : "pinned")} onClick={() => { openTab(label); if (ribbonMode !== "pinned") setPeek(true); if (label === "Comentário") showPanel("comments"); if (label === "Assinar") showPanel("signatures"); if (label === "IA") showPanel("ai"); if (label === "Organizar") showPanel("pages"); }}>
+              {label === "IA" && <Sparkles size={14} />} {translateUi(label)}
+            </button>
+          ))}
+        </div>
+        <div className="toolbar-spacer" />
+        <RibbonModeMenu mode={ribbonMode} onMode={setRibbon} />
+      </div>
+      <div className="ribbon-panel" onClick={(e) => { if (ribbonMode === "collapsed" && (e.target as HTMLElement).closest(".tool-button")) setPeek(false); }}>
+        <Ribbon tab={tab} hasDocument={!showHome && !!active} canUndo={!!active?.canUndo} canRedo={!!active?.canRedo} tool={tool} setTool={setTool} style={style} selection={selectionObjects} source={sourceSelection} pagesSelected={selectedPages.length} zoom={zoom} fonts={fonts} labels={labels} actions={actions} ribbonMode={ribbonMode} layout={layout} filter={readingFilter} dark={workspace.theme === "dark"} />
+      </div>
+      </div>
+      {/* Abas dos documentos abertos, abaixo da faixa de opções e logo acima do documento. */}
+      <div className="document-tabs-row">
         <div className={`document-tabs ${tabDrop ? "drop-target" : ""}`} onDragOver={(e) => { if (e.dataTransfer.types.includes(TAB_MIME)) { e.preventDefault(); setTabDrop(true); } }} onDragLeave={() => setTabDrop(false)} onDrop={e=>void tabDropEvent(e)}>
           {workspace.documents.map((doc) => (
             <div
@@ -660,42 +713,6 @@ export default function App() {
           ))}
           <button className="new-tab" aria-label={translateUi("Abrir documento")} title={translateUi("Abrir documento · Ctrl+O")} onClick={actions.open}><Plus size={18} /></button>
         </div>
-        {!showHome && active && (
-          <div className="title-document" title={active.path || active.name}>
-            {docDirty ? <span className="unsaved-label">{translateUi("Não salvo")}</span> : <span className="saved-label"><Check size={12} />{" "}{translateUi("Salvo")}</span>}
-            <div className="viewer-controls">
-              <IconButton title={translateUi("Página anterior")} disabled={page <= 0} onClick={() => choosePage(page - 1)}><ChevronLeft size={16} /></IconButton>
-              <label className="page-input">
-                <input aria-label={translateUi("Número da página")} key={page} defaultValue={page + 1} onKeyDown={(e) => { if (e.key === "Enter") { const n = Number((e.target as HTMLInputElement).value); if (n >= 1 && n <= active.pageCount) choosePage(n - 1); } }} />
-                <span>/ {active.pageCount}</span>
-              </label>
-              <IconButton title={translateUi("Próxima página")} disabled={page >= active.pageCount - 1} onClick={() => choosePage(page + 1)}><ChevronRight size={16} /></IconButton>
-            </div>
-          </div>
-        )}
-        <button className="tool-finder" onClick={() => setModal("palette")}><Search size={14} />{" "}{translateUi("Localizar ferramentas")}{" "}<kbd>{translateUi("Ctrl+K")}</kbd></button>
-        <button className="publisher-link" onClick={() => void window.gcp.openExternal(SITE)}>{translateUi("Gestão Cultural Pro")}{" "}<ArrowUpRight size={12} /></button>
-        <div className="window-actions">
-
-          <IconButton title={workspace.theme === "light" ? translateUi("Ativar tema escuro") : translateUi("Ativar tema claro")} onClick={() => void perform(() => window.gcp.setTheme(workspace.theme === "light" ? "dark" : "light"))}>{workspace.theme === "light" ? <Moon size={17} /> : <Sun size={17} />}</IconButton>
-          <IconButton title={translateUi("Central de ajuda · F1")} onClick={() => { setHelpTopic(undefined); setModal("help"); }}><HelpCircle size={17} /></IconButton>
-          <IconButton title={translateUi("Configurações")} onClick={() => setModal("settings")}><Settings size={17} /></IconButton>
-        </div>
-      </header>
-      <div className="menu-row">
-        <div className="ribbon-tabs">
-          {TABS.map((label) => (
-            <button className={tab === label ? "active" : ""} key={translateUi(label)} onDoubleClick={() => setRibbon(ribbonMode === "pinned" ? "collapsed" : "pinned")} onClick={() => { openTab(label); if (ribbonMode !== "pinned") setPeek(true); if (label === "Comentário") showPanel("comments"); if (label === "Assinar") showPanel("signatures"); if (label === "IA") showPanel("ai"); if (label === "Organizar") showPanel("pages"); }}>
-              {label === "IA" && <Sparkles size={14} />} {translateUi(label)}
-            </button>
-          ))}
-        </div>
-        <div className="toolbar-spacer" />
-        <RibbonModeMenu mode={ribbonMode} onMode={setRibbon} />
-      </div>
-      <div className="ribbon-panel" onClick={(e) => { if (ribbonMode === "collapsed" && (e.target as HTMLElement).closest(".tool-button")) setPeek(false); }}>
-        <Ribbon tab={tab} hasDocument={!showHome && !!active} canUndo={!!active?.canUndo} canRedo={!!active?.canRedo} tool={tool} setTool={setTool} style={style} selection={selectionObjects} source={sourceSelection} pagesSelected={selectedPages.length} zoom={zoom} fonts={fonts} labels={labels} actions={actions} ribbonMode={ribbonMode} layout={layout} filter={readingFilter} dark={workspace.theme === "dark"} />
-      </div>
       </div>
       {tool.kind === "stamp" && (
         <div className="tool-hint"><span className="pulse-dot" />{" "}{translateUi("Clique na página para aplicar “")}{tool.name}{translateUi("” ou arraste para definir o tamanho.")}{" "}<button className="text-button" onClick={() => setTool({ kind: "select" })}>{translateUi("Concluir")}{" "}<Check size={14} /></button></div>

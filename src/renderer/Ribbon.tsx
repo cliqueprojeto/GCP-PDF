@@ -64,6 +64,7 @@ import {
   Files,
   Download,
   Save,
+  SavePen,
   Printer,
   Undo2,
   Redo2,
@@ -1663,7 +1664,7 @@ export function Ribbon(props: Props) {
             disabled={none}
             onClick={actions.save}
           />
-          <Small icon={<Save size={18} />} title={translateUi("Salvar como · Ctrl+Shift+S")} disabled={none} onClick={actions.saveAs} />
+          <Small icon={<SavePen size={18} />} title={translateUi("Salvar como · Ctrl+Shift+S")} disabled={none} onClick={actions.saveAs} />
           <Small
             icon={<Download size={18} />}
             title={translateUi("Exportar (Word, Excel, PowerPoint, imagem…) · Ctrl+E")}

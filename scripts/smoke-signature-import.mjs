@@ -1,7 +1,7 @@
 import {waitForWorkspace} from './smoke-workspace.mjs';
 import {_electron as electron} from 'playwright-core';
 import {createRequire} from 'node:module';
-import {mkdtemp,writeFile} from 'node:fs/promises';
+import {mkdtemp,writeFile,realpath} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -10,7 +10,7 @@ import {signatureImportChecks} from './signature-import-checks.mjs';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import assert from 'node:assert/strict';
-const root=await mkdtemp(join(tmpdir(),'gcp-signature-import-')),require=createRequire(import.meta.url);
+const root=await realpath(await mkdtemp(join(tmpdir(),'gcp-signature-import-'))),require=createRequire(import.meta.url);
 const pdf=await PDFDocument.create();pdf.addPage();const file=join(root,'drive #100% sem extensão');await writeFile(file,await pdf.save());
 const env={...process.env,GCP_PDF_DATA_DIR:join(root,'profile'),GCP_PDF_TEST_MODE:'1'};delete env.ELECTRON_RUN_AS_NODE;
 const app=await electron.launch({executablePath:require('electron'),args:[resolve('.'),pathToFileURL(file).href],env,timeout:90000});

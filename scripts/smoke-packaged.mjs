@@ -2,7 +2,7 @@ import {waitForWorkspace} from './smoke-workspace.mjs';
 import {_electron as electron} from 'playwright-core';
 import {PDFDocument,StandardFonts} from 'pdf-lib';
 import {createCanvas} from '@napi-rs/canvas';
-import {mkdtemp,mkdir,readFile,writeFile,readdir,rm} from 'node:fs/promises';
+import {mkdtemp,mkdir,readFile,writeFile,readdir,rm,realpath} from 'node:fs/promises';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {join,resolve} from 'node:path';
@@ -14,7 +14,7 @@ import {signatureImportChecks} from './signature-import-checks.mjs';
 
 const executable=process.argv[2];
 if(!executable)throw new Error('Informe o executável extraído/instalado do pacote.');
-const root=await mkdtemp(join(tmpdir(),'gcp-packaged-'));
+const root=await realpath(await mkdtemp(join(tmpdir(),'gcp-packaged-')));
 const exec=promisify(execFile),label=process.argv[3]??'app';
 let app;
 const checks=[],errors=[];

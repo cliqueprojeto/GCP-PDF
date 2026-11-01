@@ -35,6 +35,10 @@ try{
  check('Escape confirma a paleta escolhida na primeira abertura',(await page.evaluate(()=>window.gcp.getWorkspace())).theme==='dark-ocean');
  const packaged=await app.evaluate(({app})=>({packaged:app.isPackaged,arch:process.arch,platform:process.platform}));
  check('aplicativo empacotado e arquitetura nativa',packaged.packaged&&packaged.arch===process.arch&&packaged.platform===process.platform);
+ if(process.platform==='linux'&&label==='deb'){
+  const desktop=await readFile('/usr/share/applications/gcp-pdf.desktop','utf8');
+  check('lançador Linux instalado solicita caminhos montados com %F',/^Exec=.*\s%F(?:\s|$)/m.test(desktop)&&!/^Exec=.*%U/m.test(desktop));
+ }
  const state=await page.evaluate(()=>window.gcp.getWorkspace()),id=state.documents[0].id;
  check('PDF sem extensão aberto por file:// preserva caminho original',state.documents[0].pageCount===1&&state.documents[0].path===input);
  await page.waitForFunction(()=>document.querySelectorAll('.page-sheet canvas').length>0,{},{timeout:60_000});

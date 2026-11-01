@@ -853,3 +853,31 @@
 .book-menu { max-height: calc(100vh - 16px); overflow-y: auto; }
 .book-menu-heading { display: flex; align-items: center; justify-content: space-between; padding-left: 10px; color: var(--muted); font-size: 11px; }
 .book-menu .book-menu-heading .icon-button { width: 28px; padding: 5px; }
+
+/* Signature import: one responsive dialog scroll, pixel-preserving local preview. */
+.signature-upload.has-image { height: auto; padding: 0; border: 0; background: none; gap: 12px; align-items: stretch; color: var(--text); }
+.modal:has(.signature-image-editor) { width: min(900px, 95vw); }
+.signature-image-editor { width: 100%; min-width: 0; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(220px, .8fr); gap: 12px 18px; text-align: left; align-items: start; }
+.signature-image-editor > p { grid-column: 1 / -1; }
+.signature-image-editor > .signature-image-stage { grid-column: 1; grid-row: 2 / span 3; align-self: stretch; }
+.signature-image-editor > .field.inline { grid-column: 2; grid-row: 2; }
+.signature-image-editor > .signature-background-tools { grid-column: 2; grid-row: 3; }
+.signature-image-editor > .signature-crop-actions { grid-column: 2; grid-row: 4; }
+.modal:has(.signature-image-editor) .modal-heading { margin-bottom: 14px; }
+.signature-image-editor p { margin: 0; }
+.signature-image-stage { min-height: 100px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+.signature-image-frame { position: relative; line-height: 0; max-width: 100%; touch-action: none; }
+.signature-image-frame canvas { display: block; max-width: 100%; max-height: 220px; object-fit: contain; width: auto; height: auto; }
+.signature-background-tools { display: grid; grid-template-columns: minmax(100px,1fr) auto; gap: 8px; align-items: center; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.signature-background-tools input[type=color] { height: 32px; padding: 2px; }
+.signature-crop-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.signature-image-editor .field { margin: 0; }
+.signature-image-editor .inline { display: flex; flex-direction: row; align-items: center; gap: 12px; font-size: 11px; }
+.signature-image-editor .inline select { width: auto; }
+@media (max-width: 650px) { .signature-image-editor { display: flex; flex-direction: column; } .signature-image-editor > * { width: 100%; } .signature-image-stage { min-height: 120px; } }
+
+.signature-image-stage.checker { background: repeating-conic-gradient(#e8e8ef 0 25%, #fff 0 50%) 50% / 16px 16px; }
+.signature-background-tools > .field:not(.inline) { grid-column: 1 / -1; grid-row: 2; }
+.signature-background-tools > .field.inline { grid-column: 2; grid-row: 1; gap: 6px; }
+.signature-background-tools > .field.inline input { width: 38px; }
+.signature-background-tools input { accent-color: var(--purple); }

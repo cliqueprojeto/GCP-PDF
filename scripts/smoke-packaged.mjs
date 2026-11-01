@@ -1,3 +1,4 @@
+import {waitForWorkspace} from './smoke-workspace.mjs';
 import {_electron as electron} from 'playwright-core';
 import {PDFDocument,StandardFonts} from 'pdf-lib';
 import {createCanvas} from '@napi-rs/canvas';
@@ -8,6 +9,8 @@ import {join,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 import assert from 'node:assert/strict';
 import {zipSync} from 'fflate';
+import {pathToFileURL} from 'node:url';
+import {signatureImportChecks} from './signature-import-checks.mjs';
 
 const executable=process.argv[2];
 if(!executable)throw new Error('Informe o executável extraído/instalado do pacote.');
@@ -19,11 +22,11 @@ const check=(label,value)=>{assert.ok(value,label);checks.push(label);console.lo
 try{
  const pdf=await PDFDocument.create(),font=await pdf.embedFont(StandardFonts.Helvetica);
  pdf.addPage([595,842]).drawText('Documento cultural original',{font,size:18,x:50,y:740});
- const input=join(root,'Documento cultural.pdf');await writeFile(input,await pdf.save());
+ const input=join(root,'Documento cultural #100% sem extensão');await writeFile(input,await pdf.save());
  const env={...process.env,GCP_PDF_TEST_MODE:'1',GCP_PDF_DATA_DIR:join(root,'profile')};delete env.ELECTRON_RUN_AS_NODE;
- app=await electron.launch({executablePath:resolve(executable),args:[input],env,timeout:90_000});
+ app=await electron.launch({executablePath:resolve(executable),args:[pathToFileURL(input).href],env,timeout:90_000});
  const page=await app.firstWindow();page.on('pageerror',error=>errors.push(error.stack??error.message));
- await page.waitForFunction(async()=>!!window.gcp&&(await window.gcp.getWorkspace()).documents.length===1,{},{timeout:60_000});
+ await waitForWorkspace(page,state=>state.documents.length===1,60000);
  await page.locator('.modal:has(.theme-gallery) .theme-options button').nth(4).click();
  await page.waitForFunction(()=>document.documentElement.dataset.palette==='dark-ocean');
  await page.keyboard.press('Escape');
@@ -33,7 +36,7 @@ try{
  const packaged=await app.evaluate(({app})=>({packaged:app.isPackaged,arch:process.arch,platform:process.platform}));
  check('aplicativo empacotado e arquitetura nativa',packaged.packaged&&packaged.arch===process.arch&&packaged.platform===process.platform);
  const state=await page.evaluate(()=>window.gcp.getWorkspace()),id=state.documents[0].id;
- check('PDF aberto pela linha de comando',state.documents[0].pageCount===1);
+ check('PDF sem extensão aberto por file:// preserva caminho original',state.documents[0].pageCount===1&&state.documents[0].path===input);
  await page.waitForFunction(()=>document.querySelectorAll('.page-sheet canvas').length>0,{},{timeout:60_000});
  check('PDF renderizado na interface',true);
  const source=await page.evaluate(({id,page})=>window.gcp.getSourceObjects(id,page),{id,page:state.documents[0].pages[0].id});
@@ -56,6 +59,15 @@ try{
   const result=await window.gcp.getBase(current.documents[0].pages[0].base);return !!result;
  });
  check('leitura dos bytes pelo preload empacotado',converted);
+ const secondLaunch=join(root,'Outro documento #100%.pdf');await writeFile(secondLaunch,await pdf.save());
+ await exec(resolve(executable),[pathToFileURL(secondLaunch).href],{env,cwd:root,timeout:30000});
+ await waitForWorkspace(page,state=>state.documents.some(doc=>doc.path===secondLaunch));
+ check('segunda instância abre file:// em vez de apenas exibir a janela',true);
+ const relativeLaunch=join(root,'relativo.pdf');await writeFile(relativeLaunch,await pdf.save());
+ await exec(resolve(executable),['relativo.pdf'],{env,cwd:root,timeout:30000});
+ await waitForWorkspace(page,state=>state.documents.some(doc=>doc.path===relativeLaunch));
+ check('segunda instância respeita diretório de trabalho do chamador',true);
+ check(await signatureImportChecks(app,page,root,`${process.platform}-${process.arch}-${label}`),true);
  const lookup=await page.evaluate(async()=>({synonyms:await window.gcp.lookupSynonyms('território','pt'),translation:await window.gcp.lookupTranslation('no','pt','en')}));
  check('dicionários novos embarcados e siglas separadas de palavras',lookup.synonyms.meanings.length>0&&lookup.translation.entries[0].translations.includes('on')&&!lookup.translation.entries[0].translations.includes('NW'));
  // Comic reader: libarchive's WebAssembly must load from the package and open a CBZ.

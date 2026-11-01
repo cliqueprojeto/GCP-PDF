@@ -1783,13 +1783,6 @@ button {
   padding: 15px;
   color: var(--purple);
 }
-.signature-upload > img {
-  max-width: 90%;
-  max-height: 90px;
-  object-fit: contain;
-  background: #fff;
-  border-radius: 5px;
-}
 .signature-upload > p {
   font-size: 9px;
   color: var(--muted);

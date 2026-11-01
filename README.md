@@ -86,6 +86,10 @@ Os demais formatos Office além de `.docx`, `.xlsx` e `.txt` podem exigir LibreO
 - Reconhecimento automático de formulários e exportação dos dados em CSV.
 
 ### Assinar e proteger
+- **Assinatura por imagem com fundo transparente:** em **Nova assinatura › Enviar imagem**, o aplicativo detecta transparência existente e preserva o original. Para fundos opacos, há remoção local com intensidade e cor do fundo ajustáveis, prévia clara/escura/quadriculada, recorte manual e automático das margens e opção de desfazer. O resultado ajustado é salvo em PNG, sem alterar a imagem de origem.
+
+![Importação de assinatura com prévia e remoção de fundo](docs/screenshots/12-assinatura-importada.png)
+
 - Assinatura digital com certificado ICP-Brasil (A1 em arquivo ou A3 em token/cartão), com prévia da posição na página. Arquivos assinados no programa aparecem como válidos no [Validador do ITI](https://validar.iti.gov.br/).
 - Verificação das assinaturas digitais de um documento, usando a cadeia de certificados confiáveis do Windows.
 - Proteção com senha, remoção de dados ocultos e edição das propriedades do documento.
@@ -108,6 +112,10 @@ Os demais formatos Office além de `.docx`, `.xlsx` e `.txt` podem exigir LibreO
 - Sinônimos e tradução disponíveis na aba **Revisar** e pelo menu do texto selecionado, em uma janela adaptável. Ao selecionar uma frase, escolha a palavra para consultar sinônimos.
 - Português com OpenWN-PT como fonte principal e VERO como alternativa; inglês com WordNet e espanhol com OpenThesaurus. Dicionários locais, sem internet. As sugestões dependem do sentido: revise antes de substituir no documento.
 - Tradução pelo WikDict é lexical, palavra por palavra. A tradução de frases com IA é opcional e informa o envio do trecho ao provedor.
+
+### Arquivos em drives montados (Linux)
+
+A abertura pelo gerenciador de arquivos reconhece PDFs em drives montados, incluindo nomes internos sem extensão. Abrir outro documento com o programa já em execução também respeita a pasta de origem.
 
 ## Privacidade
 

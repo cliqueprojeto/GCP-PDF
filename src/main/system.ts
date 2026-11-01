@@ -1,3 +1,4 @@
+import {hasPdfHeader} from './launch-input';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {existsSync} from 'node:fs';
@@ -15,7 +16,17 @@ export async function registerWindowsContextMenu(enabled:boolean,launch:string,i
  await set(root,'MUIVerb','GCP-PDF');await set(root,'SubCommands','');await set(root,'Icon',launch.split('"')[1]+',0');
  for(const [id,label,flag] of [['convert','Converter para PDF','--quick-convert'],['combine','Combinar em um PDF','--quick-combine']]){const key=root+'\\shell\\'+id;await set(key,'MUIVerb',label);await set(key,'Icon',join(icons,id+'.ico'));await set(key,'MultiSelectModel','Player');await set(key+'\\command','',`${launch} ${flag} "%1"`);}
 }
-export async function readInputPdf(path:string,htmlToPdf?:HtmlToPdf):Promise<Uint8Array>{const extension=extname(path).toLowerCase();if(extension==='.pdf')return new Uint8Array(await readFile(path));
+export async function isPdfInput(path:string):Promise<boolean>{
+ const extension=extname(path).toLowerCase();
+ return extension==='.pdf'||(!INPUT_EXTENSIONS.includes(extension)&&await hasPdfHeader(path));
+}
+export async function readInputDocument(path:string,htmlToPdf?:HtmlToPdf):Promise<{bytes:Uint8Array;sourcePdf:boolean}>{
+ const extension=extname(path).toLowerCase(),sourcePdf=await isPdfInput(path);
+ if(!sourcePdf&&!INPUT_EXTENSIONS.includes(extension))throw new Error('O arquivo selecionado não é um PDF nem um formato suportado.');
+ return {bytes:sourcePdf?new Uint8Array(await readFile(path)):await convertInputPdf(path,htmlToPdf),sourcePdf};
+}
+export async function readInputPdf(path:string,htmlToPdf?:HtmlToPdf):Promise<Uint8Array>{return (await readInputDocument(path,htmlToPdf)).bytes;}
+async function convertInputPdf(path:string,htmlToPdf?:HtmlToPdf):Promise<Uint8Array>{const extension=extname(path).toLowerCase();
  // Fiscal XML (NF-e, NFC-e, NFS-e…) becomes its auxiliary document (DANFE, DANFSe…), rendered locally.
  if(extension==='.xml'){if(!htmlToPdf)throw new Error('Conversão interna indisponível neste contexto.');return (await fiscalXmlToPdf(new Uint8Array(await readFile(path)),htmlToPdf)).bytes;}if(['.png','.jpg','.jpeg','.webp','.bmp'].includes(extension)){const image=await loadImage(await readFile(path));if(image.width*image.height>100000000)throw new Error('A imagem ultrapassa 100 megapixels. Reduza-a antes de importar.');const canvas=createCanvas(image.width,image.height);canvas.getContext('2d').drawImage(image,0,0);const doc=await PDFDocument.create(),embedded=await doc.embedPng(canvas.toBuffer('image/png'));const landscape=image.width>image.height;const page=doc.addPage(landscape?[841.89,595.28]:[595.28,841.89]);const width=page.getWidth()-48,height=page.getHeight()-48,scale=Math.min(width/image.width,height/image.height);page.drawImage(embedded,{x:(page.getWidth()-image.width*scale)/2,y:(page.getHeight()-image.height*scale)/2,width:image.width*scale,height:image.height*scale});return doc.save();}
  return officeToPdf(path,htmlToPdf??(async()=>{throw new Error('Conversão interna indisponível neste contexto.');}),async()=>{const bytes=await libreOfficeToPdf(path);if(!bytes)throw new Error('Para converter este formato, instale o Microsoft Office ou o LibreOffice.');return bytes;});}

@@ -1,3 +1,4 @@
+import {SignatureImage} from './SignatureImage';
 import {ThemeOptions} from './Themes';
 import type {Theme} from '../shared/themes';
 import {t as translateUi} from "./i18n";
@@ -353,12 +354,14 @@ export function SignatureDialog({
 }) {
   const [name, setName] = useState(""),
     [data, setData] = useState(""),
+    [imageSrc, setImageSrc] = useState(""),
     [method, setMethod] = useState<"draw" | "image">("draw"),
     [clear, setClear] = useState(0),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   return (
     <Modal
+      wide
       title={translateUi("Nova assinatura")}
       description={translateUi("Salve com um nome e reutilize em qualquer documento.")}
       onClose={onClose}
@@ -375,7 +378,7 @@ export function SignatureDialog({
           className={method === "draw" ? "selected" : ""}
           onClick={() => {
             setMethod("draw");
-            setData("");
+            setData("");setImageSrc("");
           }}
         >
           <PenLine size={16} />{" "}{translateUi("Desenhar")}{" "}</button>
@@ -383,7 +386,7 @@ export function SignatureDialog({
           className={method === "image" ? "selected" : ""}
           onClick={() => {
             setMethod("image");
-            setData("");
+            setData("");setImageSrc("");
           }}
         >
           <Upload size={16} />{" "}{translateUi("Enviar imagem")}{" "}</button>
@@ -398,19 +401,15 @@ export function SignatureDialog({
             <RotateCcw size={14} />{" "}{translateUi("Limpar desenho")}{" "}</button>
         </>
       ) : (
-        <div className="signature-upload">
-          {data ? (
-            <img src={data} alt="Prévia da assinatura" />
-          ) : (
-            <Upload size={30} />
-          )}
+        <div className={`signature-upload ${imageSrc ? "has-image" : ""}`}>
+          {imageSrc ? <SignatureImage src={imageSrc} onChange={setData} onError={setError}/> : <Upload size={30} />}
           <button
             className="button secondary"
             onClick={async () => {
               try {
                 const image = await window.gcp.chooseImage();
                 if (image) {
-                  setData(image.dataUrl);
+                  setData("");setImageSrc(image.dataUrl);
                   if (!name) setName(image.name.replace(/\.[^.]+$/, ""));
                 }
               } catch (e) {
@@ -418,9 +417,9 @@ export function SignatureDialog({
               }
             }}
           >
-            {data ? translateUi("Trocar imagem") : translateUi("Escolher imagem PNG ou JPEG")}
+            {imageSrc ? translateUi("Trocar imagem") : translateUi("Escolher imagem PNG ou JPEG")}
           </button>
-          <p>{translateUi("Use uma imagem com fundo transparente para melhor resultado.")}</p>
+          {!imageSrc&&<p>{translateUi("Escolha uma imagem. A transparência será detectada automaticamente.")}</p>}
         </div>
       )}
       {error && <p className="inline-error">{error}</p>}

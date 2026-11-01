@@ -1,3 +1,4 @@
+import {launchPaths} from './launch-input';
 import {isReaderSearchUrl} from "../shared/reader-search";
 import {themeMode} from '../shared/themes';
 import {localize} from '../shared/localize';
@@ -30,7 +31,7 @@ import {CertificateFiles} from './certificate-files';
 import {installUnixIntegration,type DesktopOptions} from './desktop-integration';
 import {privateDirectory} from './pdfcraft-sidecar';
 import {signatureList,signatureSummary,validateNewSignature,sameFilePath,refusesSignedOverwrite} from './signatures';
-import {registerWindowsContextMenu,readInputPdf,INPUT_EXTENSIONS} from './system';
+import {registerWindowsContextMenu,readInputPdf,readInputDocument,isPdfInput,INPUT_EXTENSIONS} from './system';
 import {toPage,fromPage} from '../shared/geometry';
 import {faceFor,faceForPostscript,fontFamilies} from './fonts';
 import type {AiConfig,UpdatePreferences,UpdateStatus,Bookmark,BookmarkEdit,FieldProps,Certificate,FieldType,ProtectOptions,SignOptions,CompressOptions,WorkspaceState,PdfOperation,ExportOptions,ParagraphEdit,SourceObjects,QuickState,Rect,EpubOptions} from '../shared/types';
@@ -181,9 +182,8 @@ async function openPaths(view:View,paths?:string[]){
   const existing=store.all().find(d=>d.path===path);
   if(existing){const owner=[...views.values()].find(v=>v.ids.includes(existing.id));if(owner){owner.active=existing.id;owner.window.focus();continue;}}
   const info=await stat(path).catch((error:NodeJS.ErrnoException)=>{throw new Error(error.code==='ENOENT'?'O arquivo não foi encontrado. Ele pode ter sido movido ou removido. Use Abrir documentos para localizá-lo novamente.':error.code==='EACCES'||error.code==='EPERM'?'O sistema não permitiu abrir esse arquivo. Verifique as permissões de acesso.':'Não foi possível acessar esse arquivo. Verifique se ele está disponível e tente novamente.');});if(!info.isFile()||info.size>512*1024*1024)throw new Error('Abra um arquivo de até 512 MB.');
-  const office=!['.pdf','.png','.jpg','.jpeg','.webp','.bmp'].includes(extname(path).toLowerCase());
-  action(view,`progress:${office?'Convertendo':'Abrindo'} ${basename(path)}${paths.length>1?` (${n+1} de ${paths.length})`:''}…`);
-  const bytes=await readPdf(path),isPdf=extname(path).toLowerCase()==='.pdf';
+  action(view,`progress:Abrindo ${basename(path)}${paths.length>1?` (${n+1} de ${paths.length})`:''}…`);
+  const {bytes,sourcePdf:isPdf}=await readInputDocument(path,htmlToPdf);
   const id=await store.add(bytes,isPdf?basename(path):basename(path,extname(path))+'.pdf',isPdf?path:undefined,source=>{action(view,'progress:Montando formulário XFA…');return engine.staticForm(source);});
   activate(view,id);const notice=store.get(id).notice;if(notice)action(view,'notice:'+notice);
  }
@@ -228,7 +228,7 @@ function pageList(range:string,count:number){
 }
 async function uniquePath(folder:string,name:string){const ext=extname(name),stem=basename(name,ext);let path=join(folder,name);for(let n=2;existsSync(path);n++)path=join(folder,`${stem} (${n})${ext}`);return path;}
 async function countPages(quick:Quick){
- for(const file of quick.state.files){if(file.pages!==undefined||file.error)continue;try{file.pages=extname(file.path).toLowerCase()==='.pdf'?(await store.inspectPages(new Uint8Array(await readFile(file.path)))):1;}catch(error){file.error=error instanceof Error?error.message:String(error);}if(!quick.window.isDestroyed())quick.window.webContents.send('gcp:quick',quick.state);}
+ for(const file of quick.state.files){if(file.pages!==undefined||file.error)continue;try{file.pages=await isPdfInput(file.path)?(await store.inspectPages(new Uint8Array(await readFile(file.path)))):1;}catch(error){file.error=error instanceof Error?error.message:String(error);}if(!quick.window.isDestroyed())quick.window.webContents.send('gcp:quick',quick.state);}
 }
 function createQuickWindow(action:'combine'|'convert',paths:string[]){
  const window=new BrowserWindow({width:880,height:600,minWidth:640,minHeight:440,show:false,title:action==='combine'?'Combinar arquivos — GCP-PDF':'Converter para PDF — GCP-PDF',backgroundColor:themeMode(settings.theme)==='dark'?'#11121a':'#f6f5fa',icon:join(assets(),'icon.png'),autoHideMenuBar:true,webPreferences:preferences});
@@ -642,7 +642,7 @@ function registerIpc(){
    try{const count=await store.insertFile(id,await readPdf(result.filePaths[0]),index,revision);action(view,`notice:${count} página${count>1?'s inseridas':' inserida'}.`);}finally{notify();}
   },
   insertPaths:async(view,id,index:number,paths:string[],revision:number)=>{
-   own(view,id);if(!Array.isArray(paths)||!paths.length||paths.length>200||paths.some(p=>typeof p!=='string'||!INPUT_EXTENSIONS.includes(extname(p).toLowerCase())))throw new Error('Arraste arquivos PDF, imagens ou documentos do Office.');
+   own(view,id);if(!Array.isArray(paths)||!paths.length||paths.length>200||paths.some(p=>typeof p!=='string'))throw new Error('Arraste arquivos PDF, imagens ou documentos do Office.');
    let at=index,current=revision,total=0;
    try{for(const [n,path] of paths.entries()){action(view,`progress:Inserindo ${basename(path)} (${n+1} de ${paths.length})…`);const count=await store.insertFile(id,await readPdf(path),at,current);at+=count;total+=count;current=store.get(id).revision;}}
    finally{action(view,'progress:');notify();}
@@ -859,21 +859,25 @@ function makeMenu(){
 /** Explorer starts one process per selected file ("%1"), so every launch is funnelled here and
  * files arriving within a short window are gathered into a single quick-action window. */
 const batch:{action?:'combine'|'convert';paths:string[];timer?:NodeJS.Timeout}={paths:[]};
-let ready=false;const early:string[][]=[];
+let ready=false;const early:{args:string[];cwd:string}[]=[];
 // Finder sends open-file events, including before whenReady; retain those paths
 // until settings, IPC and the first window have been initialized.
-app.on('open-file',(event,path)=>{event.preventDefault();if(ready)handleLaunch([process.execPath,path]);else early.push([process.execPath,path]);});
+app.on('open-file',(event,path)=>{event.preventDefault();if(ready)handleLaunch([process.execPath,path]);else early.push({args:[process.execPath,path],cwd:process.cwd()});});
 function quickTarget(action:'combine'|'convert'){return [...quicks.values()].find(quick=>quick.state.action===action&&!quick.window.isDestroyed());}
 function flushBatch(){const {action,paths}=batch;batch.action=undefined;batch.paths=[];batch.timer=undefined;if(!action)return;const target=quickTarget(action);if(target){addQuickFiles(target,paths);target.window.focus();}else createQuickWindow(action,paths);}
-function handleLaunch(args:string[]){
+function handleLaunch(args:string[],cwd=process.cwd()){
+ const view=mainView();
+ void(async()=>{
  const quick=args.includes('--quick-combine')?'combine':args.includes('--quick-convert')?'convert':undefined;
- const paths=args.slice(1).filter(arg=>!arg.startsWith('-')&&existsSync(arg)&&OPENABLE.includes(extname(arg).toLowerCase())).map(arg=>resolve(arg));
+ const paths:string[]=[];
+ for(const path of launchPaths(args,cwd,app.getAppPath())){if(OPENABLE.includes(extname(path).toLowerCase())||await isPdfInput(path))paths.push(path);else throw new Error('O arquivo selecionado não é um PDF nem um formato suportado.');}
  if(quick){if(batch.action&&batch.action!==quick)flushBatch();batch.action=quick;batch.paths.push(...paths.filter(path=>!batch.paths.includes(path)));if(batch.timer)clearTimeout(batch.timer);batch.timer=setTimeout(flushBatch,700);return;}
- const view=mainView();if(paths.length)void openPaths(view,paths).catch(error=>action(view,'error:'+(error instanceof Error?error.message:String(error))));view.window.show();view.window.focus();
+ if(paths.length)await openPaths(view,paths);view.window.show();view.window.focus();
+ })().catch(error=>action(view,'error:'+(error instanceof Error?error.message:String(error))));
 }
 if(!app.requestSingleInstanceLock())app.quit();
 else{
- app.on('second-instance',(_event,args)=>{if(ready)handleLaunch(args);else early.push(args);});
+ app.on('second-instance',(_event,args,cwd)=>{if(ready)handleLaunch(args,cwd);else early.push({args,cwd});});
  app.whenReady().then(async()=>{
   await settings.init();nativeTheme.themeSource=themeMode(settings.theme);registerIpc();makeMenu();
   session.defaultSession.on('will-download',event=>event.preventDefault());
@@ -883,7 +887,7 @@ else{
   // Test profiles never change the real desktop or the Windows registry.
   if(app.isPackaged&&process.env.GCP_PDF_TEST_MODE!=='1')void installQuickActions(settings.quickActions).catch(error=>action(mainView(),'notice:Não foi possível configurar as ações rápidas: '+String(error.message||error)));
   setTimeout(()=>void backgroundUpdateCheck(),8000);
-  ready=true;handleLaunch(process.argv);for(const args of early.splice(0))handleLaunch(args);
+  ready=true;handleLaunch(process.argv);for(const {args,cwd} of early.splice(0))handleLaunch(args,cwd);
   if(process.env.GCP_PDF_TEST_MODE==='1')(globalThis as any).__gcpTest={store,views,quicks,createWindow,createQuickWindow,notify,settings,engine};
  }).catch(error=>dialog.showErrorBox('Não foi possível iniciar o GCP-PDF',String(error.message||error)));
 }

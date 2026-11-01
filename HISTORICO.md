@@ -1,5 +1,14 @@
 # Histórico de versões do GCP-PDF
 
+## 0.10.0 — 01/11/2026
+
+- Linux: PDFs em drives montados abrem pelo gerenciador de arquivos mesmo quando o drive usa identificadores sem extensão .pdf. Endereços file:// e abertura com o programa já em execução também foram corrigidos.
+- Nova assinatura > Enviar imagem detecta transparência existente e preserva o PNG original sem remover seu fundo novamente.
+- Para imagens com fundo opaco, a remoção local estima a cor do papel e oferece intensidade ajustável e escolha da cor do fundo, com prévia em tempo real.
+- Recorte manual ou automático das margens, opção de desfazer e prévia em fundo quadriculado, branco ou escuro. O resultado ajustado é salvo em PNG transparente.
+- O botão Salvar aguarda a prévia atualizada e impede salvar um recorte vazio. A imagem original não é modificada.
+- Atualização disponível para Windows, Linux e macOS Intel/Apple Silicon, com estas novidades exibidas na atualização e na primeira abertura da versão nova.
+
 ## 0.9.1 — 31/10/2026
 
 - Livros e quadrinhos: os painéis de opções recolhem ao clicar fora.

@@ -1,11 +1,11 @@
-import {waitForWorkspace} from './smoke-workspace.mjs';
+import {waitForWorkspace,waitForQuickState} from './smoke-workspace.mjs';
 import {_electron as electron} from 'playwright-core';
 import {PDFDocument,StandardFonts} from 'pdf-lib';
 import {createCanvas} from '@napi-rs/canvas';
 import {mkdtemp,mkdir,readFile,writeFile,readdir,rm,realpath} from 'node:fs/promises';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {join,resolve} from 'node:path';
+import {join,resolve,dirname} from 'node:path';
 import {tmpdir} from 'node:os';
 import assert from 'node:assert/strict';
 import {zipSync} from 'fflate';
@@ -17,15 +17,15 @@ if(!executable)throw new Error('Informe o executável extraído/instalado do pac
 const root=await realpath(await mkdtemp(join(tmpdir(),'gcp-packaged-')));
 const exec=promisify(execFile),label=process.argv[3]??'app';
 let app;
-const checks=[],errors=[];
-const check=(label,value)=>{assert.ok(value,label);checks.push(label);console.log('OK',label);};
+const checks=[],errors=[],quickInputs=[];
+const check=(label,value,detail)=>{assert.ok(value,detail?label+': '+JSON.stringify(detail):label);checks.push(label);console.log('OK',label);};
 try{
  const pdf=await PDFDocument.create(),font=await pdf.embedFont(StandardFonts.Helvetica);
  pdf.addPage([595,842]).drawText('Documento cultural original',{font,size:18,x:50,y:740});
  const input=join(root,'Documento cultural #100% sem extensão');await writeFile(input,await pdf.save());
  const env={...process.env,GCP_PDF_TEST_MODE:'1',GCP_PDF_DATA_DIR:join(root,'profile')};delete env.ELECTRON_RUN_AS_NODE;
  app=await electron.launch({executablePath:resolve(executable),args:[pathToFileURL(input).href],env,timeout:90_000});
- const page=await app.firstWindow();page.on('pageerror',error=>errors.push(error.stack??error.message));
+ const page=await app.firstWindow();page.setDefaultTimeout(30000);page.on('pageerror',error=>errors.push(error.stack??error.message));
  await waitForWorkspace(page,state=>state.documents.length===1,60000);
  await page.locator('.modal:has(.theme-gallery) .theme-options button').nth(4).click();
  await page.waitForFunction(()=>document.documentElement.dataset.palette==='dark-ocean');
@@ -132,9 +132,11 @@ try{
    if(process.platform==='linux'){command=join(data,'nautilus/scripts/GCP-PDF',name);args=[input,second];}
    else{command='/usr/bin/automator';args=['-i',input,join(home,'Library/Services',`GCP-PDF — ${name}.workflow`)];}
    const [quick]=await Promise.all([app.waitForEvent('window',{timeout:45_000}),exec(command,args,{env,timeout:45_000})]);
-   await quick.waitForFunction(async action=>{const state=await window.gcp?.getQuickState();return state?.action===action&&state.files.length>0;},action,{timeout:30_000});
-   const quickState=await quick.evaluate(()=>window.gcp.getQuickState());
-   check(`ação rápida nativa ${action} recebe arquivos selecionados`,quickState.files.length===(process.platform==='linux'?2:1)&&quickState.files[0].path===input);
+   const quickState=await waitForQuickState(quick,state=>state.action===action&&state.files.length>0&&state.files.every(file=>file.pages!==undefined||file.error));
+   const expected=await Promise.all((process.platform==='linux'?[input,second]:[input]).map(file=>realpath(file)));
+   const actual=await Promise.all(quickState.files.map(file=>realpath(file.path)));
+   const facts={action,selectedPaths:quickState.files.map(file=>file.path),canonicalPaths:actual,expected};quickInputs.push(facts);
+   check(`ação rápida nativa ${action} recebe arquivos selecionados`,!quickState.files.some(file=>file.error)&&JSON.stringify(actual)===JSON.stringify(expected),facts);
    await quick.close();
   }
   if(process.platform==='linux'){
@@ -149,12 +151,12 @@ try{
  await mkdir('evidence/packaged',{recursive:true});
  await page.screenshot({path:`evidence/packaged/${process.platform}-${process.arch}-${label}.png`});
  check('nenhum erro JavaScript no renderer',errors.length===0);
- await writeFile(`evidence/packaged/${process.platform}-${process.arch}-${label}.json`,JSON.stringify({executable:resolve(executable),...packaged,checks,errors,certificateScope:'Certificado temporário autoassinado RSA2048 em PKCS#12; sem certificado ICP-Brasil real ou token A3.'},null,2));
+ await writeFile(`evidence/packaged/${process.platform}-${process.arch}-${label}.json`,JSON.stringify({executable:resolve(executable),...packaged,checks,errors,quickInputs,certificateScope:'Certificado temporário autoassinado RSA2048 em PKCS#12; sem certificado ICP-Brasil real ou token A3.'},null,2));
 }catch(error){
  await mkdir('evidence/packaged',{recursive:true});
- await writeFile(`evidence/packaged/${process.platform}-${process.arch}-${label}-failure.json`,JSON.stringify({checks,errors,error:String(error),stderr:error?.stderr},null,2));
+ await writeFile(`evidence/packaged/${process.platform}-${process.arch}-${label}-failure.json`,JSON.stringify({checks,errors,quickInputs,error:String(error),stderr:error?.stderr},null,2));
  throw error;
 }finally{
  if(app){await app.evaluate(async()=>{for(const view of globalThis.__gcpTest.views.values())view.allowClose=true;await globalThis.__gcpTest.engine.dispose();}).catch(()=>{});await app.close();}
- await rm(root,{recursive:true,force:true});
+ assert.equal(dirname(root),await realpath(tmpdir()));await rm(root,{recursive:true,force:true});
 }

@@ -7,7 +7,7 @@ pkgdesc='Local PDF editor and reader with OCR, forms and signatures'
 arch=('x86_64')
 url='https://github.com/cliqueprojeto/GCP-PDF'
 license=('GPL-3.0-or-later')
-depends=('alsa-lib' 'at-spi2-core' 'cairo' 'dbus' 'expat' 'gcc-libs' 'glib2' 'glibc' 'gtk3' 'libcups' 'libdrm' 'libx11' 'libxcb' 'libxcomposite' 'libxdamage' 'libxext' 'libxfixes' 'libxkbcommon' 'libxrandr' 'mesa' 'nspr' 'nss' 'pango' 'systemd-libs' 'fontconfig' 'freetype2')
+depends=('alsa-lib' 'at-spi2-core' 'cairo' 'dbus' 'expat' 'gcc-libs' 'glib2' 'glibc' 'gtk3' 'libcups' 'libdrm' 'libx11' 'libxcb' 'libxcomposite' 'libxdamage' 'libxext' 'libxfixes' 'libxkbcommon' 'libxrandr' 'mesa' 'nspr' 'nss' 'pango' 'systemd-libs' 'fontconfig' 'freetype2' 'xdg-utils')
 optdepends=('libreoffice-fresh: import Office documents as PDF')
 provides=('gcp-pdf')
 conflicts=('gcp-pdf')
@@ -29,4 +29,8 @@ package() {
   # Debian's maintainer script is not run by pacman. Set the helper's required permissions here.
   chmod 4755 "$pkgdir/opt/GCP-PDF/chrome-sandbox"
   install -Dm644 "LICENSE-$pkgver" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  # Arch container policy excludes /usr/share/doc. Keep upstream notices with the licenses.
+  if [[ -d "$pkgdir/usr/share/doc" ]]; then
+    mv "$pkgdir/usr/share/doc" "$pkgdir/usr/share/licenses/$pkgname/upstream-doc"
+  fi
 }

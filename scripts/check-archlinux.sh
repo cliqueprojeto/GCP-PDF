@@ -5,7 +5,7 @@ cd /work
 pacman -Syu --noconfirm --needed base-devel sudo git ca-certificates desktop-file-utils namcap xorg-server-xvfb xorg-xauth dbus unzip
 source packaging/archlinux/gcp-pdf-bin/PKGBUILD
 pacman -S --noconfirm --needed "${depends[@]}"
-useradd --create-home builder
+useradd --create-home --uid "$(stat -c '%u' /work)" builder
 mkdir -p release/archlinux evidence/archlinux
 chown -R builder:builder /work
 runuser -u builder -- bash -euc '

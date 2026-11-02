@@ -1,0 +1,65 @@
+name: Pacote Arch Linux e receita AUR
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release pública de origem e destino
+        required: true
+        default: v0.10.0
+permissions:
+  contents: read
+concurrency:
+  group: archlinux-${{ inputs.release_tag }}
+  cancel-in-progress: false
+jobs:
+  archlinux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Conferir receita e origem publicada
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          git fetch --tags
+          node scripts/prepare-arch.mjs "${RELEASE_TAG#v}"
+          git diff --exit-code -- packaging/archlinux/gcp-pdf-bin/PKGBUILD
+      - name: Construir, instalar e testar no Arch Linux
+        run: |
+          NODE_ROOT=$(dirname "$(dirname "$(command -v node)")")
+          docker run --rm --init --ipc=host -v "$PWD:/work" -v "$NODE_ROOT:/node:ro" -w /work -e PATH="/node/bin:/usr/local/sbin:/usr/local/bin:/usr/bin" archlinux:base-devel bash scripts/check-archlinux.sh
+      - name: Guardar evidências
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-archlinux
+          path: |
+            evidence/archlinux/
+            evidence/packaged/
+          if-no-files-found: ignore
+      - name: Guardar pacote validado e receita AUR
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-archlinux
+          path: release/archlinux/
+          if-no-files-found: error
+  publish:
+    needs: archlinux
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: package-archlinux
+          path: archlinux
+      - name: Anexar à release existente
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: gh release upload "$RELEASE_TAG" archlinux/*

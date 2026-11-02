@@ -28,6 +28,7 @@ Baixe a versão mais recente na página de [versões publicadas](https://github.
 - **GCP-PDF-Portatil-x.y.z-x64.exe** — roda sem instalar, por exemplo a partir de um pendrive.
 - **GCP-PDF-x.y.z-linux-amd64.deb** — Ubuntu/Debian de 64 bits: instale pelo gerenciador de aplicativos ou com `sudo apt install ./GCP-PDF-x.y.z-linux-amd64.deb`.
 - **GCP-PDF-x.y.z-linux-x86_64.rpm** — Fedora e distribuições compatíveis: `sudo dnf install ./GCP-PDF-x.y.z-linux-x86_64.rpm`.
+- **gcp-pdf-bin-x.y.z-1-x86_64.pkg.tar.zst** — Arch Linux, BigLinux e Manjaro: instale com `sudo pacman -U ./nome-do-pacote.pkg.tar.zst` ou pelo Pamac em **Instalar pacotes locais**. Veja [instalação, atualizações e receita compatível com AUR](packaging/archlinux/README.md). A receita está no GitHub; ainda não está cadastrada no catálogo AUR.
 - **GCP-PDF-x.y.z-linux-x86_64.AppImage** — versão portátil Linux: marque o arquivo como executável (`chmod +x arquivo.AppImage`) e abra. Requer FUSE 2; sem FUSE, extraia com `./arquivo.AppImage --appimage-extract` e execute `squashfs-root/AppRun`.
 - **GCP-PDF-x.y.z-macOS-arm64.dmg** — Macs Apple Silicon (M1, M2 e posteriores).
 - **GCP-PDF-x.y.z-macOS-x64.dmg** — Macs Intel. Abra o DMG e arraste o GCP-PDF para Aplicativos. Os arquivos `.zip` contêm o mesmo aplicativo.
@@ -35,6 +36,7 @@ Baixe a versão mais recente na página de [versões publicadas](https://github.
 **macOS:** os pacotes têm assinatura local (ad hoc), sem notarização Apple. Na primeira abertura, o sistema pode bloquear o aplicativo: tente abrir, vá a **Ajustes do Sistema › Privacidade e Segurança › Abrir Mesmo Assim** e confirme. Políticas de Macs gerenciados podem impedir essa autorização. Requisitos mínimos seguem o runtime Electron incluído; os testes de distribuição são executados em macOS 15 para Intel e Apple Silicon e Ubuntu 22.04 x64.
 
 Os hashes SHA-256 dos pacotes Linux/macOS ficam no arquivo `SHA256SUMS-linux-macOS.txt` da release.
+O pacote Arch e a receita AUR têm seus hashes em `SHA256SUMS-ArchLinux.txt`.
 
 Como o instalador ainda não tem assinatura digital de código, o Windows pode mostrar "O Windows protegeu o computador". Clique em **Mais informações** e depois em **Executar assim mesmo**.
 

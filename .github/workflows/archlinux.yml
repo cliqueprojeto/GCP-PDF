@@ -31,7 +31,8 @@ jobs:
       - name: Construir, instalar e testar no Arch Linux
         run: |
           NODE_ROOT=$(dirname "$(dirname "$(command -v node)")")
-          docker run --rm --init --ipc=host -v "$PWD:/work" -v "$NODE_ROOT:/node:ro" -w /work -e PATH="/node/bin:/usr/local/sbin:/usr/local/bin:/usr/bin" archlinux:base-devel bash scripts/check-archlinux.sh
+          # Chromium's real sandbox needs nested namespaces in this disposable CI container.
+          docker run --rm --init --ipc=host --cap-add=SYS_ADMIN --security-opt seccomp=unconfined --security-opt apparmor=unconfined -v "$PWD:/work" -v "$NODE_ROOT:/node:ro" -w /work -e PATH="/node/bin:/usr/local/sbin:/usr/local/bin:/usr/bin" archlinux:base-devel bash scripts/check-archlinux.sh
       - name: Guardar evidências
         if: always()
         uses: actions/upload-artifact@v4

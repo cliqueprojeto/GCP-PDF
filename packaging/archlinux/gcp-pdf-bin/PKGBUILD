@@ -23,11 +23,14 @@ prepare() {
 }
 
 package() {
-  cp -a upstream/opt upstream/usr "$pkgdir/"
+  install -dm755 "$pkgdir/usr/lib"
+  cp -a upstream/opt/GCP-PDF "$pkgdir/usr/lib/gcp-pdf"
+  cp -a upstream/usr "$pkgdir/"
   install -dm755 "$pkgdir/usr/bin"
-  ln -s /opt/GCP-PDF/gcp-pdf "$pkgdir/usr/bin/gcp-pdf"
+  ln -s /usr/lib/gcp-pdf/gcp-pdf "$pkgdir/usr/bin/gcp-pdf"
+  sed -i 's|/opt/GCP-PDF/gcp-pdf|/usr/bin/gcp-pdf|g' "$pkgdir/usr/share/applications/gcp-pdf.desktop"
   # Debian's maintainer script is not run by pacman. Set the helper's required permissions here.
-  chmod 4755 "$pkgdir/opt/GCP-PDF/chrome-sandbox"
+  chmod 4755 "$pkgdir/usr/lib/gcp-pdf/chrome-sandbox"
   install -Dm644 "LICENSE-$pkgver" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   # Arch container policy excludes /usr/share/doc. Keep upstream notices with the licenses.
   if [[ -d "$pkgdir/usr/share/doc" ]]; then

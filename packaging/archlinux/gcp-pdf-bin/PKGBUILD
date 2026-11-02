@@ -24,6 +24,8 @@ prepare() {
 
 package() {
   cp -a upstream/opt upstream/usr "$pkgdir/"
+  install -dm755 "$pkgdir/usr/bin"
+  ln -s /opt/GCP-PDF/gcp-pdf "$pkgdir/usr/bin/gcp-pdf"
   # Debian's maintainer script is not run by pacman. Set the helper's required permissions here.
   chmod 4755 "$pkgdir/opt/GCP-PDF/chrome-sandbox"
   install -Dm644 "LICENSE-$pkgver" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"

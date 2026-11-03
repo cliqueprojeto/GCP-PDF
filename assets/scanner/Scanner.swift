@@ -70,7 +70,7 @@ final class ScannerClient: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDel
         guard !scanning, let data = args[4].data(using:.utf8), let o = try? JSONSerialization.jsonObject(with:data) as? [String:Any], let dpi = o["dpi"] as? Int else { return }
         guard unit.supportedResolutions.contains(dpi) else { fail("Resolução não suportada pelo scanner. Escolha outra resolução."); return }
         scanning = true
-        unit.resolution = UInt(dpi); unit.measurementUnit = .inches
+        unit.resolution = dpi; unit.measurementUnit = .inches
         unit.pixelDataType = o["color"] as? String == "gray" ? .gray : o["color"] as? String == "bw" ? .BW : .RGB
         let papers: [String:[Double]] = ["A4":[210,297],"A3":[297,420],"A5":[148,210],"Carta":[215.9,279.4],"Ofício":[215.9,355.6]]
         let size = papers[o["paper"] as? String ?? "A4"] ?? [210,297]

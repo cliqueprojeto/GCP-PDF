@@ -4,7 +4,7 @@ import {writeFile,access} from 'node:fs/promises';
 import {join} from 'node:path';
 import {PDFDocument} from 'pdf-lib';
 import {createCanvas} from '@napi-rs/canvas';
-import {Scanner,saneDevices,saneSources,saneArguments} from '../src/main/scanner';
+import {Scanner,scanImageSize,saneDevices,saneSources,saneArguments} from '../src/main/scanner';
 import {createDocument} from '../src/main/blank-document';
 import {scanOptions,blankOptions,type ScanOptions} from '../src/shared/scanner';
 import {DocumentStore} from '../src/main/store';
@@ -52,4 +52,8 @@ test('global scan exclusivity, cancellation, cross-window cleanup and finalizati
 test('driver errors after a completed page keep the page with a partial-acquisition warning',async()=>{
  let png:Buffer;const f=fixture(async args=>{const folder=args.find(a=>a.startsWith('--batch='))!.slice(8).replace(/[/\\]page-%04d.png$/,'');await writeFile(join(folder,'page-0001.png'),png);throw new Error('paper jam');});png=f.png;
  try{const pages=await f.scanner.acquire(1,{...options,ocr:false},async bytes=>bytes);assert.equal(pages.length,1);assert.match(pages[0]!.warning!,/paper jam/);}finally{await f.scanner.clear(1);}
+});
+
+test('PNG dimensions reject malformed and expanding input before raster allocation',()=>{
+ const b=Buffer.alloc(33);Buffer.from([137,80,78,71,13,10,26,10]).copy(b);b.writeUInt32BE(13,8);b.write('IHDR',12);b.writeUInt32BE(100,16);b.writeUInt32BE(200,20);assert.deepEqual(scanImageSize(b),{width:100,height:200});b.writeUInt32BE(1000000,16);assert.throws(()=>scanImageSize(b),/50 megapixels/);assert.throws(()=>scanImageSize(Buffer.from('not PNG')),/inválida/);
 });

@@ -4,6 +4,7 @@ import {mkdtemp,mkdir,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {PDFDocument} from 'pdf-lib';
+import {createCanvas} from '@napi-rs/canvas';
 import assert from 'node:assert/strict';
 const require=createRequire(import.meta.url),root=await mkdtemp(join(tmpdir(),'gcp-scanner-ui-'));
 let app;
@@ -19,15 +20,16 @@ try{
  await page.evaluate(async()=>{const s=await window.gcp.getWorkspace();await window.gcp.saveDocument(s.activeDocumentId);});
  const pdf=await PDFDocument.load(await readFile(saved));assert.equal(pdf.getPageCount(),3);assert.ok(Math.abs(pdf.getPage(0).getWidth()-792)<0.01);
  // Inject only the transport boundary. PDF assembly, preview, OCR and IPC remain production code.
- await app.evaluate(async()=>{
-  const s=globalThis.__gcpTest.scanner,fs=await import('node:fs/promises'),path=await import('node:path'),{createCanvas}=await import('@napi-rs/canvas');
-  const canvas=createCanvas(620,860),ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,620,860);ctx.fillStyle='black';ctx.font='32px Arial';ctx.fillText('Documento digitalizado',45,100);ctx.fillText('GCP PDF teste local',45,155);const png=canvas.toBuffer('image/png');
+ const canvas=createCanvas(620,860),ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,620,860);ctx.fillStyle='black';ctx.font='32px Arial';ctx.fillText('Documento digitalizado',45,100);ctx.fillText('GCP PDF teste local',45,155);const pngBase64=canvas.toBuffer('image/png').toString('base64');
+ await app.evaluate(async(_electron,pngBase64)=>{
+  const s=globalThis.__gcpTest.scanner,fs=process.getBuiltinModule('fs/promises'),path=process.getBuiltinModule('path'),png=Buffer.from(pngBase64,'base64');
   s.devices=async()=>[{id:'test-usb',name:'Scanner USB (simulado)'}];s.capabilities=async()=>({sources:['Mesa','Alimentador duplex'],nativeUi:false,description:'Transporte simulado para teste sem hardware.'});
   s.execute=async(_file,args)=>{let folder;if(process.platform==='linux')folder=path.dirname(args.find(a=>a.startsWith('--batch=')).slice(8));else folder=args[args.indexOf('scan')+2];await fs.writeFile(path.join(folder,'page-0001.png'),png);return '';};
- });
+ },pngBase64);
  await page.getByRole('button',{name:'Digitalizar para PDF',exact:true}).click();const scan=page.getByRole('dialog',{name:'Digitalizar para PDF',exact:true});
  await scan.getByRole('button',{name:'Digitalizar',exact:true}).click();await scan.locator('.scan-card').waitFor();await scan.getByRole('button',{name:'Digitalizar mais páginas',exact:true}).waitFor({state:'visible'});
  await scan.getByRole('button',{name:'Digitalizar mais páginas',exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll('.scan-card').length===2);
+ await mkdir('evidence/packaged',{recursive:true});await page.screenshot({path:'evidence/packaged/scanner-preview.png'});
  await scan.getByRole('button',{name:'Girar página',exact:true}).first().click();await scan.getByRole('button',{name:'Mover página para baixo',exact:true}).first().click();
  await scan.getByRole('button',{name:'Remover página',exact:true}).last().click();await page.waitForFunction(()=>document.querySelectorAll('.scan-card').length===1);
  await scan.getByRole('button',{name:'Digitalizar mais páginas',exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll('.scan-card').length===2);

@@ -57,12 +57,14 @@ export function Modal({
   onClose,
   children,
   wide = false,
+  className = "",
 }: {
   title: string;
   description?: string;
   onClose: () => void;
   children: React.ReactNode;
   wide?: boolean;
+  className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
@@ -102,7 +104,7 @@ export function Modal({
     >
       <div
         ref={ref}
-        className={`modal ${wide ? "modal-wide" : ""}`}
+        className={`modal ${wide ? "modal-wide" : ""} ${className}`}
         role="dialog"
         aria-modal="true"
         aria-label={translateUi(title)}

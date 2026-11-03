@@ -5,7 +5,7 @@ on:
       release_tag:
         description: Release existente que receberá os instaladores
         required: true
-        default: v0.3.7
+        default: v0.11.0
 permissions:
   contents: read
 concurrency:
@@ -31,6 +31,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -67,6 +69,7 @@ jobs:
           set -euo pipefail
           sudo apt-get install -y ./release/*.deb
           dbus-run-session -- xvfb-run -a npm run test:packaged -- /opt/GCP-PDF/gcp-pdf deb
+          dbus-run-session -- xvfb-run -a node scripts/smoke-scanner.mjs /opt/GCP-PDF/gcp-pdf
           mkdir -p .cache/appimage .cache/rpm
           APPIMAGE=$(realpath release/*.AppImage)
           cd .cache/appimage
@@ -113,6 +116,7 @@ jobs:
           hdiutil detach "$PWD/.cache/dmg"
           codesign --verify --deep --strict --verbose=2 ".cache/installed/GCP-PDF.app"
           npm run test:packaged -- ".cache/installed/GCP-PDF.app/Contents/MacOS/GCP-PDF" dmg
+          node scripts/smoke-scanner.mjs ".cache/installed/GCP-PDF.app/Contents/MacOS/GCP-PDF"
           ditto -x -k release/*.zip .cache/zip
           codesign --verify --deep --strict --verbose=2 ".cache/zip/GCP-PDF.app"
           npm run test:packaged -- ".cache/zip/GCP-PDF.app/Contents/MacOS/GCP-PDF" zip

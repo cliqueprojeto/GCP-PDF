@@ -93,7 +93,8 @@ async function ocrMeasure(image:{bytes:Uint8Array;scale:number}){
  * runs with one size and baseline per line, as the scan shows it. */
 type Recognized={layers:{page:number;words:{text:string;x:number;y:number;width:number;height:number}[]}[];runs:OcrRuns};
 /** Local OCR with Tesseract, bundled with the app: the searchable text layer and the runs Office exports lay out. */
-async function recognizePages(view:View,source:Uint8Array,pages:number[]):Promise<Recognized>{
+async function recognizePages(view:View,source:Uint8Array,pages:number[],signal?:AbortSignal):Promise<Recognized>{
+ signal?.throwIfAborted();
  const {createWorker}=await import('tesseract.js');await mkdir(join(app.getPath('userData'),'ocr-cache'),{recursive:true});
  const ocrLocale=languages().ocrLocale;
  const worker=await createWorker(OCR_LANGUAGES[ocrLocale],1,{langPath:join(assets(),'tessdata'),gzip:false,cachePath:join(app.getPath('userData'),'ocr-cache'),logger:()=>{}});
@@ -102,7 +103,10 @@ async function recognizePages(view:View,source:Uint8Array,pages:number[]):Promis
   for(let n=0;n<pages.length;n++){
    action(view,`progress:Reconhecendo ${({'pt-BR':'português',en:'inglês',es:'espanhol'})[ocrLocale]}: página ${n+1} de ${pages.length}…`);
    const page=pages[n]!,image=await renderPdfPage(source,page,200),k=image.scale;
-   const result=await worker.recognize(Buffer.from(image.bytes),{},{blocks:true,text:true});
+   signal?.throwIfAborted();
+   let stop:(()=>void)|undefined;
+   const canceled=new Promise<never>((_resolve,reject)=>{if(signal){stop=()=>reject(new Error('OCR cancelado.'));signal.addEventListener('abort',stop,{once:true});}});
+   const result=await Promise.race([worker.recognize(Buffer.from(image.bytes),{},{blocks:true,text:true}),canceled]).finally(()=>{if(stop)signal?.removeEventListener('abort',stop);});
    const words:{text:string;x:number;y:number;width:number;height:number}[]=[],lines:OcrLine[]=[];
    for(const block of result.data.blocks||[])for(const paragraph of block.paragraphs||[])for(const line of paragraph.lines||[]){
     const base=line.baseline,slope=base&&base.x1!==base.x0?(base.y1-base.y0)/(base.x1-base.x0):0,found:OcrLine['words']=[];
@@ -374,14 +378,14 @@ function registerIpc(){
   removeScannedPage:(view,id)=>scanner.remove(view.window.id,id),
   cancelScan:view=>scanner.cancel(view.window.id),
   discardScans:view=>scanner.clear(view.window.id),
-  scanPages:(view,options)=>scanner.acquire(view.window.id,options,async bytes=>addOcrTextLayer(bytes,(await recognizePages(view,bytes,[0])).layers)).finally(()=>action(view,'progress:')),
+  scanPages:(view,options)=>scanner.acquire(view.window.id,options,async(bytes,signal)=>addOcrTextLayer(bytes,(await recognizePages(view,bytes,[0],signal)).layers)).finally(()=>action(view,'progress:')),
   finishScans:async(view,pages,target)=>{
    const bytes=await scanner.pdf(view.window.id,pages);
    let id:string;
    if(target){own(view,target.id);await store.insertFile(target.id,bytes,target.index,target.revision);id=target.id;notify();}
    else {id=await store.add(bytes,'Digitalização.pdf');activate(view,id);}
    // Transfer is complete before prompting for a save; canceling Save keeps the open document.
-   await scanner.clear(view.window.id);return id;
+   scanner.release(view.window.id);return id;
   },
   activateDocument:(view,id)=>{own(view,id);activate(view,id);},
   closeDocument:closeTab,

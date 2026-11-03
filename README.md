@@ -1,5 +1,10 @@
 # GCP-PDF
 
+## Novidades 0.11.0
+
+Crie PDFs em branco com papel, orientação e quantidade de páginas. Digitalize com scanner ou multifuncional, OCR local automático, prévias, rotação, reordenação e combinação de páginas. Veja [requisitos, uso e limites da digitalização](docs/digitalizacao.md). A integração de scanner ainda não foi testada com equipamentos físicos.
+
+
 **Leitor e editor de PDF com interface em português, inglês e espanhol, que funciona no seu computador.**
 
 O GCP-PDF reúne num só programa o que normalmente exige vários: ler, comentar, editar o texto e as imagens originais, organizar páginas, preencher e criar formulários, assinar com certificado digital ICP-Brasil, proteger e converter documentos. Interface em português do Brasil, inglês e espanhol, sem cadastro e com seus arquivos sempre no seu computador.

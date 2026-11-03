@@ -1,5 +1,14 @@
 # Histórico de versões do GCP-PDF
 
+## 0.11.0 — 03/11/2026
+
+- Novo botão Criar um PDF em branco entre Abrir e Salvar, com papel A4, A3, A5, Carta ou Ofício, orientação e quantidade inicial de páginas.
+- Novo assistente Digitalizar para PDF com seleção do scanner, origem, resolução, cor e papel; integração WIA no Windows, SANE no Linux e Image Capture no macOS.
+- Prévia com rotação, reordenação e exclusão, digitalizações sucessivas no mesmo PDF e inserção no documento aberto com suporte a desfazer.
+- OCR local automático por aquisição. Falhas de reconhecimento preservam a imagem, e aquisições parciais exibem aviso.
+- Duplex depende das origens oferecidas pelo driver; o fluxo manual permite digitalizar frente e verso separadamente.
+- Importante: não houve teste com scanner físico. O fluxo PDF/OCR e a interface foram testados com transporte simulado; compatibilidade com equipamentos e duplex físico precisa de validação pelos usuários.
+
 ## 0.10.0 — 01/11/2026
 
 - Linux: PDFs em drives montados abrem pelo gerenciador de arquivos mesmo quando o drive usa identificadores sem extensão .pdf. Endereços file:// e abertura com o programa já em execução também foram corrigidos.

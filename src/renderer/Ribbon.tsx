@@ -21,6 +21,7 @@ import {
   ZoomIn,
   ZoomOut,
   ScanText,
+  ScanLine,
   Search,
   Sparkles,
   RotateCcw,
@@ -138,6 +139,8 @@ const SHAPE_ICONS: Record<ShapeKind, React.ReactNode> = {
 export interface RibbonActions {
   home?(): void;
   open(): void;
+  create(): void;
+  scan(): void;
   save(): void;
   saveAs(): void;
   print(): void;
@@ -1705,6 +1708,8 @@ export function Ribbon(props: Props) {
             title={translateUi("Abrir · Ctrl+O")}
             onClick={actions.open}
           />
+          <Small icon={<FilePlus2 size={18} />} title="Criar um PDF em branco" onClick={actions.create} />
+          <Small icon={<ScanLine size={18} />} title="Digitalizar para PDF" onClick={actions.scan} />
           <Small
             icon={<Save size={18} />}
             title={translateUi("Salvar · Ctrl+S")}

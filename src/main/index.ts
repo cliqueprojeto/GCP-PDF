@@ -1,4 +1,6 @@
 import {launchPaths} from './launch-input';
+import {Scanner} from './scanner';
+import {createDocument} from './blank-document';
 import {isReaderSearchUrl} from "../shared/reader-search";
 import {themeMode} from '../shared/themes';
 import {localize} from '../shared/localize';
@@ -52,6 +54,7 @@ type Quick={window:BrowserWindow;state:QuickState};
 const views=new Map<number,View>(),quicks=new Map<number,Quick>();let shuttingDown=false,pageClipboard:string|undefined;
 const assets=()=>join(app.getAppPath(),'assets');
 const unpacked=()=>app.isPackaged?app.getAppPath().replace(/app[.]asar$/,'app.asar.unpacked'):app.getAppPath();
+const scanner=new Scanner(join(unpacked(),'assets'));
 const sidecar=()=>{const path=join(unpacked(),'assets','pdfcraft',process.platform==='win32'?'pdfcraft-cli.exe':'pdfcraft-cli');if(!existsSync(path))throw new Error('O motor de edição de texto não está disponível nesta instalação.');return path;};
 const engine=new PdfCraftSession(sidecar);
 const certificateFiles=new CertificateFiles();
@@ -165,11 +168,11 @@ function createWindow(ids:string[]=[]){
  const window=new BrowserWindow({width:1420,height:940,minWidth:940,minHeight:660,show:false,title:'GCP-PDF',backgroundColor:themeMode(settings.theme)==='dark'?'#11121a':'#f6f5fa',icon:join(assets(),'icon.png'),autoHideMenuBar:true,webPreferences:preferences});
  // The ribbon is the menu; the native bar stays hidden (its accelerators keep working).
  window.setMenuBarVisibility(false);
- const windowId=window.webContents.id,view:View={window,ids,active:ids[0],allowClose:false};views.set(windowId,view);
+ const scanOwner=window.id,windowId=window.webContents.id,view:View={window,ids,active:ids[0],allowClose:false};views.set(windowId,view);
  // A new main window opens maximized; detached tabs get their half-screen bounds from the caller.
  window.on('ready-to-show',()=>{if(!ids.length)window.maximize();window.show();notify();});
  window.on('close',event=>{if(view.allowClose||shuttingDown)return;if(view.ids.some(id=>store.get(id).revision!==store.get(id).savedRevision)){event.preventDefault();void(async()=>{for(const id of [...view.ids])if(!(await confirmClose(view,id)))return;view.allowClose=true;window.close();})().catch(error=>dialog.showErrorBox('Não foi possível fechar',String(error.message||error)));}});
- window.on('closed',()=>{settlePrompts(view);certificateFiles.forget(windowId);views.delete(windowId);for(const id of view.ids)if(![...views.values()].some(v=>v.ids.includes(id)))store.remove(id);});
+ window.on('closed',()=>{void scanner.clear(scanOwner).catch(error=>console.error('Limpeza do scanner:',error));settlePrompts(view);certificateFiles.forget(windowId);views.delete(windowId);for(const id of view.ids)if(![...views.values()].some(v=>v.ids.includes(id)))store.remove(id);});
  secureWindow(window);return view;
 }
 function mainView(){return [...views.values()].find(view=>!view.window.isDestroyed())??createWindow();}
@@ -364,7 +367,22 @@ function registerIpc(){
   getAsset:(view,id:string)=>{if(!view.ids.some(doc=>store.get(doc).model.objects.some(o=>o.kind==='image'&&o.asset===id)))throw new Error('Esta imagem não pertence a esta janela.');return store.asset(id);},
   openFiles:(view,paths)=>openPaths(view,paths),
   openFiscalXml:async view=>{const result=await openDialog(view.window,{title:'Abrir XML de nota fiscal',properties:['openFile','multiSelections'],filters:[{name:'XML de nota fiscal (NF-e, NFC-e, NFS-e)',extensions:['xml']}]});if(result.canceled||!result.filePaths.length)return;await openPaths(view,result.filePaths);},
-  newDocument:async view=>activate(view,await store.blank()),
+  newDocument:async(view,options)=>activate(view,await store.add(await createDocument(options),'Sem título.pdf')),
+  listScanners:()=>scanner.devices(),
+  scannerCapabilities:(_view,id)=>scanner.capabilities(id),
+  scannedPages:view=>scanner.list(view.window.id),
+  removeScannedPage:(view,id)=>scanner.remove(view.window.id,id),
+  cancelScan:view=>scanner.cancel(view.window.id),
+  discardScans:view=>scanner.clear(view.window.id),
+  scanPages:(view,options)=>scanner.acquire(view.window.id,options,async bytes=>addOcrTextLayer(bytes,(await recognizePages(view,bytes,[0])).layers)).finally(()=>action(view,'progress:')),
+  finishScans:async(view,pages,target)=>{
+   const bytes=await scanner.pdf(view.window.id,pages);
+   let id:string;
+   if(target){own(view,target.id);await store.insertFile(target.id,bytes,target.index,target.revision);id=target.id;notify();}
+   else {id=await store.add(bytes,'Digitalização.pdf');activate(view,id);}
+   // Transfer is complete before prompting for a save; canceling Save keeps the open document.
+   await scanner.clear(view.window.id);return id;
+  },
   activateDocument:(view,id)=>{own(view,id);activate(view,id);},
   closeDocument:closeTab,
   newWindow:()=>{createWindow();},
@@ -888,9 +906,10 @@ else{
   if(app.isPackaged&&process.env.GCP_PDF_TEST_MODE!=='1')void installQuickActions(settings.quickActions).catch(error=>action(mainView(),'notice:Não foi possível configurar as ações rápidas: '+String(error.message||error)));
   setTimeout(()=>void backgroundUpdateCheck(),8000);
   ready=true;handleLaunch(process.argv);for(const {args,cwd} of early.splice(0))handleLaunch(args,cwd);
-  if(process.env.GCP_PDF_TEST_MODE==='1')(globalThis as any).__gcpTest={store,views,quicks,createWindow,createQuickWindow,notify,settings,engine};
+  if(process.env.GCP_PDF_TEST_MODE==='1')(globalThis as any).__gcpTest={scanner,store,views,quicks,createWindow,createQuickWindow,notify,settings,engine};
  }).catch(error=>dialog.showErrorBox('Não foi possível iniciar o GCP-PDF',String(error.message||error)));
 }
 app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit();});
 app.on('activate',()=>{if(!views.size)createWindow();});
-app.on('before-quit',()=>{shuttingDown=true;void engine.dispose();void editorBlockReader.dispose();});
+let shutdownComplete=false;
+app.on('before-quit',event=>{if(shutdownComplete)return;event.preventDefault();if(shuttingDown)return;shuttingDown=true;void Promise.allSettled([scanner.dispose(),engine.dispose(),editorBlockReader.dispose()]).then(results=>{for(const result of results)if(result.status==='rejected')console.error('Limpeza ao sair:',result.reason);shutdownComplete=true;app.quit();});});

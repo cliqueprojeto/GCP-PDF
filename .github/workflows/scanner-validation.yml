@@ -1,0 +1,23 @@
+name: Validar integração de scanner
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scanner:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx --no-install tsx --test tests/scanner.test.ts
+      - run: node scripts/prepare-scanner.mjs

@@ -21,6 +21,7 @@ import { EpubDialog } from "./Epub";
 import { BookReader } from "./BookReader";
 import { ComicReader } from "./ComicReader";
 import { ImageEditor } from "./ImageEditor";
+import {NewPdfDialog,ScanDialog} from "./Scan";
 import { PrintDialog } from "./Print";
 import { BookmarksPanel } from "./Bookmarks";
 import { UpdateDialog, WhatsNewDialog } from "./Updates";
@@ -126,7 +127,7 @@ export default function App() {
   const [resizing, setResizing] = useState(false);
   const [tool, setToolState] = useState<Tool>({ kind: "select" }), [style, setStyle] = useState<Style>(() => ({ ...DEFAULT_STYLE, ...stored("gcp.style", {}) }));
   const [tab, setTab] = useState<Tab>("Início"), [labels, setLabels] = useState<"below" | "side" | "hidden">(() => stored("gcp.labels", "below"));
-  const [modal, setModal] = useState<"export" | "epub" | "settings" | "support" | "signature" | "combine" | "numbering" | "compress" | "split" | "protect" | "certificate" | "signatures-check" | "field-options" | "palette" | "help" | "stamps" | "compare" | "stats" | "properties" | "print" | null>(null), [signArea, setSignArea] = useState<{ page: string; rect: import("../shared/types").Rect } | null>(null), [pendingField, setPendingField] = useState<{ page: string; rect: import("../shared/types").Rect; type: "combo" | "list" } | null>(null), [splitEvery, setSplitEvery] = useState(1), [splitMode, setSplitMode] = useState<"pages" | "size">("pages"), [splitMb, setSplitMb] = useState(5), [exportFormat, setExportFormat] = useState<ExportFormat | undefined>();
+  const [modal, setModal] = useState<"new-pdf" | "scan" | "export" | "epub" | "settings" | "support" | "signature" | "combine" | "numbering" | "compress" | "split" | "protect" | "certificate" | "signatures-check" | "field-options" | "palette" | "help" | "stamps" | "compare" | "stats" | "properties" | "print" | null>(null), [signArea, setSignArea] = useState<{ page: string; rect: import("../shared/types").Rect } | null>(null), [pendingField, setPendingField] = useState<{ page: string; rect: import("../shared/types").Rect; type: "combo" | "list" } | null>(null), [splitEvery, setSplitEvery] = useState(1), [splitMode, setSplitMode] = useState<"pages" | "size">("pages"), [splitMb, setSplitMb] = useState(5), [exportFormat, setExportFormat] = useState<ExportFormat | undefined>();
   const [busy, setBusy] = useState(""), [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
   const [signatures, setSignatures] = useState<Signature[]>([]), [fonts, setFonts] = useState<string[]>([]);
   const [query, setQuery] = useState(""), [activeSearch, setActiveSearch] = useState(""), [matches, setMatches] = useState<{ page: number; count: number }[]>([]), [hit, setHit] = useState(0), [searching, setSearching] = useState(false);
@@ -412,6 +413,8 @@ export default function App() {
   }
   const actions: RibbonActions = {
     home: goHome,
+    create: () => setModal("new-pdf"),
+    scan: () => setModal("scan"),
     open: () => void perform(() => openFilesFromHome(), "Abrindo arquivos…"),
     saveAs: () => active && void perform(() => window.gcp.saveDocument(active.id, true), "Salvando cópia…"),
     save: () => active && void perform(() => window.gcp.saveDocument(active.id), "Salvando…"),
@@ -504,7 +507,7 @@ export default function App() {
     { id: "save-as", label: "Salvar como", group: "Arquivo", shortcut: "Ctrl+Shift+S", disabled: none, run: actions.saveAs },
     { id: "save", label: "Salvar", group: "Arquivo", shortcut: "Ctrl+S", disabled: none, run: actions.save },
     { id: "print", label: "Imprimir", group: "Arquivo", shortcut: "Ctrl+P", disabled: none, run: actions.print },
-    { id: "new", label: "Novo PDF em branco", group: "Arquivo", run: () => void perform(() => window.gcp.newDocument()) },
+    { id: "new", label: "Novo PDF em branco", group: "Arquivo", run: () => setModal("new-pdf") },
     { id: "edit-all", label: "Editar texto e imagens originais", group: "Editar", keywords: "editar tudo corrigir alterar texto", disabled: none, help: "Clique nos blocos do PDF e edite direto na página.", run: tabTool("Editar", () => setTool({ kind: "edit" })) },
     { id: "add-text", label: "Adicionar caixa de texto", group: "Editar", keywords: "escrever digitar", disabled: none, run: () => setTool({ kind: "text" }) },
     { id: "image", label: "Inserir imagem", group: "Editar", keywords: "foto logo carimbo", disabled: none, run: actions.image },
@@ -527,6 +530,7 @@ export default function App() {
     { id: "ppt", label: "Exportar para PowerPoint", group: "Converter", keywords: "pptx slides", disabled: none, run: () => actions.exportAs("pptx") },
     { id: "image-pdf", label: "Exportar como PDF de imagens", group: "Converter", keywords: "achatar nao editavel", disabled: none, run: () => actions.exportAs("image-pdf") },
     { id: "compress", label: "Comprimir PDF (reduzir tamanho)", group: "Converter", keywords: "diminuir otimizar", disabled: none, run: actions.compress },
+    { id: "scan", label: "Digitalizar para PDF", group: "Arquivo", keywords: "scanner USB frente verso OCR", run: actions.scan },
     { id: "ocr", label: "Reconhecer texto (OCR)", group: "Converter", keywords: "digitalizado escaneado", disabled: none, run: actions.ocr },
     { id: "signatures", label: "Minhas assinaturas", group: "Assinar", keywords: "rubrica", run: actions.signatures },
     { id: "stamps", label: "Carimbos (PAGO, CONTABILIZADO, Confere com o original…)", group: "Comentário", keywords: "carimbo selo convenio prestacao de contas aprovado recebido", disabled: none, run: actions.stamps },
@@ -566,7 +570,7 @@ export default function App() {
     if (action.startsWith("comic:")) { setComicToken(action.slice(6)); return; }
     switch (action) {
       case "open": actions.open(); break;
-      case "new": void perform(() => window.gcp.newDocument()); break;
+      case "new": setModal("new-pdf"); break;
       case "new-window": void perform(() => window.gcp.newWindow()); break;
       case "save": actions.save(); break;
       case "save-as": actions.saveAs(); break;
@@ -1003,7 +1007,7 @@ export default function App() {
           </aside>
         )}
         <main className={`document-area ${showHome ? "empty" : ""}`}>
-          {showHome && <Home files={recent.items} documents={workspace.documents} activeId={active?.id} currentPage={page} ready={ready} onOpen={openFilesFromHome} onNew={() => void perform(() => window.gcp.newDocument())} onActivate={resumeDocument} onRemove={recent.remove} onClear={recent.clear} onCombine={() => actions.quick("combine")} onConvert={() => actions.quick("convert")} onSupport={() => setModal("support")} />}
+          {showHome && <Home files={recent.items} documents={workspace.documents} activeId={active?.id} currentPage={page} ready={ready} onOpen={openFilesFromHome} onNew={() => setModal("new-pdf")} onActivate={resumeDocument} onRemove={recent.remove} onClear={recent.clear} onCombine={() => actions.quick("combine")} onConvert={() => actions.quick("convert")} onSupport={() => setModal("support")} />}
           <div className="home-document-view" hidden={showHome}>
           {active && tab === "Organizar" ? (
             <OrganizeView doc={active} selection={selection} setSelection={setSelection} actions={organize} onContextMenu={(e, index) => setPageMenu({ x: e.clientX, y: e.clientY, index })} />
@@ -1158,6 +1162,8 @@ export default function App() {
         </div>
       )}
       {prompts[0] && <PromptDialog prompt={prompts[0]} onAnswer={(index) => { const current = prompts[0]!; setPrompts((list) => list.slice(1)); void window.gcp.answerPrompt(current.id, index); }} />}
+      {modal === "new-pdf" && <NewPdfDialog onClose={() => setModal(null)} />}
+      {modal === "scan" && <ScanDialog doc={active} index={page} onClose={() => setModal(null)} onError={onError} />}
       {modal === "export" && active && <ExportDialog name={active.name} initialFormat={exportFormat} onClose={() => setModal(null)} onExport={exportDocument} />}
       {modal === "numbering" && active && <NumberingDialog doc={active} selection={selectedPages} onClose={() => setModal(null)} onApply={async (objects) => { await perform(() => window.gcp.applyOperation(active.id, { type: "add-objects", objects }, active.revision), "Numerando páginas…"); notify("Páginas numeradas. Os números podem ser movidos ou excluídos."); }} />}
       {modal === "stamps" && <StampDialog onClose={() => setModal(null)} onApply={(dataUrl, name) => { setModal(null); setTool({ kind: "stamp", dataUrl, name, signature: false, natural: true }); }} />}

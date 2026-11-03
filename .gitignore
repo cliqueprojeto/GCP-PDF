@@ -35,3 +35,5 @@ HANDOFF.md
 # Modelos adicionais baixados e verificados durante a compilação
 assets/tessdata/eng.traineddata
 assets/tessdata/spa.traineddata
+
+assets/scanner/gcp-scanner

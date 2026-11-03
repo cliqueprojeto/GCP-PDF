@@ -76,7 +76,8 @@
       "**/*.node",
       "**/*.wasm",
       "assets/pdfcraft/**",
-      "assets/context/**"
+      "assets/context/**",
+      "assets/scanner/**"
     ],
     "win": {
       "target": [

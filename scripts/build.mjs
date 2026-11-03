@@ -1,4 +1,5 @@
 import {prepareOcr} from './prepare-ocr.mjs';
+import './prepare-scanner.mjs';
 await prepareOcr();
 import {build as bundle} from 'esbuild';
 import {build as viteBuild} from 'vite';

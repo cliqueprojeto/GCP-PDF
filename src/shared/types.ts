@@ -1,4 +1,5 @@
 import type {Theme} from './themes';
+import type {BlankOptions,ScanOptions,ScannerDevice,ScannerCapabilities,ScanPage,ScanSelection} from './scanner';
 import type {LanguagePreference,LanguageSettings} from './locale';
 /** A page of an open document: page `src` (zero based) of the immutable PDF `base`, plus an extra
  * clockwise rotation. Page structure edits only rewrite these references, so they are instant. */
@@ -117,7 +118,15 @@ export interface GcpBridge {
  setFullscreen(enabled?:boolean):Promise<boolean>;
  getAsset(id:string):Promise<string>;
  openFiles(paths?:string[]):Promise<void>;
- newDocument():Promise<void>;
+ newDocument(options?:BlankOptions):Promise<void>;
+ listScanners():Promise<ScannerDevice[]>;
+ scannerCapabilities(id:string):Promise<ScannerCapabilities>;
+ scanPages(options:ScanOptions):Promise<ScanPage[]>;
+ scannedPages():Promise<ScanPage[]>;
+ removeScannedPage(id:string):Promise<void>;
+ cancelScan():Promise<void>;
+ discardScans():Promise<void>;
+ finishScans(pages:ScanSelection[],target?:{id:string;revision:number;index:number}):Promise<string>;
  activateDocument(id:string):Promise<void>;
  closeDocument(id:string):Promise<void>;
  detachDocument(id:string):Promise<void>;

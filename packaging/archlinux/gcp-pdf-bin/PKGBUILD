@@ -1,20 +1,20 @@
 # Maintainer: Bruno Albertini <cliqueprojeto@users.noreply.github.com>
 # Official upstream binary, repackaged for pacman. See packaging/archlinux/README.md.
 pkgname=gcp-pdf-bin
-pkgver=0.10.0
+pkgver=0.11.0
 pkgrel=1
 pkgdesc='Local PDF editor and reader with OCR, forms and signatures'
 arch=('x86_64')
 url='https://github.com/cliqueprojeto/GCP-PDF'
 license=('GPL-3.0-or-later')
 depends=('alsa-lib' 'at-spi2-core' 'cairo' 'dbus' 'expat' 'gcc-libs' 'glib2' 'glibc' 'gtk3' 'libcups' 'libdrm' 'libx11' 'libxcb' 'libxcomposite' 'libxdamage' 'libxext' 'libxfixes' 'libxkbcommon' 'libxrandr' 'mesa' 'nspr' 'nss' 'pango' 'systemd-libs' 'fontconfig' 'freetype2' 'xdg-utils')
-optdepends=('libreoffice-fresh: import Office documents as PDF')
+optdepends=('libreoffice-fresh: import Office documents as PDF' 'sane: scanimage and scanner drivers for PDF scanning')
 provides=('gcp-pdf')
 conflicts=('gcp-pdf')
 options=('!strip' '!debug')
 source=("https://github.com/cliqueprojeto/GCP-PDF/releases/download/v$pkgver/GCP-PDF-$pkgver-linux-amd64.deb"
         "LICENSE-$pkgver::https://raw.githubusercontent.com/cliqueprojeto/GCP-PDF/v$pkgver/LICENSE")
-sha256sums=('518d83ef9849b3101b23fcebeeb77d41031af0cc1e5500a7578c4625247c647e'
+sha256sums=('c3ee8f6e905fb59966349f3817e130e82cf2ea2ce2913b966f416ff0027bb0bf'
             '3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986')
 
 prepare() {

@@ -32,7 +32,8 @@ cat evidence/archlinux/namcap.txt
 runuser -u builder -- env PATH="$PATH" ELECTRON_SKIP_BINARY_DOWNLOAD=1 bash -euc '
   cd /work
   npx --yes npm@11.9.0 ci
-  dbus-run-session -- xvfb-run -a node scripts/smoke-packaged.mjs /usr/bin/gcp-pdf arch
+  # Arch's xvfb-run defaults to a 640x480 screen; the window fits the screen it opens on, so test on a real size.
+  dbus-run-session -- xvfb-run -a -s '-screen 0 1920x1080x24' node scripts/smoke-packaged.mjs /usr/bin/gcp-pdf arch
 '
 cd release/archlinux
 sha256sum -- *.pkg.tar.zst GCP-PDF-aur-recipe.tar.gz > SHA256SUMS-ArchLinux.txt

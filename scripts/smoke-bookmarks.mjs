@@ -24,7 +24,7 @@ try{const page=await app.firstWindow();await page.waitForFunction(()=>!!window.g
  // Reopening continues where the reading stopped.
  await page.evaluate(()=>{const s=document.querySelector('.canvas-scroll');s.scrollTo({top:document.querySelector('.page-sheet[data-page="7"]').offsetTop+50});});await page.waitForTimeout(1500);
  await app.evaluate(()=>{for(const v of globalThis.__gcpTest.views.values())for(const id of v.ids){const d=globalThis.__gcpTest.store.get(id);d.savedRevision=d.revision;}});
- await page.evaluate(async()=>{const d=(await window.gcp.getWorkspace()).documents[0];await window.gcp.closeDocument(d.id);});await page.waitForTimeout(500);
+ await page.evaluate(async()=>{const closeTab=async id=>{const done=window.gcp.closeDocument(id);for(let i=0;i<400;i++){const b=[...document.querySelectorAll('.prompt-card .prompt-buttons button')].find(x=>/^(Fechar|Close|Cerrar)$/.test(x.textContent.trim()));if(b){b.click();break;}await new Promise(r=>setTimeout(r,25));}await done;};const d=(await window.gcp.getWorkspace()).documents[0];await closeTab(d.id);});await page.waitForTimeout(500);
  await page.evaluate(p=>window.gcp.openFiles([p]),file);await page.waitForSelector('.page-sheet:not(.loading)');await page.waitForTimeout(2500);
  const current=await page.locator('.statusbar').textContent();check('reabrir volta à última página vista',/Página 7 de/.test(current??''),(current??'').slice(0,40));
 }finally{await app.evaluate(()=>{for(const v of globalThis.__gcpTest.views.values())v.allowClose=true;}).catch(()=>{});await app.close();}

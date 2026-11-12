@@ -30,7 +30,8 @@ try{
  // A retired PDF transport must not leave an unhandled renderer promise.
  for(let n=0;n<16;n++){
   const file=join(root,`Troca ${n}.pdf`);await writeFile(file,bytes);
-  await window.evaluate(async file=>{await window.gcp.openFiles([file]);const state=await window.gcp.getWorkspace();await window.gcp.closeDocument(state.activeDocumentId);},file);
+  // Closing asks for confirmation since 0.12.0: answer it as the user does.
+  await window.evaluate(async file=>{const closeTab=async id=>{const done=window.gcp.closeDocument(id);for(let i=0;i<400;i++){const b=[...document.querySelectorAll('.prompt-card .prompt-buttons button')].find(x=>/^(Fechar|Close|Cerrar)$/.test(x.textContent.trim()));if(b){b.click();break;}await new Promise(r=>setTimeout(r,25));}await done;};await window.gcp.openFiles([file]);const state=await window.gcp.getWorkspace();await closeTab(state.activeDocumentId);},file);
  }
  await window.waitForSelector('.form-button');
  assert.deepEqual(errors,[]);

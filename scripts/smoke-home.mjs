@@ -79,7 +79,7 @@ try {
     .evaluate((node) => (node.scrollTop = 170));
   await page.waitForFunction((path) => {
     const saved = JSON.parse(localStorage.getItem("gcp.last-page") || "{}")[
-      path.toLowerCase()
+      (/^(?:[a-z]:[\\/]|\\\\)/i.test(path) ? path.replace(/\\/g, "/").toLowerCase() : path)
     ];
     return saved?.page === 0 && saved.top > 100;
   }, first);
@@ -87,7 +87,7 @@ try {
     page.evaluate(
       (path) =>
         JSON.parse(localStorage.getItem("gcp.last-page") || "{}")[
-          path.toLowerCase()
+          (/^(?:[a-z]:[\\/]|\\\\)/i.test(path) ? path.replace(/\\/g, "/").toLowerCase() : path)
         ],
       first,
     );
@@ -163,7 +163,8 @@ try {
   );
   await page.evaluate(
     async (ids) => {
-      for (const id of ids) await window.gcp.closeDocument(id);
+      const closeTab=async id=>{const done=window.gcp.closeDocument(id);for(let i=0;i<400;i++){const b=[...document.querySelectorAll('.prompt-card .prompt-buttons button')].find(x=>/^(Fechar|Close|Cerrar)$/.test(x.textContent.trim()));if(b){b.click();break;}await new Promise(r=>setTimeout(r,25));}await done;};
+      for (const id of ids) await closeTab(id);
     },
     [doc2.id, doc1.id],
   );
@@ -190,7 +191,7 @@ try {
   });
   await page.waitForFunction((path) => {
     const saved = JSON.parse(localStorage.getItem("gcp.last-page") || "{}")[
-      path.toLowerCase()
+      (/^(?:[a-z]:[\\/]|\\\\)/i.test(path) ? path.replace(/\\/g, "/").toLowerCase() : path)
     ];
     return saved?.page === 1 && saved.top > 80;
   }, first);
@@ -199,7 +200,7 @@ try {
     .click();
   state = await ws();
   await page.evaluate(
-    (id) => window.gcp.closeDocument(id),
+    async (id) => { const closeTab=async id=>{const done=window.gcp.closeDocument(id);for(let i=0;i<400;i++){const b=[...document.querySelectorAll('.prompt-card .prompt-buttons button')].find(x=>/^(Fechar|Close|Cerrar)$/.test(x.textContent.trim()));if(b){b.click();break;}await new Promise(r=>setTimeout(r,25));}await done;}; await closeTab(id); },
     state.documents[0].id,
   );
   await page

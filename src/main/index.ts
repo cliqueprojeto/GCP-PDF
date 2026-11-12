@@ -1,3 +1,4 @@
+import {userMessage} from '../shared/errors';
 import {launchPaths} from './launch-input';
 import {Scanner} from './scanner';
 import {createDocument} from './blank-document';
@@ -49,7 +50,7 @@ const OPENABLE=[...INPUT_EXTENSIONS,...BOOK_EXTENSIONS];
 /** EPUB opens in the book reader, comic archives in the comic reader; only the last few stay in memory. */
 function openBook(view:View,path:string){const token=randomUUID();books.set(token,{path});if(books.size>20)books.delete(books.keys().next().value!);for(const [key,entry] of [...books].slice(0,-3))if(entry.comic)books.set(key,{path:entry.path});action(view,(COMIC_EXTENSIONS.includes(extname(path).toLowerCase())?'comic:':'book:')+token);}
 const store=new DocumentStore(async(family,bold,italic)=>{const face=await faceFor(family,bold,italic,fontCache());return face?new Uint8Array(await readFile(face.file)):undefined;}),settings=new Settings();
-type View={window:BrowserWindow;ids:string[];active?:string;allowClose:boolean};
+type View={window:BrowserWindow;ids:string[];active?:string;allowClose:boolean;closing?:boolean};
 type Quick={window:BrowserWindow;state:QuickState};
 const views=new Map<number,View>(),quicks=new Map<number,Quick>();let shuttingDown=false,pageClipboard:string|undefined;
 const assets=()=>join(app.getAppPath(),'assets');
@@ -69,7 +70,14 @@ const readPdf=(path:string)=>readInputPdf(path,htmlToPdf);
 const rendererUrl=()=>pathToFileURL(join(app.getAppPath(),'dist','renderer')).href;
 function trusted(event:Electron.IpcMainInvokeEvent){if(event.senderFrame!==event.sender.mainFrame)throw new Error('Origem de ação não autorizada.');const url=event.sender.getURL();if(!(url.startsWith(rendererUrl())||(!app.isPackaged&&url.startsWith('http://127.0.0.1:'))))throw new Error('Origem inválida.');}
 function saveDialog(window:BrowserWindow,options:Electron.SaveDialogOptions){const locale=languages().locale;return dialog.showSaveDialog(window,{...options,title:options.title?localize(options.title,locale):undefined,filters:options.filters?.map(f=>({...f,name:localize(f.name,locale)}))});}
-function openDialog(window:BrowserWindow,options:Electron.OpenDialogOptions){const locale=languages().locale;return dialog.showOpenDialog(window,{...options,title:options.title?localize(options.title,locale):undefined,filters:options.filters?.map(f=>({...f,name:localize(f.name,locale)}))});}
+/** Every Open dialog starts in the folder used last (kept between sessions) and remembers the new one. */
+async function openDialog(window:BrowserWindow,options:Electron.OpenDialogOptions){
+ const locale=languages().locale,last=settings.lastFolder,start=options.defaultPath??(last&&existsSync(last)?last:undefined);
+ const result=await dialog.showOpenDialog(window,{...options,...(start?{defaultPath:start}:{}),title:options.title?localize(options.title,locale):undefined,filters:options.filters?.map(f=>({...f,name:localize(f.name,locale)}))});
+ const chosen=result.canceled?undefined:result.filePaths[0];
+ if(chosen)void settings.setLastFolder(options.properties?.includes('openDirectory')?chosen:dirname(chosen)).catch(error=>console.error('Última pasta:',error));
+ return result;
+}
 const OCR_FAMILIES=['Calibri','Arial','Times New Roman','Cambria','Segoe UI','Verdana','Georgia','Tahoma','Carlito','Liberation Sans','Liberation Serif','DejaVu Sans','Helvetica','Times'];
 /** Families installed here that scanned text is compared against (the canvas measures only installed ones). */
 async function ocrFamilies(){const installed=new Set((await fontFamilies(fontCache()).catch(()=>[] as string[])).map(f=>f.toLowerCase()));const found=OCR_FAMILIES.filter(f=>installed.has(f.toLowerCase()));return found.length?found:['Arial'];}
@@ -151,7 +159,7 @@ async function save(view:View,id:string,saveAs=false){
  }
  doc.path=path;doc.name=basename(path);doc.savedRevision=revision;notify();return path;
 }
-type PromptRequest={title:string;message:string;detail?:string;buttons:string[];defaultId:number;cancelId:number;tone?:'question'|'danger'|'info'};
+type PromptRequest={title:string;message:string;detail?:string;items?:string[];buttons:string[];defaultId:number;cancelId:number;danger?:number;tone?:'question'|'danger'|'info'|'close'|'unsaved'};
 const prompts=new Map<string,{view:View;cancel:number;resolve:(index:number)=>void}>();
 /** Asks inside the app's own styled dialog instead of a native Windows message box. */
 function ask(view:View,request:PromptRequest):Promise<number>{
@@ -161,21 +169,49 @@ function ask(view:View,request:PromptRequest):Promise<number>{
  return new Promise(resolve=>{prompts.set(id,{view,cancel:request.cancelId,resolve});view.window.webContents.send('gcp:prompt',{id,...request});});
 }
 function settlePrompts(view:View){for(const [id,prompt] of prompts)if(prompt.view===view){prompts.delete(id);prompt.resolve(prompt.cancel);}}
-async function confirmClose(view:View,id:string){const doc=store.get(id);if(doc.revision===doc.savedRevision)return true;const response=await ask(view,{title:'Alterações não salvas',message:`Deseja salvar as alterações em “${doc.name}”?`,detail:'Se descartar, as edições feitas desde o último salvamento serão perdidas.',buttons:['Salvar','Descartar alterações','Cancelar'],defaultId:0,cancelId:2,tone:'question'});if(response===2)return false;if(response===0)return !!(await save(view,id));return true;}
+const unsaved=(id:string)=>{const doc=store.get(id);return doc.revision!==doc.savedRevision;};
+/** Saves each document in turn; false as soon as one is not saved (Save As cancelled or failed). */
+async function saveAll(view:View,ids:string[]){for(const id of ids)if(!(await save(view,id)))return false;return true;}
+/** Before a tab closes: a plain confirmation, or Save now / Close without saving when it has changes. */
+async function confirmClose(view:View,id:string){
+ const doc=store.get(id);
+ if(!unsaved(id))return (await ask(view,{title:'Fechar documento?',message:`“${doc.name}” será fechado.`,detail:'Você pode reabri-lo pelos arquivos recentes e continuar da mesma página.',buttons:['Fechar','Cancelar'],defaultId:0,cancelId:1,tone:'close'}))===0;
+ const response=await ask(view,{title:'Salvar antes de fechar?',message:`“${doc.name}” tem alterações que ainda não foram salvas.`,detail:'Se fechar sem salvar, as edições feitas desde o último salvamento serão perdidas.',buttons:['Salvar agora','Fechar sem salvar','Cancelar'],defaultId:0,cancelId:2,danger:1,tone:'unsaved'});
+ if(response===2)return false;if(response===0)return !!(await save(view,id));return true;
+}
+/** Before a window (or the whole program) closes: one question for the window, listing what is unsaved. */
+async function confirmWindow(view:View,quitting:boolean){
+ const dirty=view.ids.filter(unsaved),last=quitting||(process.platform!=='darwin'&&[...views.values()].filter(v=>!v.window.isDestroyed()).length<=1);
+ if(!dirty.length){
+  const open=view.ids.length;
+  return (await ask(view,{title:last?'Fechar o GCP-PDF?':'Fechar esta janela?',message:open?(open===1?`O documento “${store.get(view.ids[0]!).name}” será fechado.`:`Os ${open} documentos abertos nesta janela serão fechados.`):'Tudo o que você abriu fica nos arquivos recentes.',detail:'Na próxima vez, cada documento volta à página onde você parou.',buttons:['Fechar','Cancelar'],defaultId:0,cancelId:1,tone:'close'}))===0;
+ }
+ const names=dirty.map(id=>store.get(id).name);
+ const response=await ask(view,{title:'Salvar antes de fechar?',message:dirty.length===1?`“${names[0]}” tem alterações que ainda não foram salvas.`:`${dirty.length} documentos têm alterações que ainda não foram salvas.`,detail:'Se fechar sem salvar, as edições feitas desde o último salvamento serão perdidas.',items:dirty.length>1?names:undefined,buttons:['Salvar agora','Fechar sem salvar','Cancelar'],defaultId:0,cancelId:2,danger:1,tone:'unsaved'});
+ if(response===2)return false;if(response===0)return saveAll(view,dirty);return true;
+}
 async function closeTab(view:View,id:string){own(view,id);if(!(await confirmClose(view,id)))return;view.ids=view.ids.filter(value=>value!==id);if(view.active===id)view.active=view.ids.at(-1);if(![...views.values()].some(v=>v.ids.includes(id)))store.remove(id);notify();}
 function secureWindow(window:BrowserWindow,hash=''){
  window.webContents.setWindowOpenHandler(()=>({action:'deny'}));window.webContents.on('will-navigate',event=>event.preventDefault());window.webContents.on('will-attach-webview',event=>event.preventDefault());
  if(!app.isPackaged&&process.env.VITE_DEV_SERVER_URL)void window.loadURL(process.env.VITE_DEV_SERVER_URL+(hash?'#'+hash:''));else void window.loadFile(join(__dirname,'../renderer/index.html'),hash?{hash}:undefined);
 }
 const preferences={preload:join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,spellcheck:false,webSecurity:true};
+/** Some Linux window managers ignore maximize on a window that is not mapped yet: ask again once shown. */
+function maximizeLater(window:BrowserWindow){setTimeout(()=>{if(!window.isDestroyed()&&!window.isMaximized()&&!window.isFullScreen())window.maximize();},120);}
+/** A document opened from outside (double click, Open with, second launch) brings the window back maximized. */
+function presentMaximized(window:BrowserWindow){if(window.isDestroyed())return;if(window.isMinimized())window.restore();if(!window.isFullScreen()&&!window.isMaximized())window.maximize();if(window.isVisible())maximizeLater(window);window.focus();}
 function createWindow(ids:string[]=[]){
- const window=new BrowserWindow({width:1420,height:940,minWidth:940,minHeight:660,show:false,title:'GCP-PDF',backgroundColor:themeMode(settings.theme)==='dark'?'#11121a':'#f6f5fa',icon:join(assets(),'icon.png'),autoHideMenuBar:true,webPreferences:preferences});
+ // Sized to the work area of the monitor under the pointer before it is ever shown, so it never appears
+ // half-sized first; the minimum adapts to small screens.
+ const area=screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+ const window=new BrowserWindow({...(ids.length?{width:1420,height:940}:{x:area.x,y:area.y,width:area.width,height:area.height}),minWidth:Math.min(940,area.width),minHeight:Math.min(660,area.height),show:false,title:'GCP-PDF',backgroundColor:themeMode(settings.theme)==='dark'?'#11121a':'#f6f5fa',icon:join(assets(),'icon.png'),autoHideMenuBar:true,webPreferences:preferences});
  // The ribbon is the menu; the native bar stays hidden (its accelerators keep working).
  window.setMenuBarVisibility(false);
  const scanOwner=window.id,windowId=window.webContents.id,view:View={window,ids,active:ids[0],allowClose:false};views.set(windowId,view);
  // A new main window opens maximized; detached tabs get their half-screen bounds from the caller.
- window.on('ready-to-show',()=>{if(!ids.length)window.maximize();window.show();notify();});
- window.on('close',event=>{if(view.allowClose||shuttingDown)return;if(view.ids.some(id=>store.get(id).revision!==store.get(id).savedRevision)){event.preventDefault();void(async()=>{for(const id of [...view.ids])if(!(await confirmClose(view,id)))return;view.allowClose=true;window.close();})().catch(error=>dialog.showErrorBox('Não foi possível fechar',String(error.message||error)));}});
+ window.on('ready-to-show',()=>{if(!ids.length)window.maximize();window.show();if(!ids.length)maximizeLater(window);notify();});
+ // Closing a window always asks: a plain confirmation, or Save now / Close without saving.
+ window.on('close',event=>{if(view.allowClose||shuttingDown)return;event.preventDefault();if(view.closing)return;view.closing=true;void confirmWindow(view,false).then(ok=>{view.closing=false;if(!ok||window.isDestroyed())return;view.allowClose=true;window.close();},error=>{view.closing=false;dialog.showErrorBox('Não foi possível fechar',String(error?.message||error));});});
  window.on('closed',()=>{void scanner.clear(scanOwner).catch(error=>console.error('Limpeza do scanner:',error));settlePrompts(view);certificateFiles.forget(windowId);views.delete(windowId);for(const id of view.ids)if(![...views.values()].some(v=>v.ids.includes(id)))store.remove(id);});
  secureWindow(window);return view;
 }
@@ -816,8 +852,10 @@ function registerIpc(){
   },
  };
  ipcMain.handle('gcp:getLanguage',event=>{trusted(event);if(!views.has(event.sender.id)&&!quicks.has(event.sender.id))throw new Error('Origem inválida.');return languages();});
- for(const [method,handler] of Object.entries(handlers))ipcMain.handle('gcp:'+method,async(event,...args)=>{trusted(event);const view=views.get(event.sender.id);if(!view)throw new Error('Origem de ação não autorizada.');try{return await handler(view,...args);}catch(error){notify();throw new Error(error instanceof Error?error.message:'Não foi possível concluir a operação.');}});
- for(const [method,handler] of Object.entries(quickHandlers))ipcMain.handle('gcp:'+method,async(event,...args)=>{trusted(event);const quick=quicks.get(event.sender.id);if(!quick){if(method==='getQuickState')return null;throw new Error('Origem de ação não autorizada.');}try{return await handler(quick,...args);}catch(error){throw new Error(error instanceof Error?error.message:'Não foi possível concluir a operação.');}});
+ /** The window shows a Portuguese explanation; a library's technical message goes to the log only. */
+ const shown=(error:unknown,method:string)=>{const raw=error instanceof Error?error.message:String(error??''),text=userMessage(raw);if(text!==raw)console.error(`[gcp:${method}]`,error);return text;};
+ for(const [method,handler] of Object.entries(handlers))ipcMain.handle('gcp:'+method,async(event,...args)=>{trusted(event);const view=views.get(event.sender.id);if(!view)throw new Error('Origem de ação não autorizada.');try{return await handler(view,...args);}catch(error){notify();throw new Error(shown(error,method));}});
+ for(const [method,handler] of Object.entries(quickHandlers))ipcMain.handle('gcp:'+method,async(event,...args)=>{trusted(event);const quick=quicks.get(event.sender.id);if(!quick){if(method==='getQuickState')return null;throw new Error('Origem de ação não autorizada.');}try{return await handler(quick,...args);}catch(error){throw new Error(shown(error,method));}});
 }
 /** PT-BR field formats, in the engine's Acrobat-style Format tab terms. */
 const FIELD_FORMATS:Record<string,unknown>={none:'none',date:{type:'date',pattern:'dd/mm/yyyy'},currency:{type:'number',decimals:2,currency:'R$ ',separator:2,negative:0},number:{type:'number',decimals:2,separator:2,negative:0},cpf:{type:'mask',mask:'999.999.999-99'},cnpj:{type:'mask',mask:'99.999.999/9999-99'},cep:{type:'mask',mask:'99999-999'},phone:{type:'mask',mask:'(99) 99999-9999'}};
@@ -894,7 +932,7 @@ function handleLaunch(args:string[],cwd=process.cwd()){
  const paths:string[]=[];
  for(const path of launchPaths(args,cwd,app.getAppPath())){if(OPENABLE.includes(extname(path).toLowerCase())||await isPdfInput(path))paths.push(path);else throw new Error('O arquivo selecionado não é um PDF nem um formato suportado.');}
  if(quick){if(batch.action&&batch.action!==quick)flushBatch();batch.action=quick;batch.paths.push(...paths.filter(path=>!batch.paths.includes(path)));if(batch.timer)clearTimeout(batch.timer);batch.timer=setTimeout(flushBatch,700);return;}
- if(paths.length)await openPaths(view,paths);view.window.show();view.window.focus();
+ if(paths.length)await openPaths(view,paths);if(view.window.isVisible()||paths.length)presentMaximized(view.window);
  })().catch(error=>action(view,'error:'+(error instanceof Error?error.message:String(error))));
 }
 if(!app.requestSingleInstanceLock())app.quit();
@@ -916,4 +954,15 @@ else{
 app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit();});
 app.on('activate',()=>{if(!views.size)createWindow();});
 let shutdownComplete=false;
-app.on('before-quit',event=>{if(shutdownComplete)return;event.preventDefault();if(shuttingDown)return;shuttingDown=true;void Promise.allSettled([scanner.dispose(),engine.dispose(),editorBlockReader.dispose()]).then(results=>{for(const result of results)if(result.status==='rejected')console.error('Limpeza ao sair:',result.reason);shutdownComplete=true;app.quit();});});
+/** Sair (menu, Cmd+Q, system shutdown request): the open windows answer first, so unsaved work is never
+ * dropped; windows already cleared to close (update install, moved tabs) are not asked again. */
+let quitAsked=false,quitting=false;
+async function confirmQuit(){
+ const pending=[...views.values()].filter(v=>!v.allowClose&&!v.window.isDestroyed());
+ if(!pending.length)return true;
+ const dirty=pending.filter(v=>v.ids.some(unsaved));
+ if(!dirty.length){const focused=pending.find(v=>v.window.isFocused())??pending[0]!;const total=pending.reduce((n,v)=>n+v.ids.length,0);return (await ask(focused,{title:'Fechar o GCP-PDF?',message:total?(total===1?'O documento aberto será fechado.':`Os ${total} documentos abertos serão fechados.`):'Tudo o que você abriu fica nos arquivos recentes.',detail:'Na próxima vez, cada documento volta à página onde você parou.',buttons:['Fechar','Cancelar'],defaultId:0,cancelId:1,tone:'close'}))===0;}
+ for(const view of dirty)if(!(await confirmWindow(view,true)))return false;
+ return true;
+}
+app.on('before-quit',event=>{if(shutdownComplete)return;event.preventDefault();if(shuttingDown)return;if(!quitAsked){if(quitting)return;quitting=true;void confirmQuit().then(ok=>{quitting=false;if(!ok)return;quitAsked=true;for(const v of views.values())v.allowClose=true;app.quit();},error=>{quitting=false;console.error('Sair:',error);});return;}shuttingDown=true;void Promise.allSettled([scanner.dispose(),engine.dispose(),editorBlockReader.dispose()]).then(results=>{for(const result of results)if(result.status==='rejected')console.error('Limpeza ao sair:',result.reason);shutdownComplete=true;app.quit();});});

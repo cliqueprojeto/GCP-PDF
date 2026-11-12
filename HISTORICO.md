@@ -1,5 +1,18 @@
 # Histórico de versões do GCP-PDF
 
+## 0.12.0 — 12/11/2026
+
+- Conversão para Word mais fiel: linhas, caixas, fundos e contornos viram formas editáveis que você pode mover, recolorir e redimensionar; tabelas viram tabelas de verdade e as fotos continuam como imagens.
+- Conversões para Word, Excel e PowerPoint mantêm os espaços entre as palavras, as frases inteiras nas células, a fonte de cada trecho e o tamanho real das colunas na impressão.
+- PDFs criados pela junção de vários arquivos, que antes não abriam, agora abrem normalmente.
+- Todas as mensagens de erro aparecem em português, com uma explicação clara do que aconteceu.
+- Fechar uma aba, a janela ou o programa agora pede confirmação; com alterações, você escolhe entre Salvar agora e Fechar sem salvar.
+- Ao abrir arquivos, o GCP-PDF vai direto para a última pasta que você usou.
+- Novo botão Duplicar nas miniaturas das páginas, no menu do botão direito e na barra do painel Páginas.
+- PDFs e livros reabrem exatamente na página e na posição onde você parou, em qualquer sistema.
+- O programa sempre abre com a janela maximizada, ajustada à tela do seu monitor.
+
+
 ## 0.11.0 — 03/11/2026
 
 - Novo botão Criar um PDF em branco entre Abrir e Salvar, com papel A4, A3, A5, Carta ou Ofício, orientação e quantidade inicial de páginas.

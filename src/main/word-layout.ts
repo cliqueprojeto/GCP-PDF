@@ -2,9 +2,11 @@ import { createCanvas } from '@napi-rs/canvas';
 import { PDFDocument, PDFName, PDFRawStream, PDFDict, PDFArray, PDFRef, ParseSpeeds, decodePDFRawStream, type PDFContext } from 'pdf-lib';
 import { Document, Packer, Paragraph, TextRun, ImageRun, AlignmentType, FrameAnchorType, FrameWrap, HeightRule, HorizontalPositionRelativeFrom, VerticalPositionRelativeFrom, TextWrappingType, SectionType, LineRuleType, Table, TableRow, TableCell, WidthType, TableLayoutType, TableAnchorType, OverlapType, VerticalAlign, BorderStyle, ShadingType, PageNumber, type ISectionOptions } from 'docx';
 import { pageGrid, tableOf, insideTable, type GridTable, type GridEdge } from './tables';
+import { shapeRun, shapeMarker, injectShapes } from './docx-shapes';
 import type { PDFPageProxy } from 'pdfjs-dist/types/src/display/api';
 import { inspectPage, loadPdf, pdfjs } from './conversion';
-import { faceForPostscript, fontFamilies } from './fonts';
+import { faceFor, faceForPostscript, fontFamilies } from './fonts';
+import { readFile } from 'node:fs/promises';
 import { letterSpacing, locateGlyphs, pageGlyphs } from './text-spacing';
 import { embeddedFaces, type EmbeddedFace } from './embedded-fonts';
 import { bodyStyle, flowPage, flowSection, type FlowPage } from './docx-flow';
@@ -28,6 +30,7 @@ const hex = (value: unknown) => (typeof value === 'string' && /^#[0-9a-f]{6}$/i.
 // PDF.js operator codes (OPS) used here; DrawOPS inside constructPath: 0 moveTo, 1 lineTo, 2 curveTo, 3 quadraticCurveTo, 4 closePath.
 const OP = { setLineWidth: 2, setDash: 6, setGState: 9, save: 10, restore: 11, transform: 12, stroke: 20, closeStroke: 21, fill: 22, eoFill: 23, fillStroke: 24, eoFillStroke: 25, closeFillStroke: 26, closeEOFillStroke: 27, endPath: 28, clip: 29, eoClip: 30, setStrokeColorN: 53, setFillColorN: 55, setStrokeRGBColor: 58, setFillRGBColor: 59, shadingFill: 62, paintFormXObjectBegin: 74, paintFormXObjectEnd: 75, beginGroup: 76, endGroup:77, constructPath: 91 };
 const MAX_SHAPES = 800;
+const EMU_PT = 12700;
 type Box = { x: number; y: number; width: number; height: number };
 const intersect = (a: Box, b: Box): Box => { const x = Math.max(a.x, b.x), y = Math.max(a.y, b.y); return { x, y, width: Math.min(a.x + a.width, b.x + b.width) - x, height: Math.min(a.y + a.height, b.y + b.height) - y }; };
 const inside = (a: Box, b: Box) => a.x >= b.x - 0.5 && a.y >= b.y - 0.5 && a.x + a.width <= b.x + b.width + 0.5 && a.y + a.height <= b.y + b.height + 0.5;
@@ -246,6 +249,21 @@ export class FontContext {
     return substitute;
   }
 }
+const metrics = new Map<string, Promise<{ layout: (text: string) => { advanceWidth: number }; unitsPerEm: number } | null>>();
+/** Letter spacing (points) that makes `text` in an installed font as wide as it was printed; undefined
+ * when it is already close or the face cannot be read. */
+async function fitTracking(family: string, bold: boolean, italic: boolean, text: string, width: number, size: number) {
+  const key = `${family}|${bold}|${italic}`;
+  let font = metrics.get(key);
+  if (!font) {
+    font = faceFor(family, bold, italic).then(async (face) => (face ? (await import('@pdf-lib/fontkit')).default.create(await readFile(face.file)) as never : null)).catch(() => null);
+    metrics.set(key, font);
+  }
+  const loaded = await font, gaps = [...text].length - 1;
+  if (!loaded || gaps < 1 || !(width > 0)) return undefined;
+  const natural = (loaded.layout(text).advanceWidth / loaded.unitsPerEm) * size, tracking = (width - natural) / gaps;
+  return Math.abs(tracking) < size * 0.004 || Math.abs(tracking) > size * 0.25 ? undefined : tracking;
+}
 export async function pageRuns(page: PDFPageProxy, fonts: FontContext = new FontContext()): Promise<Run[]> {
   const engine = await pdfjs(), viewport = page.getViewport({ scale: 1 });
   // The operator list resolves the embedded fonts, so their real names are known for the text items.
@@ -264,14 +282,22 @@ export async function pageRuns(page: PDFPageProxy, fonts: FontContext = new Font
     // font program inside the PDF names itself, even when the PDF hides it (CIDFont+F1).
     const face = raw ? await faceForPostscript(raw) : undefined, own = raw ? fonts.faces.get(raw) : undefined;
     const style = face ? { family: face.legacy, bold: /bold/i.test(face.legacyStyle), italic: face.italic } : own ? { family: own.family, bold: own.bold, italic: own.italic } : wordFont(raw || content.styles[item.fontName]?.fontFamily || 'Arial');
+    const wanted = style.family;
     if (!face) style.family = await fonts.family(style.family, content.styles[item.fontName]?.fontFamily, own);
+    // Symbol fonts hold their glyphs at private-use codes; a bullet or arrow PDF.js already turned into a
+    // standard character would show as an empty box in them, so it is written in a regular font.
+    if (/^(symbol|wingdings( \d)?|webdings|zapf ?dingbats|dingbats)$/i.test(style.family) && !/[\uE000-\uF8FF]/.test(item.str)) style.family = 'Arial';
+    const substituted = !face && style.family !== wanted && fonts.missing.get(wanted) === style.family;
     // The item's colour is the fill colour of its own characters, matched as a whole sequence.
     const visible = [...item.str].filter((c) => c.trim()), at = locateGlyphs(palette, visible.slice(0, 8), cursor);
     const color = at >= 0 ? palette.colors[at]! : palette.colors[cursor] ?? '#000000';
     if (at >= 0) cursor = at + visible.length;
     // Letter-spaced text keeps its real words and its spacing instead of PDF.js's invented spaces.
     const scale = Math.hypot(t[0], t[1]) / size || 1, spaced = letterSpacing(palette, at, visible.length, item.str, item.width, size, scale);
-    runs.push({ text: spaced?.text ?? item.str, x: t[4], baseline: t[5], width: Math.max(item.width, 0.5), size, font: style.family, bold: style.bold, italic: style.italic, color, space: pendingSpace, ...(spaced ? { tracking: spaced.tracking } : {}), ...(Math.abs(scale - 1) > 0.02 ? { scale } : {}) });
+    // A replacement font is wider or narrower than the original: spacing between its letters gives back the
+    // printed width, so lines break where they broke in the PDF instead of spilling onto extra pages.
+    const fitted = !spaced && substituted ? await fitTracking(style.family, style.bold, style.italic, item.str, item.width, size * scale) : undefined;
+    runs.push({ text: spaced?.text ?? item.str, x: t[4], baseline: t[5], width: Math.max(item.width, 0.5), size, font: style.family, bold: style.bold, italic: style.italic, color, space: pendingSpace, ...(spaced ? { tracking: spaced.tracking } : fitted ? { tracking: fitted } : {}), ...(Math.abs(scale - 1) > 0.02 ? { scale } : {}) });
     pendingSpace = false;
   }
   return runs;
@@ -412,18 +438,27 @@ async function artwork(page: PDFPageProxy, dpi: number, erase: Run[] = [], omit:
 /** Text recognized by OCR on scanned pages (by page index), used where the PDF has no text of its own. */
 export type OcrRuns = Map<number, Run[]>;
 export async function toDocxLayout(bytes: Uint8Array, dpi: number, warnings: string[], onProgress?: (message: string) => void, ocr: OcrRuns = new Map()) {
-  onProgress?.('Preparando o fundo das páginas…');
-  const [source, art, fonts] = await Promise.all([loadPdf(bytes), artworkOnly(bytes).then(loadPdf), FontContext.of(bytes, true)]), missing = fonts.missing;
+  onProgress?.('Preparando as formas e o fundo das páginas…');
+  const [source, fonts] = await Promise.all([loadPdf(bytes), FontContext.of(bytes, true)]), missing = fonts.missing;
+  // As in PowerPoint: vector art becomes native, editable Word shapes on every page where it can be
+  // reproduced; photos are their own pictures; a bitmap remains only for what has no shape equivalent
+  // (gradients, patterns, soft masks).
+  const vectors: Awaited<ReturnType<typeof vectorShapes>>[] = [];
+  for (let i = 1; i <= source.numPages; i++) { const page = await source.getPage(i); vectors.push(await vectorShapes(page).catch(() => ({ supported: false, shapes: [], painted: [] }))); page.cleanup(); }
+  const editable = new Set(vectors.flatMap((v, i) => (v.supported && v.shapes.length ? [i] : [])));
+  const [art, pictures] = await Promise.all([artworkOnly(bytes, false, editable).then(loadPdf), artworkOnly(bytes, true).then(loadPdf)]);
+  const shapeRuns = new Map<number, string>();
+  let shapeId = 5000, shapeCount = 0;
   try {
     const sections: ISectionOptions[] = [];
-    let tables = 0, flowed = 0, laidOut = 0, flowPages: FlowPage[] = [];
+    let tables = 0, flowed = 0, laidOut = 0, flowPages: FlowPage[] = [], flowMarkers: (string | undefined)[] = [];
     const allFlow: FlowPage[] = [];
     // Consecutive text pages of one size become one flowing section with their margins, header and footer.
     const closeFlow = () => {
       if (!flowPages.length) return;
-      const section = flowSection(flowPages, source.numPages);
+      const section = flowSection(flowPages, source.numPages, flowMarkers);
       sections.push({ ...section, properties: { ...section.properties, type: SectionType.NEXT_PAGE } });
-      flowed += flowPages.length; flowPages = [];
+      flowed += flowPages.length; flowPages = []; flowMarkers = [];
     };
     for (let i = 1; i <= source.numPages; i++) {
       onProgress?.(`Convertendo página ${i} de ${source.numPages}…`);
@@ -434,19 +469,50 @@ export async function toDocxLayout(bytes: Uint8Array, dpi: number, warnings: str
         if (flow) {
           if (flowPages.length && (Math.abs(flowPages[0]!.width - flow.width) > 1 || Math.abs(flowPages[0]!.height - flow.height) > 1)) closeFlow();
           flowPages.push(flow); allFlow.push(flow); tables += flow.items.filter((item) => item.kind === 'table').length;
+          // Decorative graphics of a text page (frames, curves, bars, icons) become editable shapes too; what
+          // the text already rebuilds (tables, rules) is not drawn twice.
+          const rebuilt = flow.items.filter((item) => item.kind === 'table' || item.kind === 'columns' || item.kind === 'rule');
+          const covered = (b: { x: number; y: number; width: number; height: number }) => rebuilt.some((item) => b.y + b.height > item.top - 2 && b.y < item.bottom + 2);
+          const decor = editable.has(i - 1) ? vectors[i - 1]!.shapes.filter((v) => !covered(v.box)) : [];
+          if (decor.length) { shapeRuns.set(i, decor.map((v, n) => shapeRun(v, shapeId++, n * 2)).join('')); shapeCount += decor.length; flowMarkers.push(shapeMarker(i)); } else flowMarkers.push(undefined);
           page.cleanup(); continue;
         }
       }
       closeFlow(); laidOut++;
       const artPage = await art.getPage(i);
-      const [allRuns, background, grid] = await Promise.all([scanned ?? pageRuns(page, fonts), artwork(artPage, dpi, scanned), scanned ? null : pageGrid(page, fonts).catch(() => null)]);
-      // A ruled/filled table becomes a real Word table at its place; its text is not repeated as frames.
-      const table = grid ? tableOf(grid) : null;
+      // Mixed pages keep the complex middle (gradients, masks) as a transparent bitmap; vectors drawn before
+      // and after it become shapes and are left out of that bitmap.
+      const partial = !editable.has(i - 1) && !scanned ? await vectorShapes(artPage) : undefined;
+      const promoted = partial && partial.reason !== 'formas demais' ? partial.shapes.filter((v) => v.operation !== undefined && (v.operation < (partial.firstRaster ?? Infinity) || v.operation > (partial.lastRaster ?? -1))) : [];
+      const omit = new Set(promoted.map((v) => v.operation!));
+      const [allRuns, background, images, grid] = await Promise.all([scanned ?? pageRuns(page, fonts), artwork(artPage, dpi, scanned, omit, !!partial), scanned ? { images: [] } : inspectPage(page, true), scanned ? null : pageGrid(page, fonts).catch(() => null)]);
+      // A real table (cells separated by rules or fills, side by side) becomes a Word table at its place,
+      // rows at their exact heights; its text and cell graphics are not repeated. Forms whose sections are
+      // only separated by horizontal rules stay as positioned text over editable shapes.
+      const candidate = grid ? tableOf(grid) : null, table = candidate && realTable(candidate) ? candidate : null;
       const runs = table ? allRuns.filter((r) => !insideTable(table, { x: r.x, y: r.baseline - r.size * 0.7, width: Math.min(r.width, 1), height: r.size * 0.6 })) : allRuns;
+      const shapes = (editable.has(i - 1) ? vectors[i - 1]!.shapes : promoted).filter((v) => !table || !insideTable(table, v.box));
       const children: (Paragraph | Table)[] = [];
+      // The page's shapes, in painting order, anchored by one run that the finished document receives.
+      if (shapes.length) { const key = i; shapeRuns.set(key, shapes.map((v, n) => shapeRun(v, shapeId++, n * 2)).join('')); shapeCount += shapes.length; children.push(new Paragraph({ spacing: { before: 0, after: 0, line: 20, lineRule: LineRuleType.EXACT }, children: [new TextRun({ text: shapeMarker(key), size: 2 })] })); }
+      // The bitmap sits between the shapes painted before and after it (each shape has order 2n).
+      const after = partial ? shapes.findIndex((v) => v.operation! > (partial.lastRaster ?? -1)) : 0, rasterZ = 999 + 2 * (after < 0 ? shapes.length : after);
+      if (background) children.push(new Paragraph({ spacing: { before: 0, after: 0 }, children: [new ImageRun({ type: partial ? 'png' : 'jpg', data: background, transformation: { width: viewport.width * 96 / 72, height: viewport.height * 96 / 72 }, floating: { horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, offset: 0 }, verticalPosition: { relative: VerticalPositionRelativeFrom.PAGE, offset: 0 }, behindDocument: true, allowOverlap: true, lockAnchor: true, wrap: { type: TextWrappingType.NONE }, zIndex: rasterZ } })] }));
+      // Each picture is cut from the page as drawn (masks and transparency included), in front of the shapes.
+      if (images.images.length) {
+        const picturePage = await pictures.getPage(i), scale = Math.min(dpi, 200) / 72, view = picturePage.getViewport({ scale }), canvas = createCanvas(Math.ceil(view.width), Math.ceil(view.height));
+        await picturePage.render({ canvas: canvas as never, canvasContext: canvas.getContext('2d') as never, viewport: view, background: 'white' }).promise;
+        for (const image of images.images) {
+          const x = Math.max(0, image.x), y = Math.max(0, image.y), w = Math.min(viewport.width - x, image.width), h = Math.min(viewport.height - y, image.height);
+          if (w < 2 || h < 2) continue;
+          const crop = createCanvas(Math.ceil(w * scale), Math.ceil(h * scale));
+          crop.getContext('2d').drawImage(canvas, x * scale, y * scale, w * scale, h * scale, 0, 0, crop.width, crop.height);
+          children.push(new Paragraph({ spacing: { before: 0, after: 0, line: 20, lineRule: LineRuleType.EXACT }, children: [new ImageRun({ type: 'jpg', data: crop.toBuffer('image/jpeg', 90), transformation: { width: w * 96 / 72, height: h * 96 / 72 }, floating: { horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, offset: Math.round(x * EMU_PT) }, verticalPosition: { relative: VerticalPositionRelativeFrom.PAGE, offset: Math.round(y * EMU_PT) }, wrap: { type: TextWrappingType.NONE }, behindDocument: true, allowOverlap: true, zIndex: 3000 } })] }));
+        }
+        picturePage.cleanup();
+      }
       if (table) { children.push(wordTable(table)); tables++; }
-      if (background) children.push(new Paragraph({ spacing: { before: 0, after: 0 }, children: [new ImageRun({ type: 'jpg', data: background, transformation: { width: viewport.width * 96 / 72, height: viewport.height * 96 / 72 }, floating: { horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, offset: 0 }, verticalPosition: { relative: VerticalPositionRelativeFrom.PAGE, offset: 0 }, behindDocument: true, allowOverlap: true, lockAnchor: true, wrap: { type: TextWrappingType.NONE } } })] }));
-      if (!runs.length) warnings.push(`A página ${i} não tem texto extraível; ela foi mantida como imagem. Execute o OCR para gerar texto editável.`);
+      if (!allRuns.length) warnings.push(`A página ${i} não tem texto extraível; ela foi mantida como imagem. Execute o OCR para gerar texto editável.`);
       for (const block of buildBlocks(buildLines(runs))) children.push(blockParagraph(block, viewport.width));
       children.push(new Paragraph({ spacing: { before: 0, after: 0, line: 20, lineRule: LineRuleType.EXACT }, children: [new TextRun({ text: '', size: 2 })] }));
       sections.push({ properties: { type: SectionType.NEXT_PAGE, page: { size: { width: Math.round(viewport.width * 20), height: Math.round(viewport.height * 20) }, margin: { top: 0, bottom: 0, left: 0, right: 0, header: 0, footer: 0 } } }, children });
@@ -459,10 +525,12 @@ export async function toDocxLayout(bytes: Uint8Array, dpi: number, warnings: str
     if (flowed) warnings.push(`${flowed === source.numPages ? 'Documento convertido' : `${flowed} página${flowed > 1 ? 's convertidas' : ' convertida'}`} como texto corrido: margens, parágrafos, listas, tabelas, cabeçalho e rodapé editáveis, que se reorganizam ao editar.`);
     if (laidOut) warnings.push(`${flowed ? `${laidOut} página${laidOut > 1 ? 's' : ''} com arte (cartaz, slide ou digitalização) mantida${laidOut > 1 ? 's' : ''} com layout preservado: ` : 'Word com layout preservado: '}fundos, tabelas e imagens ficam atrás do texto, e os textos são editáveis com as fontes originais quando instaladas no computador.`);
     const document = new Document({ creator: 'Bruno Albertini | Gestão Cultural Pro', title: 'Documento convertido pelo GCP-PDF', description: 'Conversão local de PDF', sections, fonts: fonts.docxFonts(), styles: { default: { document: { run: allFlow.length ? { font: bodyStyle(allFlow).font, size: bodyStyle(allFlow).size, language: { value: 'pt-BR' } } : { font: 'Segoe UI', language: { value: 'pt-BR' } } } } } });
-    return { bytes: await Packer.toBuffer(document), extension: 'docx', warnings: [...new Set(warnings)] };
+    if (shapeCount) warnings.push(`${shapeCount} elemento${shapeCount > 1 ? 's gráficos viraram formas editáveis' : ' gráfico virou forma editável'} no Word (linhas, caixas, fundos e contornos): selecione para mover, recolorir ou redimensionar.`);
+    return { bytes: await injectShapes(new Uint8Array(await Packer.toBuffer(document)), shapeRuns), extension: 'docx', warnings: [...new Set(warnings)] };
   } finally {
     await source.loadingTask.destroy();
     await art.loadingTask.destroy();
+    await pictures.loadingTask.destroy();
   }
 }
 
@@ -475,14 +543,22 @@ function addSlideTable(slide: any, t: GridTable, sx: number, sy: number) {
   for (const cell of [...t.cells].sort((a, b) => a.row - b.row || a.col - b.col)) {
     const text = cell.text, options: Record<string, unknown> = {
       colspan: cell.cols > 1 ? cell.cols : undefined, rowspan: cell.rows > 1 ? cell.rows : undefined,
-      fill: cell.fill ? { color: hex6(cell.fill) } : undefined, margin: [1, 2, 1, 2],
+      // The text sits where the PDF shows it inside the cell: its measured left and top insets become the cell margins.
+      fill: cell.fill ? { color: hex6(cell.fill) } : undefined, margin: text && text.valign === 'top' ? [Math.min(40, text.insetTop ?? 1), Math.min(40, Math.max(2, text.inset ?? 2)), 1, Math.min(40, Math.max(2, text.inset ?? 2))] : [1, Math.min(40, Math.max(2, text?.inset ?? 2)), 1, Math.min(40, Math.max(2, text?.inset ?? 2))],
       border: [edge(cell.borders?.top), edge(cell.borders?.right), edge(cell.borders?.bottom), edge(cell.borders?.left)],
       align: text?.align ?? 'left', valign: text?.valign ?? 'top', fontFace: text?.font, fontSize: text ? Math.max(1, text.size * sy) : 10, color: text ? hex6(text.color) : undefined,
     };
-    const content = text ? text.parts.flatMap((part) => part.text.split('\n').map((piece, k, all) => ({ text: piece, options: { bold: part.bold, italic: part.italic, color: hex6(part.color), fontSize: Math.max(1, part.size * sy), fontFace: text.font, breakLine: k < all.length - 1 } }))) : '';
+    const content = text ? text.parts.flatMap((part) => part.text.split('\n').map((piece, k, all) => ({ text: piece, options: { bold: part.bold, italic: part.italic, color: hex6(part.color), fontSize: Math.max(1, part.size * sy), fontFace: part.font || text.font, breakLine: k < all.length - 1 } }))) : '';
     rows[cell.row]!.push({ text: content, options });
   }
   slide.addTable(rows, { x: inch(t.x * sx), y: inch(t.y * sy), w: inch(t.width * sx), colW: t.colW.map((w) => inch(w * sx)), rowH: t.rowH.map((h) => inch(h * sy)), autoPage: false });
+}
+/** A grid that is a table to edit as one: at least two rows with two or more cells of text side by side.
+ * Sections of a form separated only by horizontal rules (one wide cell per row) are not. */
+export function realTable(t: GridTable) {
+  const perRow = new Map<number, number>();
+  for (const cell of t.cells) if (cell.text?.text.trim()) perRow.set(cell.row, (perRow.get(cell.row) ?? 0) + 1);
+  return [...perRow.values()].filter((n) => n >= 2).length >= 2;
 }
 /** A grid table as a Word table floating at its place on the page. */
 /** A Word table for a grid. Positioned exactly on the page by default; in a flowing document it sits in
@@ -491,25 +567,30 @@ export function wordTable(t: GridTable, inline?: { indent: number; padding: numb
   const twip = (pt: number) => Math.round(pt * 20);
   const edge = (e?: GridEdge) => (e ? { style: BorderStyle.SINGLE, size: Math.max(2, Math.round(e.width * 8)), color: hex6(e.color) } : { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' });
   const rows = t.rowH.map((height, r) => new TableRow({
-    height: { value: twip(height), rule: HeightRule.ATLEAST },
+    // On a laid-out page the rows keep the PDF's heights exactly: Word would otherwise grow them to its own
+    // font metrics and push the table (and the page background) onto an extra page.
+    height: { value: twip(height), rule: inline ? HeightRule.ATLEAST : HeightRule.EXACT },
     children: t.cells.filter((c) => c.row === r).sort((a, b) => a.col - b.col).map((cell) => {
       const text = cell.text, align = text?.align === 'center' ? AlignmentType.CENTER : text?.align === 'right' ? AlignmentType.RIGHT : text?.align === 'justify' ? AlignmentType.JUSTIFIED : AlignmentType.LEFT;
       const paragraphs: Paragraph[] = [];
       let current: TextRun[] = [];
       // In a flowing table the space above the text is the first paragraph's, as word processors write it:
       // Word adds a top cell margin to the row height it was given.
-      const before = () => (inline && !paragraphs.length ? twip(inline.paddingTop ?? 0) : 0);
+      // A floating (laid-out) table puts the text where the PDF shows it: the measured top inset, and lines at
+      // a fixed pitch so a cell holds exactly what it held on the page.
+      const before = () => (!paragraphs.length ? (inline ? twip(inline.paddingTop ?? 0) : text && text.valign === 'top' ? twip(Math.max(0, (text.insetTop ?? 0) - text.size * 0.25)) : 0) : 0);
+      const pitch = !inline && text ? { line: Math.max(40, Math.round(text.size * 1.2 * 20)), lineRule: LineRuleType.EXACT } : {};
       for (const part of text?.parts ?? []) part.text.split('\n').forEach((piece, k) => {
-        if (k > 0) { paragraphs.push(new Paragraph({ alignment: align, spacing: { before: before(), after: 0 }, children: current })); current = []; }
-        if (piece) current.push(new TextRun({ text: piece, bold: part.bold, italics: part.italic, color: hex6(part.color), size: Math.max(2, Math.round(part.size * 2)), font: text!.font }));
+        if (k > 0) { paragraphs.push(new Paragraph({ alignment: align, spacing: { before: before(), after: 0, ...pitch }, children: current })); current = []; }
+        if (piece) current.push(new TextRun({ text: piece, bold: part.bold, italics: part.italic, color: hex6(part.color), size: Math.max(2, Math.round(part.size * 2)), font: part.font || text!.font }));
       });
-      paragraphs.push(new Paragraph({ alignment: align, spacing: { before: before(), after: 0 }, children: current }));
+      paragraphs.push(new Paragraph({ alignment: align, spacing: { before: before(), after: 0, ...pitch }, children: current }));
       return new TableCell({
         columnSpan: cell.cols > 1 ? cell.cols : undefined, rowSpan: cell.rows > 1 ? cell.rows : undefined,
         width: { size: twip(t.colW.slice(cell.col, cell.col + cell.cols).reduce((a, b) => a + b, 0)), type: WidthType.DXA },
         shading: cell.fill ? { type: ShadingType.CLEAR, color: 'auto', fill: hex6(cell.fill) } : undefined,
         verticalAlign: text?.valign === 'middle' ? VerticalAlign.CENTER : text?.valign === 'bottom' ? VerticalAlign.BOTTOM : VerticalAlign.TOP,
-        margins: inline ? { top: 0, bottom: 0, left: twip(inline.padding), right: twip(inline.padding) } : { top: 20, bottom: 20, left: 40, right: 40 },
+        margins: inline ? { top: 0, bottom: 0, left: twip(inline.padding), right: twip(inline.padding) } : { top: 0, bottom: 0, left: twip(Math.max(0.5, Math.min(30, text?.align === 'left' || text?.align === 'justify' ? text.inset ?? 2 : 2))), right: twip(1) },
         borders: { top: edge(cell.borders?.top), bottom: edge(cell.borders?.bottom), left: edge(cell.borders?.left), right: edge(cell.borders?.right) },
         children: paragraphs,
       });

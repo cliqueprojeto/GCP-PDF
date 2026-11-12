@@ -222,8 +222,15 @@ function spreadsheetValue(text:string):{value:string|number;format?:string} {
   if(/^-?\d+(?:[.,]\d+)?\s*%$/.test(value)){const n=Number(value.replace(/\s*%$/,'').replace(',','.'));return {value:n/100,format:Number.isInteger(n)?'0%':'0.00%'};}
   return {value:trimmed};
 }
-/** Excel column width units per point, as desktop converters size them (≈ 4.24 pt per character). */
-const PT_PER_CHAR=4.24;
+/** Points per unit of an OOXML column width: the width is counted in maximum digit widths of the default
+ * font (7 px for Calibri 11), so one unit is 7 px = 5.25 pt. A smaller factor made every column wider and
+ * the printed sheet shrank to fit. */
+const PT_PER_CHAR=5.25;
+/** Excel paper code for a PDF page size (either orientation); A4 when none matches. */
+function paperSize(width:number,height:number){
+  const [short,long]=[Math.min(width,height),Math.max(width,height)],near=(a:number,b:number)=>Math.abs(short-a)<6&&Math.abs(long-b)<6;
+  return near(612,792)?1:near(612,1008)?5:near(842,1191)?8:near(420,595)?11:9;
+}
 const argb=(hex:string)=>'FF'+hex.replace('#','').toUpperCase();
 /** Writes a page grid as a worksheet: one sheet column per grid column, merges, fills, fonts, wrap. */
 function gridSheet(sheet:ExcelJS.Worksheet,grid:PageGrid,images:{x:number;y:number;width:number;height:number;id:number}[]) {
@@ -239,10 +246,11 @@ function gridSheet(sheet:ExcelJS.Worksheet,grid:PageGrid,images:{x:number;y:numb
     if(region.borders){const side=(e?:{color:string;width:number})=>e?{style:(e.width>=2.5?'thick':e.width>=1.4?'medium':'thin') as ExcelJS.BorderStyle,color:{argb:argb(e.color)}}:undefined;cell.border={top:side(region.borders.top),bottom:side(region.borders.bottom),left:side(region.borders.left),right:side(region.borders.right)};}
     const t=region.text;if(!t)continue;
     const parsed=t.text.includes('\n')?{value:t.text}:spreadsheetValue(t.text);
-    const mixed=t.parts.length>1&&t.parts.some(p=>p.bold!==t.parts[0]!.bold||p.color!==t.parts[0]!.color||p.italic!==t.parts[0]!.italic);
-    cell.value=mixed&&typeof parsed.value==='string'?{richText:t.parts.map(p=>({text:p.text,font:{name:t.font,size:Math.round(p.size*10)/10,bold:p.bold,italic:p.italic,color:{argb:argb(p.color)}}}))}:parsed.value;if(parsed.format)cell.numFmt=parsed.format;
+    const mixed=t.parts.length>1&&t.parts.some(p=>p.bold!==t.parts[0]!.bold||p.color!==t.parts[0]!.color||p.italic!==t.parts[0]!.italic||p.font!==t.parts[0]!.font||p.size!==t.parts[0]!.size);
+    cell.value=mixed&&typeof parsed.value==='string'?{richText:t.parts.map(p=>({text:p.text,font:{name:p.font||t.font,size:Math.round(p.size*10)/10,bold:p.bold,italic:p.italic,color:{argb:argb(p.color)}}}))}:parsed.value;if(parsed.format)cell.numFmt=parsed.format;
     cell.font={name:t.font,size:Math.round(t.size*10)/10,bold:t.bold,italic:t.italic,color:{argb:argb(t.color)}};
-    cell.alignment={horizontal:typeof parsed.value==='number'&&t.align==='left'?'right':t.align,vertical:t.valign==='middle'?'middle':t.valign,wrapText:true};
+    // A one-line text wider than its cell spills over the empty cells beside it instead of wrapping.
+    cell.alignment={horizontal:typeof parsed.value==='number'&&t.align==='left'?'right':t.align,vertical:t.valign==='middle'?'middle':t.valign,wrapText:!t.overflow};
   }
   // Pictures float over the cells at their place on the page.
   const at=(edges:number[],v:number)=>{let i=0;while(i<edges.length-2&&v>edges[i+1]!)i++;return i+Math.max(0,Math.min(1,(v-edges[i]!)/((edges[i+1]!-edges[i]!)||1)));};
@@ -252,7 +260,7 @@ async function toXlsx(pdf:PDFDocumentProxy,dpi:number,warnings:string[],onProgre
   const workbook=new ExcelJS.Workbook();workbook.creator='Bruno Albertini | Gestão Cultural Pro';workbook.company='Gestão Cultural Pro';
   let gridPages=0;
   for(let i=1;i<=pdf.numPages;i++) {
-    progress(onProgress,i,pdf.numPages);const data=await inspectPage(await pdf.getPage(i),true),sheet=workbook.addWorksheet(`Página ${i}`,{pageSetup:{paperSize:9,orientation:data.width>data.height?'landscape':'portrait',fitToPage:true,fitToWidth:1,fitToHeight:0},properties:{defaultRowHeight:18},views:[{showGridLines:false}]});
+    progress(onProgress,i,pdf.numPages);const data=await inspectPage(await pdf.getPage(i),true),sheet=workbook.addWorksheet(`Página ${i}`,{pageSetup:{paperSize:paperSize(data.width,data.height) as never,orientation:data.width>data.height?'landscape':'portrait',fitToPage:true,fitToWidth:1,fitToHeight:0,horizontalCentered:false,verticalCentered:false,margins:{left:0,right:0,top:0,bottom:0,header:0,footer:0}},properties:{defaultRowHeight:18},views:[{showGridLines:false}]});
     // Pages drawn as tables (filled cells, ruling lines) become real merged cells, like Acrobat's export.
     const grid=await pageGrid(data.page).catch(()=>null);
     if(grid&&grid.regions.some(r=>r.text)) {

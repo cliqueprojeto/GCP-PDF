@@ -1,11 +1,12 @@
 import { PDFDocument, PDFDict, PDFName, PDFString, PDFHexString, PDFRawStream, PDFArray, PDFRef, ParseSpeeds, decodePDFRawStream } from 'pdf-lib';
 import type { FieldFormat } from '../shared/types';
+import { formFields } from './acroform';
 
 /** Image fields are push buttons whose click imports an icon (Acrobat: buttonImportIcon) or that show only an icon. */
 export async function imageFields(bytes: Uint8Array): Promise<string[]> {
   const doc = await PDFDocument.load(bytes, { updateMetadata: false, ignoreEncryption: true, parseSpeed: ParseSpeeds.Fastest });
   let fields: ReturnType<ReturnType<PDFDocument['getForm']>['getFields']>;
-  try { fields = doc.getForm().getFields(); } catch { return []; }
+  try { fields = formFields(doc); } catch { return []; }
   const text = (v: unknown): string => { const t = v instanceof PDFRef ? doc.context.lookup(v) : v; if (t instanceof PDFDict) return text(t.get(PDFName.of('JS'))) + text(t.get(PDFName.of('U'))); if (t instanceof PDFString || t instanceof PDFHexString) return t.decodeText(); if (t instanceof PDFRawStream) return Buffer.from(decodePDFRawStream(t).decode()).toString('latin1'); return ''; };
   return fields.filter((f) => { const d = f.acroField.dict; if (d.get(PDFName.of('FT'))?.toString() !== '/Btn') return false; const tp = d.lookupMaybe(PDFName.of('MK'), PDFDict)?.get(PDFName.of('TP'))?.toString(); return tp === '1' || /buttonImportIcon/.test(text(d.get(PDFName.of('A'))) + text(d.lookupMaybe(PDFName.of('AA'), PDFDict)?.get(PDFName.of('U')))); }).map((f) => f.getName());
 }
@@ -15,7 +16,7 @@ export async function fieldFormats(bytes: Uint8Array): Promise<Record<string, Fi
   const doc = await PDFDocument.load(bytes, { updateMetadata: false, ignoreEncryption: true, parseSpeed: ParseSpeeds.Fastest });
   const out: Record<string, FieldFormat> = {};
   let fields: ReturnType<ReturnType<PDFDocument['getForm']>['getFields']>;
-  try { fields = doc.getForm().getFields(); } catch { return out; }
+  try { fields = formFields(doc); } catch { return out; }
   const script = (value: unknown): string => {
     const target = value instanceof PDFRef ? doc.context.lookup(value) : value;
     if (target instanceof PDFDict) return script(target.get(PDFName.of('JS')));

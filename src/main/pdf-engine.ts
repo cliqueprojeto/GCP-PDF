@@ -1,3 +1,4 @@
+import {pruneTypelessFields} from './acroform';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import fontkit from '@pdf-lib/fontkit';
@@ -355,6 +356,7 @@ export async function combineSelections(parts: {bytes: Uint8Array; pages?: numbe
 }
 /** Writes typed form values into the document AcroForm and refreshes their appearances. */
 function fillForm(doc: PDFDocument, values: Record<string, string | boolean | string[]>) {
+  pruneTypelessFields(doc);
   const form = doc.getForm();
   for (const [name, value] of Object.entries(values)) {
     try {

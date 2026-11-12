@@ -169,9 +169,8 @@ function openedDate(value: number) {
 }
 function resumePage(path: string): number | null {
   try {
-    const value = JSON.parse(localStorage.getItem("gcp.last-page") ?? "{}")[
-      path.toLowerCase()
-    ];
+    const all = JSON.parse(localStorage.getItem("gcp.last-page") ?? "{}"),
+      value = all[fileKey(path)] ?? all[path.toLowerCase()];
     return value && Number.isInteger(value.page) && value.page >= 0
       ? value.page
       : null;

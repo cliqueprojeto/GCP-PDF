@@ -29,7 +29,18 @@ export function strokes(shapes: VectorShape[]) {
   let decorative = 0;
   for (const shape of shapes) {
     const curved = shape.segments.some((s) => s.op === 'C');
-    for (const b of pieces(shape)) {
+    const parts = pieces(shape);
+    // A filled ring (an outer outline with the inside cut out, like a callout's border) is a border,
+    // not a solid fill: its bounding box would paint the whole box in the outline colour.
+    const contains = (o: Box, i: Box) => i !== o && i.x >= o.x - 0.1 && i.y >= o.y - 0.1 && i.x + i.width <= o.x + o.width + 0.1 && i.y + i.height <= o.y + o.height + 0.1 && i.width * i.height < o.width * o.height;
+    const outer = shape.fill && shape.fill.alpha > 0.5 && !white(shape.fill.color) ? parts.find((o) => parts.some((i) => contains(o, i) && i.width > 4 && i.height > 4)) : undefined;
+    if (outer) {
+      const inner = parts.filter((i) => contains(outer, i)).sort((a, b) => b.width * b.height - a.width * a.height)[0]!, color = shape.fill!.color, w = Math.max(0.25, Math.min(inner.x - outer.x, inner.y - outer.y, 3));
+      segments.push({ horizontal: true, at: outer.y + w / 2, from: outer.x, to: outer.x + outer.width, color, width: w }, { horizontal: true, at: outer.y + outer.height - w / 2, from: outer.x, to: outer.x + outer.width, color, width: w },
+        { horizontal: false, at: outer.x + w / 2, from: outer.y, to: outer.y + outer.height, color, width: w }, { horizontal: false, at: outer.x + outer.width - w / 2, from: outer.y, to: outer.y + outer.height, color, width: w });
+      continue;
+    }
+    for (const b of parts) {
       const thin = Math.min(b.width, b.height), long = Math.max(b.width, b.height);
       if (shape.fill && shape.fill.alpha > 0.5) {
         if (white(shape.fill.color)) continue;

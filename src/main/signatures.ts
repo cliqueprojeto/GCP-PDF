@@ -1,3 +1,4 @@
+import {formFields} from './acroform';
 import {realpath} from 'node:fs/promises';
 import path from 'node:path';
 import {PDFDocument,PDFArray,PDFDict,PDFName,PDFNumber} from 'pdf-lib';
@@ -39,7 +40,7 @@ export async function validateNewSignature(bytes:Uint8Array,before:unknown,after
  if(candidates.length!==1)throw new Error('Não foi possível identificar uma nova assinatura verificável no arquivo gerado. Nenhum arquivo foi gravado.');
  const signature=candidates[0]!,field=nameOf(signature),trusted=signature.status==='valid';
  if(!trusted&&!(signature.status==='unknown'&&onlyUntrustedChain(signature)))throw new Error('A assinatura recém-criada não passou na verificação local. O arquivo não foi gravado; o documento original foi preservado.');
- const pdf=await PDFDocument.load(bytes,{updateMetadata:false}),formField=pdf.getForm().getFields().find(item=>item.getName()===field),value=formField?.acroField.dict.lookupMaybe(PDFName.of('V'),PDFDict),range=value?.lookupMaybe(PDFName.of('ByteRange'),PDFArray);
+ const pdf=await PDFDocument.load(bytes,{updateMetadata:false}),formField=formFields(pdf).find(item=>item.getName()===field),value=formField?.acroField.dict.lookupMaybe(PDFName.of('V'),PDFDict),range=value?.lookupMaybe(PDFName.of('ByteRange'),PDFArray);
  if(!range||range.size()!==4)throw new Error('A nova assinatura não contém intervalos de bytes válidos. Nenhum arquivo foi gravado.');
  const numbers=Array.from({length:4},(_,index)=>range.lookup(index,PDFNumber).asNumber()),[start,length,next,rest]=numbers as [number,number,number,number];
  const gap=bytes.subarray(length,next);

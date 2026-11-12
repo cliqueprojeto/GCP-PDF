@@ -1,6 +1,6 @@
 import {t as translateUi} from "./i18n";
 import React, { useEffect, useState } from "react";
-import { RefreshCw, Download, LoaderCircle, CheckCircle2, Sparkles } from "lucide-react";
+import { RefreshCw, Download, LoaderCircle, CheckCircle2 } from "lucide-react";
 import type { UpdateInfo, UpdateStatus } from "../shared/types";
 import { Modal } from "./Dialogs";
 import { Markdown } from "./Markdown";
@@ -40,7 +40,7 @@ export function UpdateSettings({ onFound }: { onFound: (info: UpdateInfo) => voi
 export function WhatsNewDialog({ info, onClose }: { info: { versao: string; data: string; itens: string[] }; onClose: () => void }) {
   return (
     <Modal title={`O que há de novo na versão ${info.versao}`} description={translateUi("O GCP-PDF foi atualizado. Veja as novidades:")} onClose={onClose}>
-      <ul className="whats-new">{info.itens.map((item, i) => <li key={i}><Sparkles size={15} /><span>{item}</span></li>)}</ul>
+      <ul className="whats-new">{info.itens.map((item, i) => <li key={i}><CheckCircle2 size={17} /><span>{item}</span></li>)}</ul>
       <div className="modal-footer"><button className="button primary" onClick={onClose}>{translateUi("Começar a usar")}</button></div>
     </Modal>
   );

@@ -3,14 +3,14 @@ import type {LanguagePreference} from '../shared/locale';
 import {app,safeStorage} from 'electron';
 import {readFile,mkdir,writeFile,rename,unlink,copyFile} from 'node:fs/promises';
 import {constants} from 'node:fs';
-import {join,dirname} from 'node:path';
+import {join,dirname,isAbsolute} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import type {Signature,AiConfig,UpdatePreferences,DictionaryPreferences} from '../shared/types';
 import {usageToday,recordUsage,type AiUsage} from '../shared/ai-usage';
 /** Works on a free Google AI Studio key; "Encontrar melhor modelo" upgrades it when the key has billing. */
 export const DEFAULT_GEMINI_MODEL='gemini-3.5-flash-lite';
 export async function atomicWrite(path:string,bytes:Uint8Array|string){const temp=path+'.gcp-'+randomUUID()+'.tmp';try{await writeFile(temp,bytes,{flag:'wx',mode:0o600});await rename(temp,path);}catch(error){await unlink(temp).catch(()=>{});throw error;}}
-type Preferences={language?:LanguagePreference;ocrLanguage?:LanguagePreference;theme:Theme;themeChosen?:boolean;signatures:Signature[];ai:Omit<AiConfig,'hasKey'>;keys:Record<string,string>;quickActions?:boolean;updates?:UpdatePreferences;seenVersion?:string;aiUsage?:AiUsage;savedColors?:string[];dictionary?:DictionaryPreferences};
+type Preferences={language?:LanguagePreference;ocrLanguage?:LanguagePreference;theme:Theme;themeChosen?:boolean;signatures:Signature[];ai:Omit<AiConfig,'hasKey'>;keys:Record<string,string>;quickActions?:boolean;updates?:UpdatePreferences;seenVersion?:string;/** Folder of the last file or folder chosen in an Open dialog. */lastFolder?:string;aiUsage?:AiUsage;savedColors?:string[];dictionary?:DictionaryPreferences};
 export class Settings {
  private value:Preferences={theme:'light',themeChosen:false,signatures:[],ai:{provider:'gemini',model:DEFAULT_GEMINI_MODEL,baseUrl:'https://generativelanguage.googleapis.com/v1beta'},keys:{}};
  private queue:Promise<unknown>=Promise.resolve();
@@ -26,6 +26,8 @@ export class Settings {
  async recordAiUsage(status:number){this.value.aiUsage=recordUsage(this.value.aiUsage,status);await this.persist();}
  get seenVersion(){return this.value.seenVersion;}
  async setSeenVersion(version:string){this.value.seenVersion=version;await this.persist();}
+ get lastFolder(){return typeof this.value.lastFolder==='string'&&isAbsolute(this.value.lastFolder)?this.value.lastFolder:undefined;}
+ async setLastFolder(folder:string){if(!isAbsolute(folder)||folder===this.value.lastFolder)return;this.value.lastFolder=folder;await this.persist();}
  // A token saved by versions up to 0.3.6 (private repository) is no longer used and is dropped on the next save.
  get updates():UpdatePreferences{const {frequency='startup',lastCheck}=(this.value.updates??{}) as UpdatePreferences;return lastCheck===undefined?{frequency}:{frequency,lastCheck};}
  async setUpdates(patch:Partial<UpdatePreferences>){this.value.updates={...this.updates,...patch};await this.persist();}

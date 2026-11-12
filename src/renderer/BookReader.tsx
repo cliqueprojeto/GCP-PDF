@@ -154,7 +154,7 @@ export function BookReader({ token, onClose, onError }: { token: string; onClose
   const [documentRevision, setDocumentRevision] = useState(0);
   const loadedHtml = useRef<string | null>(null);
   const frame = useRef<HTMLIFrameElement>(null), stage = useRef<HTMLDivElement>(null), starts = useRef<number[]>([]), pageRef = useRef(0), restoring = useRef<Spot | null>(null), lastSpot = useRef<Spot | null>(null);
-  const userMoved = useRef(false), anim = useRef(0), animating = useRef(false), saveTimer = useRef(0), lastTurn = useRef(Date.now());
+  const userMoved = useRef(false), anim = useRef(0), animating = useRef(false), saveTimer = useRef(0), pendingSave = useRef<(() => void) | null>(null), lastTurn = useRef(Date.now());
   const { width, height } = size, paged = prefs.layout === "paginas";
   const setPrefs = (patch: Partial<Prefs>) => { if (patch.layout === "paginas") setAuto(false); setPrefsState((p) => { const next = { ...p, ...patch }; save("gcp.reader", next); return next; }); };
   const setMarks = (next: BookMark[]) => { setMarksState(next); if (book) save(`gcp.book-notes:${book.id}`, next.slice(-5000)); const d = doc(); if (d) paint(d, next); };
@@ -223,12 +223,22 @@ export function BookReader({ token, onClose, onError }: { token: string; onClose
   /** Saves the place shortly after the page settles: the character position, and the progress in the recent files list. */
   const remember = () => {
     window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(() => {
+    // Kept as the pending save, so closing the book right after turning a page still records the place.
+    pendingSave.current = () => {
+      pendingSave.current = null;
       if (!book) return;
       const spot = spotNow() ?? fractionSpot(pageRef.current);
       lastSpot.current = spot; save(`gcp.book:${book.id}`, spot);
       if (book.path) recordRecentFile({ path: book.path, name: book.name, openedAt: Date.now(), pageCount: Math.max(1, pages), book: { percent: Math.round(((pageRef.current + 1) / pages) * 100) } });
-    }, prefs.duration + 250);
+    };
+    saveTimer.current = window.setTimeout(() => pendingSave.current?.(), prefs.duration + 250);
+  };
+  /** Runs a pending save now (closing the book or the window): a turn still animating is finished first. */
+  const flushSave = () => {
+    if (!pendingSave.current) return;
+    window.clearTimeout(saveTimer.current);
+    if (animating.current) { cancelAnimationFrame(anim.current); animating.current = false; place(pageRef.current, 0); }
+    try { pendingSave.current(); } catch {}
   };
   const go = (target: number, direction: 1 | -1 = 1) => {
     const p = Math.max(0, Math.min(pages - 1, target));
@@ -367,6 +377,9 @@ export function BookReader({ token, onClose, onError }: { token: string; onClose
     frameId = requestAnimationFrame(step);
     return () => cancelAnimationFrame(frameId);
   }, [auto, prefs.scrollSpeed, paged, documentRevision, html]);
+  // Layout cleanup runs while the book frame is still in the page, so the place can still be read.
+  const flushRef = useRef(flushSave); flushRef.current = flushSave;
+  useLayoutEffect(() => { const flush = () => flushRef.current(); window.addEventListener("beforeunload", flush); return () => { window.removeEventListener("beforeunload", flush); flush(); }; }, []);
   useEffect(() => () => { document.title = "GCP-PDF"; window.clearTimeout(saveTimer.current); cancelAnimationFrame(anim.current); }, []);
 
   function addMark(style: BookMark["style"], color: string, withNote = false) {

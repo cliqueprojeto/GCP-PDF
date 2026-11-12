@@ -1,3 +1,4 @@
+import {formFields} from './acroform';
 import {readAnnotations,deleteAnnotation} from './pdf-annotations';
 import {randomUUID} from 'node:crypto';
 import {PDFDocument, ParseSpeeds, PDFName, PDFDict} from 'pdf-lib';
@@ -24,7 +25,7 @@ async function inspect(bytes: Uint8Array): Promise<Base> {
  if (!doc.getPageCount()) throw new Error('O PDF não contém páginas.');
  const xfa = !!doc.catalog.lookupMaybe(PDFName.of('AcroForm'), PDFDict)?.get(PDFName.of('XFA'));
  // Signed: any /Sig field with a value. Such files must never be rewritten (the signature covers exact bytes).
- const signed = doc.getForm().getFields().some(field => { const v = field.acroField.dict.lookup(PDFName.of('V')); return field.acroField.dict.get(PDFName.of('FT'))?.toString() === '/Sig' && v instanceof PDFDict; });
+ const signed = formFields(doc).some(field => { const v = field.acroField.dict.lookup(PDFName.of('V')); return field.acroField.dict.get(PDFName.of('FT'))?.toString() === '/Sig' && v instanceof PDFDict; });
  return {bytes, xfa, signed, annotations:readAnnotations(doc), notes:await readPdfNotes(bytes,doc), pages: doc.getPages().map(page => { const box = page.getCropBox(); return {width: box.width, height: box.height, rotation: ((page.getRotation().angle % 360) + 360) % 360}; })};
 }
 function finite(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value); }
@@ -326,7 +327,11 @@ export class DocumentStore {
    const chosen = selected(input.pages, source.model.pages.length);
    if (!Number.isInteger(input.index) || input.index < 0 || input.index > target.model.pages.length) throw new Error('A posição de inserção está fora do documento.');
    if (source === target) {
-    if (!input.move) throw new Error('Para copiar páginas no mesmo documento, use outra janela/documento.');
+    // Copying inside the document (Duplicar, Ctrl+drag): new page identities with their own objects.
+    if (!input.move) {
+     const copy = clonePages(source.model, chosen.map(index => source.model.pages[index]!)), pages = source.model.pages;
+     this.commit([{doc: source, model: {pages: [...pages.slice(0, input.index), ...copy.pages, ...pages.slice(input.index)], objects: [...source.model.objects, ...copy.objects]}}]); return;
+    }
     const set = new Set(chosen), order = Array.from({length: source.model.pages.length}, (_, index) => index).filter(index => !set.has(index));
     order.splice(input.index - chosen.filter(page => page < input.index).length, 0, ...chosen);
     this.commit([{doc: source, model: {pages: order.map(index => source.model.pages[index]!), objects: source.model.objects}}]); return;

@@ -158,7 +158,8 @@ export function splitRepeats(pages: FlowPage[]) {
 }
 
 /** Word content for a run of flowing pages sharing margins, header and footer. */
-export function flowSection(pages: FlowPage[], totalPages = pages.length) {
+/** `markers`: per page, a placeholder run opening it (its editable vector shapes are put there later). */
+export function flowSection(pages: FlowPage[], totalPages = pages.length, markers: (string | undefined)[] = []) {
   const { header, footer, pageNumber, body } = splitRepeats(pages);
   const all = body.flat(), width = pages[0]!.width, height = pages[0]!.height;
   const lefts = all.map((i) => (i.kind === 'paragraph' ? i.block.x : i.kind === 'line' ? i.blocks[0]!.x : i.kind === 'table' || i.kind === 'columns' ? i.table.x : i.kind === 'image' ? i.image.x : i.x));
@@ -223,9 +224,11 @@ export function flowSection(pages: FlowPage[], totalPages = pages.length) {
     return new Paragraph({ indent: { left: twip(first!.x - left) }, tabStops, spacing: { before: twip(before), after: 0, line: Math.round(size * 1.22 * 20), lineRule: LineRuleType.EXACT }, pageBreakBefore: pageBreak, children });
   };
   /** Elements in reading order, each spaced from the one above as on the page. */
-  const render = (items: FlowItem[], start: number, pageBreak: boolean, fields?: { page: string; total: string }) => {
+  const render = (items: FlowItem[], start: number, pageBreak: boolean, fields?: { page: string; total: string }, marker?: string, last = true) => {
     const out: (Paragraph | Table)[] = [];
     let previous = start, breakNext = pageBreak;
+    // The page's graphics are anchored in a hairline paragraph at its top, so they stay on that page.
+    if (marker) { out.push(new Paragraph({ pageBreakBefore: breakNext, spacing: { before: 0, after: 0, line: 20, lineRule: LineRuleType.EXACT }, children: [new TextRun({ text: marker, size: 2 })] })); breakNext = false; previous += 1; }
     for (const item of items) {
       const before = Math.max(0, item.top - previous);
       if (item.kind === 'paragraph') out.push(paragraph(item, before, breakNext, fields));
@@ -244,11 +247,13 @@ export function flowSection(pages: FlowPage[], totalPages = pages.length) {
       breakNext = false;
       previous = Math.max(previous, item.bottom);
     }
-    // Word ends a table with a paragraph of its own; a 1 pt one keeps it from spilling onto a new page.
-    if (out.at(-1) && !(out.at(-1) instanceof Paragraph)) out.push(new Paragraph({ spacing: { before: 0, after: 0, line: 20, lineRule: LineRuleType.EXACT }, children: [new TextRun({ text: '', size: 2 })] }));
+    // Word ends a table with a paragraph of its own; a 1 pt one keeps it from spilling onto a new page. Before
+    // another PDF page the next page's break paragraph does that job: an extra one on a full page fell alone
+    // onto a blank page.
+    if (last && out.at(-1) && !(out.at(-1) instanceof Paragraph)) out.push(new Paragraph({ spacing: { before: 0, after: 0, line: 20, lineRule: LineRuleType.EXACT }, children: [new TextRun({ text: '', size: 2 })] }));
     return out;
   };
-  const children = body.flatMap((items, i) => render(items, top, i > 0));
+  const children = body.flatMap((items, i) => render(items, top, i > 0, undefined, markers[i], i === body.length - 1));
   // Header and footer come from the section's first page: its number and the page count become fields.
   const fields = { page: String(pages[0]!.number), total: String(totalPages) };
   const headerChildren = header.length ? render(header, headerTop!, false, fields) : [];

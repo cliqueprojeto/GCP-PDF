@@ -24,6 +24,8 @@ import {
   RotateCcw,
   FolderCog,
   ScanText,
+  LogOut,
+  Save,
 } from "lucide-react";
 import {LanguageOptions, DictionaryOptions} from "./LanguageOptions";
 import QRCode from "qrcode";
@@ -832,6 +834,10 @@ export function PromptDialog({
             <Trash2 size={20} />
           ) : prompt.tone === "info" ? (
             <Check size={20} />
+          ) : prompt.tone === "close" ? (
+            <LogOut size={20} />
+          ) : prompt.tone === "unsaved" ? (
+            <Save size={20} />
           ) : (
             <FileText size={20} />
           )}
@@ -839,6 +845,7 @@ export function PromptDialog({
         <div className="prompt-text">
           <h2 id="prompt-title">{prompt.title}</h2>
           <p>{prompt.message}</p>
+          {prompt.items && <ul className="prompt-items">{prompt.items.slice(0, 6).map((item, i) => <li key={i}><FileText size={13} /><span>{item}</span></li>)}{prompt.items.length > 6 && <li className="more">+{prompt.items.length - 6}</li>}</ul>}
           {prompt.detail && <small>{prompt.detail}</small>}
         </div>
         <div className="prompt-buttons">
@@ -846,7 +853,7 @@ export function PromptDialog({
             <button
               key={translateUi(label)}
               data-index={index}
-              className={`button ${index === prompt.defaultId ? "primary" : index === prompt.cancelId ? "ghost" : "secondary"}`}
+              className={`button ${index === prompt.defaultId ? "primary" : index === prompt.danger ? "danger-outline" : index === prompt.cancelId ? "ghost" : "secondary"}`}
               onClick={() => onAnswer(index)}
             >
               {translateUi(label)}

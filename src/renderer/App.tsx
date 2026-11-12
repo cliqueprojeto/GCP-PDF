@@ -17,6 +17,7 @@ import { ProtectDialog, CertificateDialog, FieldOptionsDialog, FieldPropsDialog,
 import { CommandPalette, HelpDialog, type Command } from "./Palette";
 import { StampDialog } from "./Stamps";
 import { LookupDialog } from "./Lookup";
+import { userMessage } from "../shared/errors";
 import { EpubDialog } from "./Epub";
 import { BookReader } from "./BookReader";
 import { ComicReader } from "./ComicReader";
@@ -36,12 +37,12 @@ import { loadAsset, loadPage, pageGeometry, releaseBases } from "./pdf";
 import { commitPendingParagraph, pendingParagraphEdit, paragraphSpacing, type PageMenu, type SourceSelection } from "./PageView";
 import { cloneObjects, copyable } from "../shared/object-clipboard";
 import { objectBounds, translateObject } from "../shared/geometry";
-import { Home, useRecentFiles } from "./Home";
+import { Home, useRecentFiles, fileKey } from "./Home";
 
 type Panel = "comments" | "pages" | "bookmarks" | "search" | "signatures" | "ai";
 const initial: WorkspaceState = { windowId: 0, documents: [], theme: "light", quickActions: true };
 const PAGE_MIME = "application/x-gcp-pages", TAB_MIME = "application/x-gcp-tab";
-function errorText(error: unknown) { return String(error instanceof Error ? error.message : error).replace(/^Error invoking remote method '[^']+': (?:Error: )?/, ""); }
+function errorText(error: unknown) { return userMessage(String(error instanceof Error ? error.message : error).replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "")); }
 function dragData(event: React.DragEvent) {
   for (const mime of [PAGE_MIME, TAB_MIME, "text/plain"]) {
     try { const raw = event.dataTransfer.getData(mime); if (raw) { const value = JSON.parse(raw); if (value && typeof value === "object") return value; } } catch {}
@@ -164,7 +165,8 @@ export default function App() {
     const current = readingState.current;
     if (!current.path || current.home || !viewer.current || restoringReading.current) return;
     const all = stored<Record<string, { page: number; top: number; at: number }>>("gcp.last-page", {});
-    all[current.path.toLowerCase()] = { page: current.page, top: viewer.current.readingTop(), at: Date.now() };
+    delete all[current.path.toLowerCase()];
+    all[fileKey(current.path)] = { page: current.page, top: viewer.current.readingTop(), at: Date.now() };
     store("gcp.last-page", Object.fromEntries(Object.entries(all).sort((x, y) => y[1].at - x[1].at).slice(0, 300)));
   }
   function scheduleReadingSave() { clearTimeout(readingSaveTimer.current); readingSaveTimer.current = setTimeout(saveReadingPosition, 300); }
@@ -192,7 +194,8 @@ export default function App() {
   useEffect(() => { releaseBases(new Set(workspace.documents.flatMap((doc) => doc.pages.map((ref) => ref.base)))); }, [workspace]);
   useEffect(() => { store("gcp.style", style); }, [style]);
   // Where each file was left (page and position), so reopening continues the reading.
-  const lastSeen = (path?: string) => (path ? (stored<Record<string, { page: number; top: number; at: number }>>("gcp.last-page", {})[path.toLowerCase()] ?? null) : null);
+  // Same key as the recent files list on every system; positions saved by older versions (lowercase) still count.
+  const lastSeen = (path?: string) => { if (!path) return null; const all = stored<Record<string, { page: number; top: number; at: number }>>("gcp.last-page", {}); return all[fileKey(path)] ?? all[path.toLowerCase()] ?? null; };
   useEffect(() => {
     const resume = lastSeen(active?.path), start = resume && active && resume.page < active.pageCount ? resume.page : 0;
     setPage(start); setSelection(new Set([start])); setTool({ kind: "select" }); setMatches([]); setActiveSearch(""); setConversation([]);
@@ -203,25 +206,33 @@ export default function App() {
     if (!active || showHome) { restoringReading.current = false; return; }
     const resume = lastSeen(active.path), start = resume && Number.isInteger(resume.page) && resume.page >= 0 && resume.page < active.pageCount ? resume.page : 0;
     const top = resume && Number.isFinite(resume.top) ? Math.max(0, resume.top) : 0;
-    let timer: ReturnType<typeof setTimeout> | undefined, canceled = false, tries = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined, canceled = false, tries = 0, moved = false;
     restoringReading.current = true;
+    // Page sizes arrive in batches and push the pages below them: keep putting the reader back on the saved
+    // spot until every page up to it has its real size, unless the reader moves first.
+    const host = document.querySelector(".viewer-host"), userMoved = () => { moved = true; };
+    const events = ["wheel", "pointerdown", "keydown", "touchstart"] as const;
+    for (const name of events) host?.addEventListener(name, userMoved, { passive: true, capture: true });
+    const finish = (announce: boolean) => {
+      restoringReading.current = false;
+      for (const name of events) host?.removeEventListener(name, userMoved, { capture: true });
+      if (announce && resume && (start > 0 || top > 0)) notify(`Continuando da página ${start + 1}, onde você parou.`);
+      scheduleReadingSave();
+    };
     const restore = () => {
       if (canceled) return;
+      if (moved) { finish(false); return; }
       const node = document.querySelector(`.viewer-host .page-sheet[data-page="${start + 1}"]`);
       if (viewer.current && node) {
         viewer.current.scrollToPage(start, top);
-        if (!node.classList.contains("loading") || tries >= 40) {
-          restoringReading.current = false;
-          if (resume && (start > 0 || top > 0)) notify(`Continuando da página ${start + 1}, onde você parou.`);
-          scheduleReadingSave();
-          return;
-        }
+        const sized = active.pages.slice(0, start + 1).every((ref) => pageGeometry(ref));
+        if ((sized && !node.classList.contains("loading")) || tries >= 150) { finish(true); return; }
       }
-      if (tries++ < 40) timer = setTimeout(restore, 100);
-      else restoringReading.current = false;
+      if (tries++ < 150) timer = setTimeout(restore, 100);
+      else finish(false);
     };
     timer = setTimeout(restore, 60);
-    return () => { canceled = true; clearTimeout(timer); restoringReading.current = false; };
+    return () => { canceled = true; clearTimeout(timer); restoringReading.current = false; for (const name of events) host?.removeEventListener(name, userMoved, { capture: true }); };
   }, [active?.id, showHome]);
   useEffect(() => { if (!showHome) scheduleReadingSave(); return () => clearTimeout(readingSaveTimer.current); }, [page, active?.path, showHome]);
   useEffect(() => {
@@ -556,6 +567,16 @@ export default function App() {
     { id: "settings", label: "Configurações", group: "Ver", keywords: "chave api preferencias", run: () => setModal("settings") },
     { id: "help", label: "Central de ajuda", group: "Ajuda", shortcut: "F1", run: () => { setHelpTopic(undefined); setModal("help"); } },
   ];
+  /** Copies of the pages right after the last of them, in the same order; the copies come out selected. */
+  function duplicatePages(pages: number[]) {
+    if (!active || !pages.length) return;
+    const sorted = [...new Set(pages)].sort((a, b) => a - b), at = sorted.at(-1)! + 1;
+    void perform(async () => {
+      await window.gcp.transferPages({ sourceId: active.id, targetId: active.id, pages: sorted, index: at, move: false, sourceRevision: active.revision, targetRevision: active.revision });
+      setSelection(new Set(sorted.map((_, i) => at + i))); setPage(at);
+      notify(sorted.length > 1 ? `${sorted.length} páginas duplicadas.` : "Página duplicada.");
+    });
+  }
   const pageTools = {
     copy: (cut: boolean) => active && selectedPages.length && void perform(async () => { const n = await window.gcp.copyPages(active.id, selectedPages, cut, active.revision); notify(`${n} página${n > 1 ? "s" : ""} ${cut ? "recortada" : "copiada"}${n > 1 ? "s" : ""}. Cole em qualquer janela com Ctrl+V.`); }),
     paste: (after: boolean) => active && void perform(async () => { const index = after ? (selectedPages.at(-1) ?? page) + 1 : (selectedPages[0] ?? page); const n = await window.gcp.pastePages(active.id, index, active.revision); notify(`${n} página${n > 1 ? "s coladas" : " colada"}.`); }),
@@ -861,6 +882,7 @@ export default function App() {
                 <div className="thumbnail-actions">
                   <IconButton title={translateUi("Girar páginas selecionadas à esquerda")} disabled={!active} onClick={() => rotate(-90)}><RotateCcw size={17} /></IconButton>
                   <IconButton title={translateUi("Girar páginas selecionadas à direita")} disabled={!active} onClick={() => rotate(90)}><RotateCw size={17} /></IconButton>
+                  <IconButton title={translateUi("Duplicar páginas selecionadas")} disabled={!active || !selection.size} onClick={() => duplicatePages(selectedPages)}><CopyPlus size={17} /></IconButton>
                   <IconButton title={translateUi("Inserir página em branco após a seleção")} disabled={!active} onClick={actions.blank}><FilePlus2 size={17} /></IconButton>
                   <IconButton title={translateUi("Excluir páginas selecionadas")} disabled={!active || !selection.size || selection.size === active.pageCount} onClick={actions.deletePages}><Trash2 size={17} /></IconButton>
                   <div className="toolbar-spacer" />
@@ -896,6 +918,7 @@ export default function App() {
                               <div className="thumbnail-hover-actions">
                                 <button title={translateUi("Girar esta página à esquerda")} onClick={(e) => { e.stopPropagation(); rotate(-90, [index]); }}><RotateCcw size={14} /></button>
                                 <button title={translateUi("Girar esta página à direita")} onClick={(e) => { e.stopPropagation(); rotate(90, [index]); }}><RotateCw size={14} /></button>
+                                <button title={translateUi("Duplicar esta página")} onClick={(e) => { e.stopPropagation(); duplicatePages([index]); }}><CopyPlus size={14} /></button>
                                 <button title={translateUi("Excluir esta página")} disabled={active.pageCount < 2} onClick={(e) => { e.stopPropagation(); void operation({ type: "delete", pages: [index] }); }}><Trash2 size={14} /></button>
                                 <GripVertical size={14} />
                               </div>
@@ -1152,6 +1175,7 @@ export default function App() {
             <hr />
             <button onClick={() => pageTools.copy(true)}><Scissors size={14} />{" "}{translateUi("Recortar")}{" "}<kbd>{translateUi("Ctrl+X")}</kbd></button>
             <button onClick={() => pageTools.copy(false)}><Copy size={14} />{" "}{translateUi("Copiar")}{" "}<kbd>{translateUi("Ctrl+C")}</kbd></button>
+            <button onClick={() => duplicatePages(selectedPages.length ? selectedPages : [pageMenu.index])}><CopyPlus size={14} />{" "}{selectedPages.length > 1 ? translateUi("Duplicar páginas") : translateUi("Duplicar página")}</button>
             <button onClick={() => pageTools.paste(false)}><ClipboardPaste size={14} />{" "}{translateUi("Colar antes")}{" "}<kbd>{translateUi("Ctrl+Shift+V")}</kbd></button>
             <button onClick={() => pageTools.paste(true)}><ClipboardPaste size={14} />{" "}{translateUi("Colar depois")}{" "}<kbd>{translateUi("Ctrl+V")}</kbd></button>
             <button onClick={() => organize.insertFile(pageMenu.index + 1)}><FilePlus2 size={14} />{" "}{translateUi("Inserir de arquivo depois…")}</button>

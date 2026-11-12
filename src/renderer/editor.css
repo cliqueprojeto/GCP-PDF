@@ -599,8 +599,8 @@
 .ok-tag { background: #dcfce7; color: #166534; } .warn-tag { background: #fef3c7; color: #92400e; }
 .success-note { display: flex; align-items: center; gap: 6px; color: #15803d; font-size: 12.5px; }
 .whats-new { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.whats-new li { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; line-height: 1.5; padding: 10px 12px; border-radius: 10px; background: var(--purple-soft); }
-.whats-new li svg { color: var(--purple); flex-shrink: 0; margin-top: 3px; }
+.whats-new li { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; line-height: 1.5; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--green) 9%, var(--surface)); border: 1px solid color-mix(in srgb, var(--green) 18%, transparent); }
+.whats-new li svg { color: var(--green, #2f9e44); flex-shrink: 0; margin-top: 2px; }
 
 /* Barra do logo: abas, situação do documento, páginas, localizador e link na mesma linha. */
 .titlebar { gap: 14px; }
@@ -881,3 +881,12 @@
 .signature-background-tools > .field.inline { grid-column: 2; grid-row: 1; gap: 6px; }
 .signature-background-tools > .field.inline input { width: 38px; }
 .signature-background-tools input { accent-color: var(--purple); }
+/* Close confirmations: a calm card, the unsaved documents listed, the destructive answer in red. */
+.prompt-card.tone-unsaved .prompt-icon { background: color-mix(in srgb, #e8590c 14%, transparent); color: #e8590c; }
+.prompt-items { list-style: none; margin: 10px 0 2px; padding: 6px; display: flex; flex-direction: column; gap: 2px; max-height: 168px; overflow: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2, transparent); }
+.prompt-items li { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; font-size: 12px; min-width: 0; }
+.prompt-items li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prompt-items li svg { flex: none; color: var(--muted); }
+.prompt-items li.more { color: var(--muted); }
+.button.danger-outline { background: transparent; color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent); }
+.button.danger-outline:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 10%, transparent); }

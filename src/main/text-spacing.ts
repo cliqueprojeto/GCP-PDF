@@ -52,8 +52,11 @@ export function letterSpacing(glyphs:PageGlyphs,at:number,count:number,str:strin
   if(space>0){real++;text+=' ';}
   text+=glyphs.chars[i];
  }
+ // Spaces PDF.js found where the file has no space glyph: between most letters they are letter spacing
+ // ("P R E S T A"); in a few places they are word gaps made by moving the pen ("DANFSe v2.0"), so the
+ // item keeps its words and is not treated as tracked.
  const invented=(str.match(/\s/g)?.length??0)-real;
- if(real>0&&invented<(count-real)*.5)return;
+ if((real>0||invented>0)&&invented<(count-real)*.5)return;
  const tracking=(width/(size*scale)-natural)/gaps;
  if(!Number.isFinite(tracking)||natural<=0||Math.abs(tracking)<.03||tracking<-.2||tracking>1.5)return;
  return {tracking:tracking*size*scale,text};

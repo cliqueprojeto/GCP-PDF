@@ -77,7 +77,7 @@ export interface Signature {id:string;name:string;dataUrl:string;createdAt:strin
 export interface AiConfig {provider:'openai'|'gemini'|'compatible';model:string;baseUrl:string;hasKey:boolean}
 export type ExportFormat='pdf'|'image-pdf'|'docx'|'xlsx'|'pptx'|'png'|'txt';
 export interface ExportOptions {format:ExportFormat;mode?:'editable'|'fidelity';dpi?:number}
-export interface AppPrompt {id:string;title:string;message:string;detail?:string;buttons:string[];defaultId:number;cancelId:number;tone?:'question'|'danger'|'info'}
+export interface AppPrompt {id:string;title:string;message:string;detail?:string;/** Names listed under the message, such as the documents not saved yet. */items?:string[];buttons:string[];defaultId:number;cancelId:number;/** Index of the destructive answer, drawn in red. */danger?:number;tone?:'question'|'danger'|'info'|'close'|'unsaved'}
 export type CompressLevel='lossless'|'high'|'medium'|'low'|'extreme';
 export interface CompressOptions {level:CompressLevel;metadata:boolean;bookmarks:boolean;attachments:boolean;comments:boolean}
 export type FieldType='text'|'date'|'checkbox'|'radio'|'combo'|'list'|'button'|'image'|'signature';

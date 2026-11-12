@@ -6,8 +6,8 @@ import {strokes} from './table-geometry';
  * ruling lines become columns and rows; cells that one rectangle covers (and no line divides) are
  * merged; text and fill colour belong to the cell that contains them. Coordinates are page points
  * (top-left origin). */
-export interface GridPart { text: string; bold: boolean; italic: boolean; color: string; size: number }
-export interface GridText { parts: GridPart[]; text: string; font: string; size: number; bold: boolean; italic: boolean; color: string; align: 'left' | 'center' | 'right' | 'justify'; valign: 'top' | 'middle' | 'bottom'; inset?: number }
+export interface GridPart { text: string; bold: boolean; italic: boolean; color: string; size: number; /** Its own family: a cell may mix a semibold figure with regular text. */font: string }
+export interface GridText { parts: GridPart[]; text: string; font: string; size: number; bold: boolean; italic: boolean; color: string; align: 'left' | 'center' | 'right' | 'justify'; valign: 'top' | 'middle' | 'bottom'; inset?: number; /** Space above the text inside its cell, in points. */insetTop?: number; /** One line wider than its cell: it spills over the empty cells beside it, as in a spreadsheet. */overflow?: boolean }
 export interface GridEdge { color: string; width: number }
 export interface GridRegion { row: number; col: number; rows: number; cols: number; fill?: string; page?: boolean; text?: GridText; borders?: { top?: GridEdge; right?: GridEdge; bottom?: GridEdge; left?: GridEdge } }
 export interface PageGrid { xs: number[]; ys: number[]; regions: GridRegion[]; width: number; height: number; tables: { row: number; col: number; rows: number; cols: number }[] }
@@ -27,7 +27,7 @@ export function cellText(runs: Run[], box: { x: number; y: number; width: number
   const sorted = [...runs].sort((a, b) => a.baseline - b.baseline || a.x - b.x), lines: Run[][] = [];
   for (const run of sorted) { const line = lines.find((l) => Math.abs(l[0]!.baseline - run.baseline) < run.size * 0.4); if (line) line.push(run); else lines.push([run]); }
   // Formatted pieces in reading order, so partly bold or coloured cells keep their look (Excel rich text).
-  const parts: GridPart[] = [], push = (text: string, run: Run) => { const last = parts.at(-1); if (last && last.bold === run.bold && last.italic === run.italic && last.color === run.color && last.size === run.size) last.text += text; else parts.push({ text, bold: run.bold, italic: run.italic, color: run.color, size: run.size }); };
+  const parts: GridPart[] = [], push = (text: string, run: Run) => { const last = parts.at(-1); if (last && last.bold === run.bold && last.italic === run.italic && last.color === run.color && last.size === run.size && last.font === run.font) last.text += text; else parts.push({ text, bold: run.bold, italic: run.italic, color: run.color, size: run.size, font: run.font }); };
   const texts: string[] = [];
   // In a flowing document a line that stops well short of the cell's text edge was ended on purpose
   // (form lines like "Nome:", "CPF:"); only lines that reach it wrapped.
@@ -40,10 +40,11 @@ export function cellText(runs: Run[], box: { x: number; y: number; width: number
       // The previous line ended on purpose when this line's first word would still have fitted after it.
       const head = line[0]!, firstWord = head.width * (head.text.trim().split(/\s+/)[0]!.length / Math.max(1, head.text.trim().length));
       const room = box.x + box.width - (textLeft - box.x) - lineEnd(lines[li - 1]!);
-      const breakLine = /^[✓✔•▪●◦‣\-–—*]/.test(first) || gap > size * 1.75 || /[:;]$/.test(texts[li - 1]!) || (flow && (lineEnd(lines[li - 1]!) < widest - size * 4 || room > firstWord + size * 0.3));
+      // A clearly different text size (a big figure over its caption) is a new paragraph too.
+      const breakLine = /^[✓✔•▪●◦‣\-–—*]/.test(first) || gap > size * 1.75 || Math.abs(line[0]!.size - size) > Math.max(line[0]!.size, size) * 0.3 || /[:;]$/.test(texts[li - 1]!) || (flow && (lineEnd(lines[li - 1]!) < widest - size * 4 || room > firstWord + size * 0.3));
       // A gap of two or more line pitches held blank lines.
       const blanks = flow && gap > size * 1.75 ? Math.min(3, Math.max(1, Math.round(gap / (size * 1.22)) - 1)) : 0;
-      push(breakLine ? '\n'.repeat(1 + blanks) : ' ', parts.at(-1) ? { ...line[0]!, bold: parts.at(-1)!.bold, italic: parts.at(-1)!.italic, color: parts.at(-1)!.color, size: parts.at(-1)!.size } : line[0]!);
+      push(breakLine ? '\n'.repeat(1 + blanks) : ' ', parts.at(-1) ? { ...line[0]!, bold: parts.at(-1)!.bold, italic: parts.at(-1)!.italic, color: parts.at(-1)!.color, size: parts.at(-1)!.size, font: parts.at(-1)!.font } : line[0]!);
     }
     let lineText = '';
     line.forEach((run, i) => { const prev = line[i - 1], gap = prev ? run.x - (prev.x + prev.width) : 0, piece = ((i && (run.space || gap > run.size * 0.15) && !/^\s/.test(run.text) ? ' '.repeat(flow ? spacesIn(gap, run.size * 0.25) : 1) : '') + run.text).replace(i ? /$^/ : /^\s+/, ''); lineText += piece; push(i === line.length - 1 ? piece.trimEnd() : piece, run); });
@@ -66,7 +67,7 @@ export function cellText(runs: Run[], box: { x: number; y: number; width: number
   const main = runs.find((r) => r.font === [...weight].sort((a, b) => b[1] - a[1])[0]?.[0]) ?? runs.find((r) => !symbol.test(r.font)) ?? sorted[0]!;
   const size = Math.max(...runs.filter((r) => r.font === main.font).map((r) => r.size));
   const chars = (pick: (r: Run) => boolean) => runs.filter(pick).reduce((n, r) => n + r.text.length, 0);
-  return { parts, text, font: main.font, size, bold: chars((r) => r.bold) > chars(() => true) / 2, italic: main.italic, color: main.color, align: justified ? 'justify' : align, valign, inset: gapL };
+  return { parts, text, font: main.font, size, bold: chars((r) => r.bold) > chars(() => true) / 2, italic: main.italic, color: main.color, align: justified ? 'justify' : align, valign, inset: gapL, insetTop: Math.max(0, gapT), ...(lines.length === 1 && right > box.x + box.width + 1 ? { overflow: true } : {}) };
 }
 
 /** Reads the grid of a page; null when the page has no ruled or filled structure to build on. */
@@ -99,7 +100,20 @@ export async function pageGrid(page: PDFPageProxy, fonts?: FontContext): Promise
   const wallBelow = (r: number, c: number) => owner[r]![c] !== owner[r + 1]![c] || rules.some((x) => covered(x, 'y', ys[r + 1]!, xs[c]!, xs[c + 1]!));
   // Text belongs to the grid cell holding the centre of each run.
   const textAt: Run[][][] = Array.from({ length: R }, () => Array.from({ length: C }, () => []));
-  for (const run of runs) { if (!run.text.trim()) continue; const r = Math.min(R - 1, Math.max(0, snapCell(ys, run.baseline - run.size * 0.35))), c = Math.min(C - 1, Math.max(0, snapCell(xs, run.x + Math.min(run.width, run.size * 2) / 2))); textAt[r]![c]!.push(run); }
+  // A phrase stays whole: pieces of one line that follow each other (a bold label, then italic, then plain
+  // text) with no drawn rule between them belong to the cell where the phrase starts, even when the
+  // file paints every cell's background separately.
+  const cellOf = (run: Run) => [Math.min(R - 1, Math.max(0, snapCell(ys, run.baseline - run.size * 0.35))), Math.min(C - 1, Math.max(0, snapCell(xs, run.x + Math.min(run.width, run.size * 2) / 2)))] as const;
+  const ruled = (from: number, to: number, baseline: number, size: number) => rules.some((x) => x.box.width < 1.5 && x.box.x > from - 0.5 && x.box.x < to + 0.5 && x.box.y <= baseline - size * 0.5 && x.box.y + x.box.height >= baseline);
+  // Lines by baseline with a tolerance (pieces of one line differ by a fraction of a point), each read left to right.
+  const textLines: Run[][] = [];
+  for (const run of [...runs].filter((run) => run.text.trim()).sort((a, b) => a.baseline - b.baseline)) { const line = textLines.at(-1); if (line && Math.abs(line[0]!.baseline - run.baseline) < run.size * 0.4) line.push(run); else textLines.push([run]); }
+  let previous: Run | undefined, start: readonly [number, number] | undefined;
+  for (const run of textLines.flatMap((line) => line.sort((a, b) => a.x - b.x))) {
+    const joins = previous && Math.abs(previous.baseline - run.baseline) < run.size * 0.4 && run.x - (previous.x + previous.width) < Math.max(run.size, previous.size) * 0.8 && run.x >= previous.x && !ruled(previous.x + previous.width, run.x + Math.min(run.width, run.size), run.baseline, run.size);
+    const at = joins && start ? start : cellOf(run);
+    textAt[at[0]]![at[1]]!.push(run); previous = run; start = at;
+  }
   const taken: boolean[][] = Array.from({ length: R }, () => Array(C).fill(false)), regions: GridRegion[] = [];
   for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
     if (taken[r]![c]) continue;

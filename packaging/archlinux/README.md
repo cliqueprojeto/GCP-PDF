@@ -1,13 +1,13 @@
 # Arch Linux, BigLinux e Manjaro
 
-Pacote `gcp-pdf-bin`, x86_64 (Intel/AMD de 64 bits), com o aplicativo oficial da release 0.11.0. Não requer Node.js, npm, Electron ou compilação na máquina de quem instala. As dependências de sistema são resolvidas pelo pacman.
+Pacote `gcp-pdf-bin`, x86_64 (Intel/AMD de 64 bits), com o aplicativo oficial da release 0.12.0. Não requer Node.js, npm, Electron ou compilação na máquina de quem instala. As dependências de sistema são resolvidas pelo pacman.
 
 ## Instalação mais simples
 
-Na [release 0.11.0](https://github.com/cliqueprojeto/GCP-PDF/releases/tag/v0.11.0), baixe `gcp-pdf-bin-0.11.0-1-x86_64.pkg.tar.zst`. Na pasta do download:
+Na [release 0.12.0](https://github.com/cliqueprojeto/GCP-PDF/releases/tag/v0.12.0), baixe `gcp-pdf-bin-0.12.0-1-x86_64.pkg.tar.zst`. Na pasta do download:
 
 ```sh
-sudo pacman -U ./gcp-pdf-bin-0.11.0-1-x86_64.pkg.tar.zst
+sudo pacman -U ./gcp-pdf-bin-0.12.0-1-x86_64.pkg.tar.zst
 ```
 
 No Pamac, quando instalado, também é possível usar **Instalar pacotes locais**, selecionar esse arquivo e confirmar. Depois abra **GCP-PDF** no menu de aplicativos. O pacote registra PDF, EPUB e quadrinhos, com o lançador usando `%F` para receber caminhos de arquivos montados.

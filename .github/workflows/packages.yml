@@ -33,6 +33,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.release_tag }}
+      # The app is built from the tag; only the test scripts (never packaged) come from the commit that
+      # started this run, so a test fixed after the release does not need a new version.
+      - name: Testes atualizados (o aplicativo continua o da tag)
+        shell: bash
+        run: |
+          git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git checkout "$GITHUB_SHA" -- scripts/smoke-form-lifecycle.mjs scripts/smoke-packaged.mjs scripts/smoke-scanner.mjs
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc

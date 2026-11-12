@@ -15,8 +15,11 @@ try{
  const bytes=await pdf.save(),first=join(root,'Formulario.pdf');await writeFile(first,bytes);
  const env={...process.env,GCP_PDF_TEST_MODE:'1',GCP_PDF_DATA_DIR:join(root,'profile')};delete env.ELECTRON_RUN_AS_NODE;
  app=await electron.launch({executablePath:require('electron'),args:[resolve('.'),first],env,timeout:90_000});
+ console.log('etapa: aplicativo aberto');
+ app.process().stderr?.on('data',d=>process.stderr.write(String(d)));
  const window=await app.firstWindow(),errors=[];window.on('pageerror',error=>errors.push(error.stack??error.message));
  await window.locator('.modal:has(.theme-gallery) .modal-footer .button').click();
+ console.log('etapa: tema escolhido');
  await window.waitForSelector('.form-button');
  const button=await window.locator('.form-button').boundingBox();assert.ok(button&&button.width>100&&button.height>10);
  await window.locator('.form-layer input[type="text"]').first().fill('Ação cultural');
@@ -31,12 +34,22 @@ try{
  for(let n=0;n<16;n++){
   const file=join(root,`Troca ${n}.pdf`);await writeFile(file,bytes);
   // Closing asks for confirmation since 0.12.0: answer it as the user does.
-  await window.evaluate(async file=>{const closeTab=async id=>{const done=window.gcp.closeDocument(id);for(let i=0;i<400;i++){const b=[...document.querySelectorAll('.prompt-card .prompt-buttons button')].find(x=>/^(Fechar|Close|Cerrar)$/.test(x.textContent.trim()));if(b){b.click();break;}await new Promise(r=>setTimeout(r,25));}await done;};await window.gcp.openFiles([file]);const state=await window.gcp.getWorkspace();await closeTab(state.activeDocumentId);},file);
+  console.log(`etapa: troca ${n + 1} de 16`);
+  await window.evaluate(async file=>{
+   const closeTab=async id=>{
+    const done=window.gcp.closeDocument(id);let clicked=false;
+    for(let i=0;i<600&&!clicked;i++){const b=[...document.querySelectorAll('.prompt-card .prompt-buttons button')].find(x=>/^(Fechar|Close|Cerrar)$/.test(x.textContent.trim()));if(b){b.click();clicked=true;}else await new Promise(r=>setTimeout(r,25));}
+    // Fail with what is on screen instead of waiting forever for a close nobody confirmed.
+    if(!clicked)throw new Error('Confirmação de fechamento não encontrada: '+JSON.stringify([...document.querySelectorAll('.prompt-card,.modal')].map(e=>e.textContent.slice(0,160))));
+    await done;
+   };
+   await window.gcp.openFiles([file]);const state=await window.gcp.getWorkspace();await closeTab(state.activeDocumentId);
+  },file);
  }
  await window.waitForSelector('.form-button');
  assert.deepEqual(errors,[]);
  console.log('OK formulário: botões posicionados, preenchimento salvo e 16 trocas/fechamentos sem rejeição de transporte');
 }finally{
- if(app){await app.evaluate(()=>{for(const view of globalThis.__gcpTest.views.values())view.allowClose=true;}).catch(()=>{});await app.close();}
+ if(app){console.log('etapa: encerrando');await app.evaluate(()=>{for(const view of globalThis.__gcpTest.views.values())view.allowClose=true;}).catch(()=>{});await app.close();console.log('etapa: encerrado');}
  await rm(root,{recursive:true,force:true});
 }

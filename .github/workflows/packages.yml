@@ -53,6 +53,7 @@ jobs:
       - run: npm test
       - run: npm run build
       - name: Formulários e troca de documentos
+        timeout-minutes: 12
         shell: bash
         run: |
           if [ "$RUNNER_OS" = Linux ]; then

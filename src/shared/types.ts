@@ -54,8 +54,17 @@ export interface UpdateStatus {frequency:UpdatePreferences['frequency'];lastChec
 export interface UpdateInfo {version:string;current:string;notes:string;published:string;size:number;assetUrl:string;assetName:string;sha256?:string;manual?:boolean}
 export interface WorkspaceState {windowId:number;documents:DocumentInfo[];activeDocumentId?:string;theme:Theme;quickActions:boolean;themeChosen?:boolean}
 /** An existing paragraph or image of a page, in the page's unrotated top-left space. */
-export interface SourceParagraph {index:number;text:string;rect:Rect;size:number;font:string;family?:string;bold:boolean;italic:boolean;color:string;/** Letter spacing in points, when the printed text is tracked. */tracking?:number;/** Horizontal text scale (1 = none). */scale?:number;/** Baseline pitch as a multiple of the size, for several lines. */lineSpacing?:number;members?:SourceParagraph[]}
+export interface SourceParagraph {index:number;text:string;rect:Rect;size:number;font:string;family?:string;bold:boolean;italic:boolean;color:string;/** Fill colour the page prints most of the paragraph with, when it could be read. */ink?:string;/** Letter spacing in points, when the printed text is tracked. */tracking?:number;/** Horizontal text scale (1 = none). */scale?:number;/** Baseline pitch as a multiple of the size, for several lines. */lineSpacing?:number;members?:SourceParagraph[]}
 export interface SourceImage {index:number;rect:Rect}
+/** Whole-document operations applied by the editing engine (one undo step each). `pages` are 0-based
+ * positions in the document; left out, the operation covers every page. */
+export type DocumentTool=
+ |{kind:'watermark';text:string;opacity:number;/** Degrees counter-clockwise. */rotation:number;color:string;fontSize?:number;behind:boolean;pages?:number[]}
+ |{kind:'header-footer';/** Left, centre, right. `<<1>>` is the page number and `<<n>>` the page count. */header:[string,string,string];footer:[string,string,string];font:'Helvetica'|'Times'|'Courier';fontSize:number;color:string;startNumber:number;/** Shrinks the page content so it is not covered. */shrink:boolean;pages?:number[]}
+ |{kind:'flatten';comments:boolean;fields:boolean}
+ |{kind:'crop';/** Points cut from the left, bottom, right and top. */margins:[number,number,number,number];pages?:number[]}
+ |{kind:'redact';find?:string;patterns?:('phone'|'email'|'credit-card'|'date')[];/** Boxes on a page, in that page's own coordinates. */areas?:{page:string;rects:Rect[]}[];wholeWords?:boolean;caseSensitive?:boolean;fill?:string;pages?:number[]};
+export interface PdfAResult {path:string|null;/** What the conversion could not fix, or the rules the document breaks. */issues:string[]}
 /** A letter-spaced text run as printed (unrotated top-left points): its true words and its spacing. */
 export interface TrackedText {x:number;baseline:number;width:number;tracking:number;text:string}
 export interface SourceObjects {generation:number;paragraphs:SourceParagraph[];images:SourceImage[];spacing?:TrackedText[]}
@@ -77,7 +86,7 @@ export interface Signature {id:string;name:string;dataUrl:string;createdAt:strin
 export interface AiConfig {provider:'openai'|'gemini'|'compatible';model:string;baseUrl:string;hasKey:boolean}
 export type ExportFormat='pdf'|'image-pdf'|'docx'|'xlsx'|'pptx'|'png'|'txt';
 export interface ExportOptions {format:ExportFormat;mode?:'editable'|'fidelity';dpi?:number}
-export interface AppPrompt {id:string;title:string;message:string;detail?:string;/** Names listed under the message, such as the documents not saved yet. */items?:string[];buttons:string[];defaultId:number;cancelId:number;/** Index of the destructive answer, drawn in red. */danger?:number;tone?:'question'|'danger'|'info'|'close'|'unsaved'}
+export interface AppPrompt {id:string;title:string;message:string;detail?:string;/** Names listed under the message, such as the documents not saved yet. */items?:string[];buttons:string[];defaultId:number;cancelId:number;/** Index of the destructive answer, drawn in red. */danger?:number;tone?:'question'|'danger'|'info'|'close'|'unsaved';/** Asks for a secret typed in the dialog (a document's password). */input?:'password'}
 export type CompressLevel='lossless'|'high'|'medium'|'low'|'extreme';
 export interface CompressOptions {level:CompressLevel;metadata:boolean;bookmarks:boolean;attachments:boolean;comments:boolean}
 export type FieldType='text'|'date'|'checkbox'|'radio'|'combo'|'list'|'button'|'image'|'signature';
@@ -156,6 +165,13 @@ export interface GcpBridge {
  exportFormData(id:string,format:'csv'|'xml'|'xfdf'|'txt'):Promise<string|null>;
  protectDocument(id:string,options:ProtectOptions):Promise<string|null>;
  removeHiddenData(id:string,categories:string[]):Promise<void>;
+ /** Applies a whole-document tool; the answer is the number of redaction marks, when the engine reports it. */
+ applyDocumentTool(id:string,tool:DocumentTool):Promise<number|null>;
+ /** Saves a PDF/A copy; `path` is null when the user cancelled. */
+ savePdfA(id:string,level:'2b'|'3b'):Promise<PdfAResult|null>;
+ verifyPdfA(id:string,level:'2b'|'3b'):Promise<string[]>;
+ /** Fills the form from an XFDF, FDF, XML, CSV or text file the user picks; false when cancelled. */
+ importFormData(id:string):Promise<boolean>;
  listCertificates():Promise<Certificate[]>;
  chooseCertificate():Promise<Certificate|null>;
  signDocument(id:string,options:SignOptions):Promise<string|null>;
@@ -198,7 +214,7 @@ export interface GcpBridge {
  printDocument(id:string):Promise<void>;
  openQuick(action:'combine'|'convert'):Promise<void>;
  onPrompt(listener:(prompt:AppPrompt)=>void):()=>void;
- answerPrompt(id:string,index:number):Promise<void>;
+ answerPrompt(id:string,index:number,text?:string):Promise<void>;
  getQuickState():Promise<QuickState|null>;
  onQuickState(listener:(state:QuickState)=>void):()=>void;
  quickAddFiles():Promise<void>;

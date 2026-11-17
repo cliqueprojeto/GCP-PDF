@@ -890,3 +890,11 @@
 .prompt-items li.more { color: var(--muted); }
 .button.danger-outline { background: transparent; color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent); }
 .button.danger-outline:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+
+.document-tool .section-label { margin: 10px 0 4px; }
+.document-tool .segmented { margin-top: 12px; }
+.document-tool input[type=color] { height: 30px; padding: 2px; }
+.document-tool-report { margin-top: 10px; max-height: 220px; overflow: auto; font-size: 12px; line-height: 1.5; }
+.document-tool-report ul { margin: 6px 0 0; padding-left: 18px; }
+
+.prompt-input { margin-top: 10px; width: 100%; height: 32px; padding: 0 10px; border: 1px solid var(--line, #cfd3dc); border-radius: 6px; background: var(--field, #fff); color: inherit; font: inherit; }

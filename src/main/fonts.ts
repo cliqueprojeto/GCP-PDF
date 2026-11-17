@@ -1,24 +1,41 @@
-import { open, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { open, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
 /** Fonts installed on this computer. The app never ships or copies them (their licences forbid
  * redistribution); it uses them in place, like Word and desktop PDF editors do: for editing, for
  * embedding the used glyphs when saving a PDF, and for naming fonts in Word exports. */
-export interface SystemFace { family: string; style: string; legacy: string; legacyStyle: string; postscript: string; weight: number; italic: boolean; embeddable: boolean; file: string; collection: boolean }
+export interface SystemFace { family: string; style: string; legacy: string; legacyStyle: string; postscript: string; weight: number; italic: boolean; embeddable: boolean; file: string; collection: boolean; /** Where the face starts inside a collection file (.ttc/.otc). */ offset?: number }
 const EXTENSIONS = new Set(['.ttf', '.otf', '.ttc', '.otc']);
-function fontFolders(): string[] {
-  if (process.platform === 'win32') return [path.join(process.env.WINDIR ?? 'C:\\Windows', 'Fonts'), path.join(process.env.LOCALAPPDATA ?? path.join(homedir(), 'AppData', 'Local'), 'Microsoft', 'Windows', 'Fonts')];
-  if (process.platform === 'darwin') return ['/System/Library/Fonts', '/System/Library/Fonts/Supplemental', '/Library/Fonts', path.join(homedir(), 'Library', 'Fonts')];
-  return ['/usr/share/fonts', '/usr/local/share/fonts', path.join(homedir(), '.local', 'share', 'fonts'), path.join(homedir(), '.fonts')];
+/** Where each system keeps fonts: the system's and the user's folders, the fonts Microsoft Office installs
+ * for itself (Calibri and Cambria on a Mac, the cloud fonts on Windows) and, on Linux, every data folder
+ * the desktop declares (XDG, Flatpak, Nix), not only /usr/share. */
+export function fontFolders(platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env, home = homedir()): string[] {
+  const join = platform === 'win32' ? path.win32.join : path.posix.join;
+  if (platform === 'win32') {
+    const local = env.LOCALAPPDATA ?? join(home, 'AppData', 'Local');
+    return [join(env.WINDIR ?? 'C:\\Windows', 'Fonts'), join(local, 'Microsoft', 'Windows', 'Fonts'), join(local, 'Microsoft', 'FontCache', '4', 'CloudFonts')];
+  }
+  if (platform === 'darwin') return ['/System/Library/Fonts', '/Library/Fonts', '/Network/Library/Fonts', join(home, 'Library', 'Fonts'),
+    ...['Microsoft Word', 'Microsoft Excel', 'Microsoft PowerPoint'].map((app) => `/Applications/${app}.app/Contents/Resources/DFonts`),
+    '/System/Library/AssetsV2/com_apple_MobileAsset_Font7', '/System/Library/AssetsV2/com_apple_MobileAsset_Font8'];
+  const data = [env.XDG_DATA_HOME || join(home, '.local', 'share'), ...(env.XDG_DATA_DIRS || '/usr/local/share:/usr/share').split(':').filter(Boolean), '/usr/share', '/usr/local/share', '/var/lib/flatpak/exports/share', join(home, '.local', 'share', 'flatpak', 'exports', 'share'), join(home, '.nix-profile', 'share'), '/run/current-system/sw/share'];
+  return [...new Set([...data.map((folder) => join(folder, 'fonts')), join(home, '.fonts')])];
 }
-async function walk(folder: string, depth = 0): Promise<string[]> {
+/** Font files under a folder. Links are followed (distributions and users link font folders into place);
+ * `seen` holds the real folders already read, so a link back up the tree cannot loop. */
+async function walk(folder: string, depth = 0, seen = new Set<string>()): Promise<string[]> {
+  const real = await realpath(folder).catch(() => null);
+  if (!real || seen.has(real)) return [];
+  seen.add(real);
   const entries = await readdir(folder, { withFileTypes: true }).catch(() => []);
   const files: string[] = [];
   for (const entry of entries) {
     const full = path.join(folder, entry.name);
-    if (entry.isDirectory() && depth < 4) files.push(...(await walk(full, depth + 1)));
-    else if (entry.isFile() && EXTENSIONS.has(path.extname(entry.name).toLowerCase())) files.push(full);
+    let directory = entry.isDirectory(), file = entry.isFile();
+    if (entry.isSymbolicLink()) { const target = await stat(full).catch(() => null); directory = !!target?.isDirectory(); file = !!target?.isFile(); }
+    if (directory && depth < 6) files.push(...(await walk(full, depth + 1, seen)));
+    else if (file && EXTENSIONS.has(path.extname(entry.name).toLowerCase())) files.push(full);
   }
   return files;
 }
@@ -69,7 +86,7 @@ async function readFile_(file: string): Promise<SystemFace[]> {
       const count = Math.min(tag.readUInt32BE(8), 64), offsets = Buffer.alloc(4 * count);
       await handle.read(offsets, 0, offsets.length, 12);
       const faces: SystemFace[] = [];
-      for (let i = 0; i < count; i++) { const face = await readFace(handle, offsets.readUInt32BE(i * 4)); if (face) faces.push({ ...face, file, collection: true }); }
+      for (let i = 0; i < count; i++) { const offset = offsets.readUInt32BE(i * 4), face = await readFace(handle, offset); if (face) faces.push({ ...face, file, collection: true, offset }); }
       return faces;
     }
     const face = await readFace(handle, 0);
@@ -87,7 +104,7 @@ export function systemFonts(cacheFile?: string): Promise<SystemFace[]> {
     await Promise.all(files.map(async (file) => {
       try {
         const info = await stat(file), key = `${info.size}:${info.mtimeMs}`;
-        const entry = cache[file]?.key === key && cache[file]!.faces.every((f) => f.legacy && f.embeddable !== undefined) ? cache[file]! : { key, faces: await readFile_(file) };
+        const entry = cache[file]?.key === key && cache[file]!.faces.every((f) => f.legacy && f.embeddable !== undefined && (!f.collection || f.offset !== undefined)) ? cache[file]! : { key, faces: await readFile_(file) };
         next[file] = entry; faces.push(...entry.faces);
       } catch {}
     }));
@@ -108,9 +125,30 @@ export async function faceForPostscript(raw: string, cacheFile?: string): Promis
   const faces = await systemFonts(cacheFile);
   return faces.find((f) => normal(f.postscript) === wanted) ?? faces.find((f) => normal(f.family + f.style) === wanted || (normal(f.family) === wanted && /regular|normal|book/i.test(f.style)));
 }
-/** Best installed file for a family in the requested weight and slant (single-face files only). */
+/** One face of a collection file as a font file of its own: its tables, copied behind a new directory.
+ * PDF writers embed single fonts; without this the families that systems ship as collections (Helvetica
+ * and Menlo on a Mac, Cambria on Windows, Noto CJK on Linux) could be listed but never embedded. */
+export function faceFromCollection(bytes: Uint8Array, offset: number): Uint8Array {
+  const source = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (offset + 12 > source.length) throw new Error('Arquivo de fontes inválido.');
+  const tables = source.readUInt16BE(offset + 4);
+  if (tables > 200 || offset + 12 + tables * 16 > source.length) throw new Error('Arquivo de fontes inválido.');
+  const records = Array.from({ length: tables }, (_, i) => { const at = offset + 12 + i * 16; return { tag: source.subarray(at, at + 4), checksum: source.readUInt32BE(at + 4), from: source.readUInt32BE(at + 8), length: source.readUInt32BE(at + 12) }; });
+  if (records.some((r) => r.from + r.length > source.length)) throw new Error('Arquivo de fontes inválido.');
+  const header = 12 + tables * 16, out = Buffer.alloc(header + records.reduce((n, r) => n + ((r.length + 3) & ~3), 0));
+  source.copy(out, 0, offset, offset + 12);
+  let at = header;
+  records.forEach((r, i) => { const entry = 12 + i * 16; r.tag.copy(out, entry); out.writeUInt32BE(r.checksum, entry + 4); out.writeUInt32BE(at, entry + 8); out.writeUInt32BE(r.length, entry + 12); source.copy(out, at, r.from, r.from + r.length); at += (r.length + 3) & ~3; });
+  return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
+}
+/** The font program of an installed face, ready to embed. */
+export async function faceBytes(face: SystemFace): Promise<Uint8Array> {
+  const bytes = new Uint8Array(await readFile(face.file));
+  return face.collection ? faceFromCollection(bytes, face.offset ?? 0) : bytes;
+}
+/** Best installed face for a family in the requested weight and slant. */
 export async function faceFor(family: string, bold: boolean, italic: boolean, cacheFile?: string): Promise<SystemFace | undefined> {
-  const options = (await systemFonts(cacheFile)).filter((f) => (f.family.toLowerCase() === family.toLowerCase() || f.legacy.toLowerCase() === family.toLowerCase()) && !f.collection && f.embeddable);
+  const options = (await systemFonts(cacheFile)).filter((f) => (f.family.toLowerCase() === family.toLowerCase() || f.legacy.toLowerCase() === family.toLowerCase()) && (!f.collection || f.offset !== undefined) && f.embeddable);
   if (!options.length) return undefined;
   const target = bold ? 700 : 400;
   return [...options].sort((a, b) => (a.italic === italic ? 0 : 1000) - (b.italic === italic ? 0 : 1000) + Math.abs(a.weight - target) - Math.abs(b.weight - target))[0];

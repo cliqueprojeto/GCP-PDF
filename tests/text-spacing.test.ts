@@ -34,3 +34,18 @@ test('letter-spaced text keeps its real words and spacing for editing and Office
   assert.equal(prose!.tracking,undefined);
  } finally { await pdf.loadingTask.destroy(); }
 });
+
+test('o editor recebe negrito, itálico e cor como a página imprime, mesmo sem pista no nome informado',async()=>{
+  const {PDFDocument:Doc,StandardFonts:Fonts,rgb:ink}=await import('pdf-lib');
+  const doc=await Doc.create(),bold=await doc.embedFont(Fonts.HelveticaBoldOblique),plain=await doc.embedFont(Fonts.Helvetica),sheet=doc.addPage([400,200]);
+  sheet.drawText('Aviso importante em destaque',{x:40,y:150,font:bold,size:12,color:ink(.8,.1,.1)});
+  sheet.drawText('Texto comum do documento',{x:40,y:100,font:plain,size:12});
+  const {loadPdf:open}=await import('../src/main/conversion'),pdf=await open(await doc.save());
+  try{
+    const page=await pdf.getPage(1),items=await trackedItems(page);
+    const base={size:12,font:'F1',bold:false,italic:false,color:'#000000'};
+    const [warning,common]=withSpacing([{...base,index:0,text:'Aviso importante em destaque',rect:{x:38,y:38,width:200,height:16}},{...base,index:1,text:'Texto comum do documento',rect:{x:38,y:88,width:200,height:16}}],items);
+    assert.deepEqual([warning!.bold,warning!.italic,warning!.ink],[true,true,'#cc1a1a']);
+    assert.deepEqual([common!.bold,common!.italic,common!.ink],[false,false,'#000000']);
+  }finally{await pdf.loadingTask.destroy();}
+});

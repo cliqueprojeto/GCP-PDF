@@ -804,13 +804,11 @@ export function PromptDialog({
   onAnswer,
 }: {
   prompt: AppPrompt;
-  onAnswer: (index: number) => void;
+  onAnswer: (index: number, text?: string) => void;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLDivElement>(null), [typed, setTyped] = useState("");
   useEffect(() => {
-    ref.current
-      ?.querySelector<HTMLButtonElement>(`[data-index="${prompt.defaultId}"]`)
-      ?.focus();
+    (ref.current?.querySelector<HTMLElement>("input") ?? ref.current?.querySelector<HTMLButtonElement>(`[data-index="${prompt.defaultId}"]`))?.focus();
     const handler = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.stopPropagation();
@@ -847,6 +845,7 @@ export function PromptDialog({
           <p>{prompt.message}</p>
           {prompt.items && <ul className="prompt-items">{prompt.items.slice(0, 6).map((item, i) => <li key={i}><FileText size={13} /><span>{item}</span></li>)}{prompt.items.length > 6 && <li className="more">+{prompt.items.length - 6}</li>}</ul>}
           {prompt.detail && <small>{prompt.detail}</small>}
+          {prompt.input === "password" && <input className="prompt-input" type="password" autoComplete="off" value={typed} onChange={(e) => setTyped(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && typed) { e.preventDefault(); onAnswer(prompt.defaultId, typed); } }} />}
         </div>
         <div className="prompt-buttons">
           {prompt.buttons.map((label, index) => (
@@ -854,7 +853,8 @@ export function PromptDialog({
               key={translateUi(label)}
               data-index={index}
               className={`button ${index === prompt.defaultId ? "primary" : index === prompt.danger ? "danger-outline" : index === prompt.cancelId ? "ghost" : "secondary"}`}
-              onClick={() => onAnswer(index)}
+              disabled={!!prompt.input && index === prompt.defaultId && !typed}
+              onClick={() => onAnswer(index, prompt.input ? typed : undefined)}
             >
               {translateUi(label)}
             </button>

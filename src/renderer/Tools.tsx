@@ -1,7 +1,7 @@
 import {t as translateUi} from "./i18n";
 import React, { useState } from "react";
 import {
-  RotateCcw, RotateCw, Trash2, FilePlus2, FileInput, Replace, Scissors, Hash, FileOutput, Plus, X, LoaderCircle, Check, Minimize2, Save, CheckSquare, Square,
+  RotateCcw, RotateCw, Trash2, FilePlus2, FileInput, Replace, Scissors, Hash, FileOutput, Plus, X, LoaderCircle, Check, Minimize2, Save, CheckSquare, Square, PanelTop, Droplets, Crop, Layers,
 } from "lucide-react";
 import type { CompressLevel, CompressOptions, DocumentInfo, PageObject } from "../shared/types";
 import { toPage } from "../shared/geometry";
@@ -22,6 +22,7 @@ export interface OrganizeActions {
   split(): void;
   numbering(): void;
   compress(): void;
+  documentTool(kind: "watermark" | "header-footer" | "crop" | "flatten"): void;
   close(): void;
 }
 const PAGE_MIME = "application/x-gcp-pages";
@@ -75,6 +76,10 @@ export function OrganizeView({ doc, selection, setSelection, actions, onContextM
         <button className="organize-tool" onClick={actions.split}><Scissors size={16} />{" "}{translateUi("Dividir documento")}</button>
         <button className="organize-tool" onClick={actions.numbering}><Hash size={16} />{" "}{translateUi("Numerar páginas")}</button>
         <button className="organize-tool" onClick={actions.compress}><Minimize2 size={16} />{" "}{translateUi("Comprimir PDF")}</button>
+        <button className="organize-tool" onClick={() => actions.documentTool("header-footer")}><PanelTop size={16} />{" "}{translateUi("Cabeçalho e rodapé")}</button>
+        <button className="organize-tool" onClick={() => actions.documentTool("watermark")}><Droplets size={16} />{" "}{translateUi("Marca-d’água")}</button>
+        <button className="organize-tool" onClick={() => actions.documentTool("crop")}><Crop size={16} />{" "}{translateUi("Cortar páginas")}</button>
+        <button className="organize-tool" onClick={() => actions.documentTool("flatten")}><Layers size={16} />{" "}{translateUi("Achatar formulário e comentários")}</button>
         <p className="organize-help">{translateUi("Clique para selecionar, Ctrl para várias, Shift para um intervalo. Arraste as páginas para reordenar ou para outra janela.")}</p>
       </aside>
       <section className="organize-main">
@@ -130,7 +135,8 @@ export function NumberingDialog({ doc, selection, onClose, onApply }: { doc: Doc
   const [spot, setSpot] = useState<Spot>("bc"), [format, setFormat] = useState("of"), [start, setStart] = useState(1), [size, setSize] = useState(10), [color, setColor] = useState("#1f1a2e");
   const [margin, setMargin] = useState(28), [prefix, setPrefix] = useState("DOC-"), [digits, setDigits] = useState(6), [scope, setScope] = useState<"all" | "selected">("all"), [busy, setBusy] = useState(false);
   const pages = scope === "all" || !selection.length ? doc.pages.map((_, i) => i) : selection, make = FORMATS.find((f) => f.id === format)!.make;
-  const preview = make(start, doc.pageCount + start - 1, prefix, digits);
+  // The same total the pages will get: of the pages being numbered, not of the whole document.
+  const preview = make(start, start + pages.length - 1, prefix, digits);
   async function apply() {
     setBusy(true);
     try {

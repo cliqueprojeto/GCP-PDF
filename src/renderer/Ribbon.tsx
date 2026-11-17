@@ -1,6 +1,9 @@
 import {t as translateUi} from "./i18n";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
+  EyeOff as RedactIcon,
+  FileCheck2,
+  FileUp,
   MousePointer2,
   Type,
   Highlighter,
@@ -171,6 +174,8 @@ export interface RibbonActions {
   exportData(format: "csv" | "xml" | "xfdf"): void;
   protect(): void;
   removeHidden(): void;
+  documentTool(kind: "redact" | "pdfa"): void;
+  importData(): void;
   certificate(visible: boolean): void;
   checkSignatures(): void;
   palette(): void;
@@ -1492,6 +1497,13 @@ export function Ribbon(props: Props) {
             title={translateUi("Encontra linhas, caixas e espaços em branco e cria os campos automaticamente")}
           />
           <Big
+            icon={<FileUp size={18} />}
+            label={translateUi("Importar dados")}
+            disabled={none}
+            onClick={actions.importData}
+            title={translateUi("Preenche o formulário com um arquivo XFDF, FDF, XML, CSV ou de texto")}
+          />
+          <Big
             icon={<FileDown size={18} />}
             label={translateUi("Exportar dados (CSV)")}
             disabled={none}
@@ -1520,6 +1532,20 @@ export function Ribbon(props: Props) {
           disabled={none}
           onClick={actions.removeHidden}
           title={translateUi("Metadados, anexos, camadas ocultas, scripts e dados privados")}
+        />
+        <Big
+          icon={<RedactIcon size={18} />}
+          label={translateUi("Tarja de redação")}
+          disabled={none}
+          onClick={() => actions.documentTool("redact")}
+          title={translateUi("Remove de forma definitiva textos e dados sensíveis do documento")}
+        />
+        <Big
+          icon={<FileCheck2 size={18} />}
+          label={translateUi("PDF/A para arquivamento")}
+          disabled={none}
+          onClick={() => actions.documentTool("pdfa")}
+          title={translateUi("Verifica a conformidade e salva uma cópia no formato de arquivamento de longo prazo")}
         />
       </div>
     ),

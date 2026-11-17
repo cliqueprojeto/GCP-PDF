@@ -26,6 +26,14 @@ export function lineRanges(text: string, lines: {line: number; charSpacing: numb
  });
  return out;
 }
+/** Whether a rewritten paragraph may be applied. The guard exists for text that wraps by accident (the
+ * engine's font being a little wider than the preview) and would run over what is below; lines the user
+ * typed on purpose are theirs to add, each allowed its own height. Heights in points. */
+export function draftFits(source: {height: number; lines: number; size: number}, draft: {height: number; lines: number}) {
+ const added = Math.max(0, draft.lines - source.lines);
+ return draft.height <= source.height + Math.max(2, source.height * .4) + added * source.size * 1.5;
+}
+const lineCount = (text: unknown) => (typeof text === 'string' ? text.replace(/\n+$/, '').split('\n').length : 1);
 export class PdfCraftSession {
  private child?: ChildProcessWithoutNullStreams;
  private root?: string;
@@ -41,6 +49,8 @@ export class PdfCraftSession {
  private serial<T>(task: () => Promise<T>): Promise<T> { const run = this.queue.then(task); this.queue = run.catch(() => {}); return run; }
  private fail(error: Error) {
   for (const pending of this.waiting.values()) { clearTimeout(pending.timer); pending.reject(error); }
+  // The copies the ended process held are no longer anyone's: remove them rather than keep them until exit.
+  if (this.root) for (const entry of this.open.values()) void rm(path.join(this.root, entry.file), {force: true}).catch(() => {});
   this.waiting.clear(); this.open.clear(); this.child = undefined; this.starting = undefined;
  }
  private start(): Promise<void> {
@@ -82,9 +92,11 @@ export class PdfCraftSession {
  private async call(name: string, args: Record<string, unknown>): Promise<any> {
   const result = await this.rpc('tools/call', {name, arguments: args});
   const text = result?.content?.find((item: any) => item.type === 'text')?.text ?? '';
-  if (result?.isError) throw new Error(portuguese(text,name));
+  if (result?.isError) throw new Error(portuguese(text,name), {cause: text});
   try { return JSON.parse(text); } catch { return text; }
  }
+ /** A tool call whose refusal keeps the engine's own words as `cause`, for callers that tell causes apart. */
+ private rpcTool(name: string, args: Record<string, unknown>) { return this.call(name, args); }
  /** Opens (or reuses) the engine document holding source `base`. */
  private async document(base: string, bytes: () => Uint8Array): Promise<Open> {
   await this.start();
@@ -155,8 +167,8 @@ export class PdfCraftSession {
       const layout=await call('text_edit_layout',{doc,page:page+1,paragraph:args.paragraph,...(args.text!==undefined?{text:args.text}:{}),...(args.width!==undefined?{width:args.width}:{}),...(args.size!==undefined?{size:args.size}:{})});
       const a=layout.source_rect,b=layout.draft_rect;
       if(!Array.isArray(a)||!Array.isArray(b)||a.length!==4||b.length!==4||![...a,...b].every(Number.isFinite))throw new Error('Não foi possível conferir o espaço do texto. O PDF foi preservado.');
-      const height=Math.abs(a[3]-a[1]);
-      if(Math.abs(b[3]-b[1])>height+Math.max(2,height*.4))throw new Error('O texto ultrapassaria o espaço original dentro do bloco. Ajuste o texto ou a largura. O PDF foi preservado.');
+      const expected=original.paragraphs?.find((p:any)=>Number(p.paragraph)===args.paragraph);
+      if(!draftFits({height:Math.abs(a[3]-a[1]),lines:lineCount(expected?.editor_text??expected?.text),size:Number(expected?.size)||12},{height:Math.abs(b[3]-b[1]),lines:args.text!==undefined?lineCount(args.text):lineCount(expected?.editor_text??expected?.text)}))throw new Error('O texto ultrapassaria o espaço original dentro do bloco. Ajuste o texto ou a largura. O PDF foi preservado.');
      }
      for(const args of planned.reverse())if(Object.keys(args).length>3)await call('text_edit',args);
      await call('doc_save',{doc,path:output});
@@ -165,6 +177,7 @@ export class PdfCraftSession {
     // Do not rekey the untouched persistent document to the edited bytes.
     await this.call('doc_close',{doc:entry.doc,discard_changes:true});
     this.open.delete(base);
+    await rm(path.join(this.root!,entry.file),{force:true}).catch(()=>{});
     return saved.bytes;
    }
    const args: Record<string, unknown> = {doc: entry.doc, page: page + 1, paragraph: edit.paragraph + 1};
@@ -180,8 +193,8 @@ export class PdfCraftSession {
     const layout = await this.call('text_edit_layout', {doc: entry.doc, page: page + 1, paragraph: edit.paragraph + 1, text: edit.text, ...(edit.width !== undefined ? {width: edit.width} : {}), ...(edit.size !== undefined ? {size: edit.size} : {})});
     const source=layout?.source_rect,draft=layout?.draft_rect;
     if(Array.isArray(source)&&source.length===4&&Array.isArray(draft)&&draft.length===4&&[...source,...draft].every(Number.isFinite)){
-     const sourceHeight=Math.abs(source[3]-source[1]),draftHeight=Math.abs(draft[3]-draft[1]);
-     if(draftHeight>sourceHeight+Math.max(2,sourceHeight*.4))throw new Error('O texto criaria novas linhas fora da caixa original. Aumente a largura pela alça lateral ou reduza o texto antes de aplicar. O PDF foi preservado.');
+     const listed=await this.call('text_paragraphs',{doc:entry.doc,page:page+1}).catch(()=>undefined),current=listed?.paragraphs?.find((p:any)=>Number(p.paragraph)===edit.paragraph+1);
+     if(!draftFits({height:Math.abs(source[3]-source[1]),lines:lineCount(current?.editor_text??current?.text),size:Number(current?.size)||12},{height:Math.abs(draft[3]-draft[1]),lines:lineCount(edit.text)}))throw new Error('O texto criaria novas linhas fora da caixa original. Aumente a largura pela alça lateral ou reduza o texto antes de aplicar. O PDF foi preservado.');
     }
    }
    try { await this.call('text_edit', args); }
@@ -228,6 +241,29 @@ export class PdfCraftSession {
     doc = Number((await this.call('doc_open', {path: input}))?.doc);
     await this.call('doc_optimize', {doc, path: output, ...options});
     return new Uint8Array(await readFile(path.join(this.root!, output)).catch(() => Buffer.from(bytes)));
+   } finally {
+    if (doc) await this.call('doc_close', {doc, discard_changes: true}).catch(() => {});
+    await rm(path.join(this.root!, input), {force: true}).catch(() => {});
+    await rm(path.join(this.root!, output), {force: true}).catch(() => {});
+   }
+  });
+ }
+ /** A decrypted copy of a protected PDF, or null when the password does not open it. Other failures (a
+  * damaged file, the engine missing) are errors, so a wrong password is never confused with them. */
+ unlock(bytes: Uint8Array, password: string) {
+  return this.serial(async () => {
+   await this.start();
+   const input = `protegido-${++this.files}.pdf`, output = `protegido-${this.files}-aberto.pdf`;
+   await writeFile(path.join(this.root!, input), bytes, {flag: 'wx', mode: 0o600});
+   let doc: number | undefined;
+   try {
+    let opened: any;
+    try { opened = await this.rpcTool('doc_open', {path: input, password}); }
+    catch (error) { if (/password|senha|encrypt/i.test(String(error instanceof Error ? error.cause ?? error.message : error))) return null; throw error; }
+    doc = Number(opened?.doc);
+    await this.call('doc_unprotect', {doc});
+    await this.call('doc_save', {doc, path: output});
+    return new Uint8Array(await readFile(path.join(this.root!, output)));
    } finally {
     if (doc) await this.call('doc_close', {doc, discard_changes: true}).catch(() => {});
     await rm(path.join(this.root!, input), {force: true}).catch(() => {});

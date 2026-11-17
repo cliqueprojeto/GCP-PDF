@@ -36,8 +36,9 @@ import {privateDirectory} from './pdfcraft-sidecar';
 import {signatureList,signatureSummary,validateNewSignature,sameFilePath,refusesSignedOverwrite} from './signatures';
 import {registerWindowsContextMenu,readInputPdf,readInputDocument,isPdfInput,INPUT_EXTENSIONS} from './system';
 import {toPage,fromPage} from '../shared/geometry';
-import {faceFor,faceForPostscript,fontFamilies} from './fonts';
-import type {AiConfig,UpdatePreferences,UpdateStatus,Bookmark,BookmarkEdit,FieldProps,Certificate,FieldType,ProtectOptions,SignOptions,CompressOptions,WorkspaceState,PdfOperation,ExportOptions,ParagraphEdit,SourceObjects,QuickState,Rect,EpubOptions} from '../shared/types';
+import {faceBytes,faceFor,faceForPostscript,fontFamilies} from './fonts';
+import {displayedRect,isEncryptedPdf,markCount,nothingMatched,planDocumentTool,reportLines} from './document-tools';
+import type {DocumentTool,PdfAResult,AiConfig,UpdatePreferences,UpdateStatus,Bookmark,BookmarkEdit,FieldProps,Certificate,FieldType,ProtectOptions,SignOptions,CompressOptions,WorkspaceState,PdfOperation,ExportOptions,ParagraphEdit,SourceObjects,QuickState,Rect,EpubOptions} from '../shared/types';
 app.setName('GCP-PDF');
 if(process.env.GCP_PDF_DATA_DIR)app.setPath('userData',resolve(process.env.GCP_PDF_DATA_DIR));
 const fontCache=()=>join(app.getPath('userData'),'font-catalog.json');
@@ -49,7 +50,7 @@ const BOOK_EXTENSIONS=['.epub',...COMIC_EXTENSIONS];
 const OPENABLE=[...INPUT_EXTENSIONS,...BOOK_EXTENSIONS];
 /** EPUB opens in the book reader, comic archives in the comic reader; only the last few stay in memory. */
 function openBook(view:View,path:string){const token=randomUUID();books.set(token,{path});if(books.size>20)books.delete(books.keys().next().value!);for(const [key,entry] of [...books].slice(0,-3))if(entry.comic)books.set(key,{path:entry.path});action(view,(COMIC_EXTENSIONS.includes(extname(path).toLowerCase())?'comic:':'book:')+token);}
-const store=new DocumentStore(async(family,bold,italic)=>{const face=await faceFor(family,bold,italic,fontCache());return face?new Uint8Array(await readFile(face.file)):undefined;}),settings=new Settings();
+const store=new DocumentStore(async(family,bold,italic)=>{const face=await faceFor(family,bold,italic,fontCache());return face?faceBytes(face):undefined;}),settings=new Settings();
 type View={window:BrowserWindow;ids:string[];active?:string;allowClose:boolean;closing?:boolean};
 type Quick={window:BrowserWindow;state:QuickState};
 const views=new Map<number,View>(),quicks=new Map<number,Quick>();let shuttingDown=false,pageClipboard:string|undefined;
@@ -159,8 +160,8 @@ async function save(view:View,id:string,saveAs=false){
  }
  doc.path=path;doc.name=basename(path);doc.savedRevision=revision;notify();return path;
 }
-type PromptRequest={title:string;message:string;detail?:string;items?:string[];buttons:string[];defaultId:number;cancelId:number;danger?:number;tone?:'question'|'danger'|'info'|'close'|'unsaved'};
-const prompts=new Map<string,{view:View;cancel:number;resolve:(index:number)=>void}>();
+type PromptRequest={title:string;message:string;detail?:string;items?:string[];buttons:string[];defaultId:number;cancelId:number;danger?:number;tone?:'question'|'danger'|'info'|'close'|'unsaved';input?:'password'};
+const prompts=new Map<string,{view:View;cancel:number;resolve:(index:number)=>void;text?:(value:string)=>void}>();
 /** Asks inside the app's own styled dialog instead of a native Windows message box. */
 function ask(view:View,request:PromptRequest):Promise<number>{
  if(view.window.isDestroyed())return Promise.resolve(request.cancelId);
@@ -216,6 +217,25 @@ function createWindow(ids:string[]=[]){
  secureWindow(window);return view;
 }
 function mainView(){return [...views.values()].find(view=>!view.window.isDestroyed())??createWindow();}
+/** Asks for a password in the app's dialog; null when the user gives up. The text is handed to the caller
+ * and kept nowhere else. */
+function askPassword(view:View,request:Omit<PromptRequest,'input'>):Promise<string|null>{
+ if(view.window.isDestroyed())return Promise.resolve(null);
+ const locale=languages().locale,id=randomUUID();let typed='';
+ view.window.show();view.window.focus();
+ return new Promise(resolve=>{prompts.set(id,{view,cancel:request.cancelId,text:value=>{typed=value;},resolve:index=>resolve(index===request.defaultId&&typed?typed:null)});view.window.webContents.send('gcp:prompt',{id,...request,input:'password',title:localize(request.title,locale),message:localize(request.message,locale),detail:request.detail?localize(request.detail,locale):undefined,buttons:request.buttons.map(button=>localize(button,locale))});});
+}
+/** A password-protected PDF, opened with the password its owner types: the engine decrypts a working copy
+ * in memory (the file on disk stays protected). Three tries, then the open is cancelled. */
+async function unlockPdf(view:View,bytes:Uint8Array,name:string):Promise<Uint8Array|null>{
+ for(let attempt=0;attempt<3;attempt++){
+  const password=await askPassword(view,{title:'Documento protegido por senha',message:attempt?'Senha incorreta. Tente novamente.':'Digite a senha para abrir este documento.',detail:name,buttons:['Abrir','Cancelar'],defaultId:0,cancelId:1});
+  if(password===null)return null;
+  const unlocked=await engine.unlock(bytes,password);
+  if(unlocked)return unlocked;
+ }
+ throw new Error('Não foi possível abrir o documento com as senhas informadas.');
+}
 async function openPaths(view:View,paths?:string[]){
  if(!paths){const result=await openDialog(view.window,{title:'Abrir arquivos',properties:['openFile','multiSelections'],filters:[{name:'Documentos, imagens e livros',extensions:OPENABLE.map(e=>e.slice(1))},{name:'Livro digital EPUB',extensions:['epub']},{name:'Quadrinhos e mangás (CBZ, CBR, CB7)',extensions:COMIC_EXTENSIONS.map(e=>e.slice(1))},{name:'Todos os arquivos',extensions:['*']}]});if(result.canceled)return;paths=result.filePaths;}
  if(!Array.isArray(paths)||paths.length>200)throw new Error('Selecione até 200 arquivos por vez.');
@@ -226,9 +246,12 @@ async function openPaths(view:View,paths?:string[]){
   if(existing){const owner=[...views.values()].find(v=>v.ids.includes(existing.id));if(owner){owner.active=existing.id;owner.window.focus();continue;}}
   const info=await stat(path).catch((error:NodeJS.ErrnoException)=>{throw new Error(error.code==='ENOENT'?'O arquivo não foi encontrado. Ele pode ter sido movido ou removido. Use Abrir documentos para localizá-lo novamente.':error.code==='EACCES'||error.code==='EPERM'?'O sistema não permitiu abrir esse arquivo. Verifique as permissões de acesso.':'Não foi possível acessar esse arquivo. Verifique se ele está disponível e tente novamente.');});if(!info.isFile()||info.size>512*1024*1024)throw new Error('Abra um arquivo de até 512 MB.');
   action(view,`progress:Abrindo ${basename(path)}${paths.length>1?` (${n+1} de ${paths.length})`:''}…`);
-  const {bytes,sourcePdf:isPdf}=await readInputDocument(path,htmlToPdf);
-  const id=await store.add(bytes,isPdf?basename(path):basename(path,extname(path))+'.pdf',isPdf?path:undefined,source=>{action(view,'progress:Montando formulário XFA…');return engine.staticForm(source);});
+  const read=await readInputDocument(path,htmlToPdf),isPdf=read.sourcePdf;let bytes=read.bytes,unlocked=false;
+  if(isPdf&&isEncryptedPdf(bytes)){const open=await unlockPdf(view,bytes,basename(path));if(!open)continue;bytes=open;unlocked=true;}
+  // An unlocked copy has no file of its own: saving asks where, so the protected original is never replaced.
+  const id=await store.add(bytes,isPdf?basename(path):basename(path,extname(path))+'.pdf',isPdf&&!unlocked?path:undefined,source=>{action(view,'progress:Montando formulário XFA…');return engine.staticForm(source);});
   activate(view,id);const notice=store.get(id).notice;if(notice)action(view,'notice:'+notice);
+  if(unlocked)action(view,'notice:'+localize('Documento aberto com a senha. A cópia em edição não tem senha: ao salvar, escolha onde gravar e use Proteger para criptografá-la de novo.',languages().locale));
  }
  }finally{action(view,'progress:');notify();}
 }
@@ -253,6 +276,7 @@ const LEVELS:Record<string,Record<string,unknown>>={
 };
 /** Compressed copies by document revision and settings, so previewing then applying runs once. */
 const compressed=new Map<string,{revision:number;bytes:Uint8Array;original:number}>();
+const isOpen=(id:string)=>{try{store.get(id);return true;}catch{return false;}};
 async function compressDocument(id:string,options:CompressOptions){
  if(!options||!LEVELS[options.level])throw new Error('Escolha um nível de compressão.');
  const doc=store.get(id),key=`${id}:${JSON.stringify(options)}`,known=compressed.get(key);
@@ -260,6 +284,9 @@ async function compressDocument(id:string,options:CompressOptions){
  const source=await store.materialize(id),discard=[options.metadata&&'metadata',options.bookmarks&&'bookmarks',options.attachments&&'attachments',options.comments&&'comments',options.comments&&'form-fields'].filter(Boolean);
  let bytes:Uint8Array=await engine.optimize(source,{preset:'standard',discard_thumbnails:true,object_streams:true,lzw_to_flate:true,flate_unencoded:true,merge_fragments:true,...LEVELS[options.level],...(discard.length?{discard}:{})});
  if(bytes.length>=source.length)bytes=source;
+ // Copies of older revisions and of closed documents are whole PDFs in memory: keep only the current few.
+ for(const [other,value] of compressed)if((other.startsWith(`${id}:`)&&value.revision!==doc.revision)||!isOpen(other.slice(0,other.indexOf(':'))))compressed.delete(other);
+ while(compressed.size>=6)compressed.delete(compressed.keys().next().value!);
  const entry={revision:doc.revision,bytes,original:source.length};compressed.set(key,entry);return entry;
 }
 function quickState(window:BrowserWindow){const quick=quicks.get(window.webContents.id);if(!quick)throw new Error('Esta janela de ação rápida foi fechada.');return quick;}
@@ -291,7 +318,7 @@ function registerIpc(){
   moveDocumentTab:(view,id,beforeId)=>{own(view,id);if(beforeId!==undefined)own(view,beforeId);if(id===beforeId)return;const ids=view.ids.filter(item=>item!==id);ids.splice(beforeId===undefined?ids.length:ids.indexOf(beforeId),0,id);view.ids=ids;notify();},
   setLanguage:async(_view,language,ocr)=>{await settings.setLanguage(language,ocr);makeMenu();const next=languages();for(const item of [...views.values(),...quicks.values()])if(!item.window.isDestroyed())item.window.webContents.send('gcp:language',next);return next;},
   getWorkspace:view=>state(view),getComparisonPdf:async(view,id)=>{own(view,id);return store.materialize(id);},setFullscreen:(view,enabled?:boolean)=>{const next=enabled??!view.window.isFullScreen();view.window.setFullScreen(next);return next;},
-  answerPrompt:(view,id:string,index:number)=>{const prompt=prompts.get(id);if(!prompt||prompt.view!==view)return;prompts.delete(id);prompt.resolve(Number.isInteger(index)?index:prompt.cancel);},
+  answerPrompt:(view,id:string,index:number,text?:string)=>{const prompt=prompts.get(id);if(!prompt||prompt.view!==view)return;prompts.delete(id);if(prompt.text&&typeof text==='string'&&text.length<=1000)prompt.text(text);prompt.resolve(Number.isInteger(index)?index:prompt.cancel);},
   editSourceImage:async(view,id,page:string,input:{image:number;action:string;from?:Rect;to?:Rect;quarters?:number;dataUrl?:string})=>{
    const actions=['move','resize','rotate','flip_horizontal','flip_vertical','replace','delete'];
    if(!input||!Number.isSafeInteger(input.image)||input.image<1||!actions.includes(input.action))throw new Error('Edição de imagem inválida.');
@@ -610,6 +637,71 @@ function registerIpc(){
    const out=await engine.onCopy(await store.materialize(id),async({doc:copy,output,call})=>{await call('doc_remove_hidden',{doc:copy,...(categories?.length?{categories}:{})});await call('doc_save',{doc:copy,path:output});});
    if(!out.bytes)throw new Error('Não foi possível limpar o documento.');
    try{await store.replaceDocument(id,out.bytes,revision);}finally{notify();}
+  },
+  applyDocumentTool:async(view,id,tool:DocumentTool):Promise<number|null>=>{
+   const doc=own(view,id),revision=doc.revision,info=store.info(id);
+   // Selected boxes arrive in each page's own coordinates; the engine takes them as the page is displayed.
+   const areas=tool?.kind==='redact'?(Array.isArray(tool.areas)?tool.areas:[]).map(area=>{
+    const page=info.pages.findIndex(p=>p.id===area?.page),ref=info.pages[page];
+    if(!ref||!Array.isArray(area.rects)||area.rects.some(r=>!r||![r.x,r.y,r.width,r.height].every(Number.isFinite)))throw new Error('Área de tarja inválida.');
+    const size=store.baseInfo(ref.base).pages[ref.src]!;
+    return {page,rects:area.rects.map(r=>displayedRect(r,size,(size.rotation+ref.rotate)%360,fromPage))};
+   }):[];
+   const calls=planDocumentTool(tool,info.pages.length,areas);
+   action(view,'progress:Aplicando no documento…');
+   try{
+    let marks:number|null=null;
+    const out=await engine.onCopy(await store.materialize(id),async({doc:copy,output,call})=>{
+     for(const step of calls){
+      // A search that finds nothing is an answer, not a failure: the other searches of the request still count.
+      if(step.tool==='redact_apply'&&marks===0)return;
+      const result=await call(step.tool,{doc:copy,...step.args}).catch(error=>{if(step.tool==='redact_mark'&&nothingMatched(error))return {marked:0};throw error;});
+      if(step.tool==='redact_mark'){const n=markCount(result);if(n!==undefined)marks=(marks??0)+n;}
+     }
+     await call('doc_save',{doc:copy,path:output});
+    });
+    if(tool.kind==='redact'&&marks===0)throw new Error('Nada foi encontrado para ocultar. O documento não foi alterado.');
+    if(!out.bytes)throw new Error('Não foi possível aplicar a operação. O documento foi preservado.');
+    try{await store.replaceDocument(id,out.bytes,revision);}finally{notify();}
+    return marks;
+   }finally{action(view,'progress:');}
+  },
+  savePdfA:async(view,id,level:'2b'|'3b'):Promise<PdfAResult|null>=>{
+   const doc=own(view,id);
+   if(level!=='2b'&&level!=='3b')throw new Error('Nível de PDF/A inválido.');
+   const target=await saveDialog(view.window,{title:'Salvar como PDF/A',defaultPath:join(doc.path?dirname(doc.path):app.getPath('documents'),`${basename(doc.name,extname(doc.name))} (PDF-A).pdf`),filters:[{name:'Documento PDF/A',extensions:['pdf']}]});
+   if(target.canceled||!target.filePath)return null;
+   await refusesSignedOverwrite(store.signedSourcePath(id),target.filePath,true);
+   action(view,'progress:Convertendo para PDF/A…');
+   try{
+    // The copy is written by the engine as converted: saving it again here would undo the conformance.
+    const out=await engine.onCopy(await store.materialize(id),async({doc:copy,output,call})=>{const converted=await call('pdfa_convert',{doc:copy,level});await call('doc_save',{doc:copy,path:output});return {converted,remaining:await call('pdfa_verify',{doc:copy,level}).catch(()=>undefined)};});
+    if(!out.bytes)throw new Error('Não foi possível gerar o PDF/A.');
+    await atomicWrite(target.filePath,out.bytes);
+    return {path:target.filePath,issues:reportLines(out.result.remaining??(out.result.converted as any)?.remaining)};
+   }finally{action(view,'progress:');}
+  },
+  verifyPdfA:async(view,id,level:'2b'|'3b'):Promise<string[]>=>{
+   own(view,id);
+   if(level!=='2b'&&level!=='3b')throw new Error('Nível de PDF/A inválido.');
+   const out=await engine.onCopy(await store.materialize(id),async({doc:copy,call})=>call('pdfa_verify',{doc:copy,level}));
+   return reportLines(out.result);
+  },
+  importFormData:async(view,id):Promise<boolean>=>{
+   const doc=own(view,id),revision=doc.revision;
+   const picked=await openDialog(view.window,{title:'Importar dados do formulário',properties:['openFile'],filters:[{name:'Dados de formulário',extensions:['xfdf','fdf','xml','csv','txt']}]});
+   if(picked.canceled||!picked.filePaths[0])return false;
+   const data=await readFile(picked.filePaths[0]);
+   if(data.length>50*1024*1024)throw new Error('O arquivo de dados ultrapassa 50 MB.');
+   action(view,'progress:Importando dados…');
+   try{
+    // The engine reads only inside its private folder: the chosen file is copied there under a fixed name.
+    const name=`dados-importados${extname(picked.filePaths[0]).toLowerCase().replace(/[^.a-z0-9]/g,'')}`,inside=join(engine.folder,name);
+    const out=await engine.onCopy(await store.materialize(id),async({doc:copy,output,call})=>{await writeFile(inside,data,{mode:0o600});try{await call('doc_import_data',{doc:copy,path:name});await call('doc_save',{doc:copy,path:output});}finally{await rm(inside,{force:true}).catch(()=>{});}});
+    if(!out.bytes)throw new Error('Não foi possível importar os dados. O documento foi preservado.');
+    try{await store.replaceDocument(id,out.bytes,revision);}finally{notify();}
+    return true;
+   }finally{action(view,'progress:');}
   },
   listCertificates:async():Promise<Certificate[]>=>{
    const found=await engine.certificates();

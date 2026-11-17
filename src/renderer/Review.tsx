@@ -165,7 +165,12 @@ function changesOf(a: Word[], b: Word[]): Change[] {
   for (const c of changes) c.kind = c.a.length && c.b.length ? "changed" : c.a.length ? "deleted" : "inserted";
   return changes;
 }
-async function comparisonPixels(pdf:PDFDocumentProxy,index:number){const page=await pdf.getPage(index+1),viewport=page.getViewport({scale:.35}),canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);const context=canvas.getContext('2d')!;await page.render({canvas,canvasContext:context,viewport}).promise;return {width:canvas.width,height:canvas.height,pixels:context.getImageData(0,0,canvas.width,canvas.height).data};}
+async function comparisonPixels(pdf:PDFDocumentProxy,index:number){const page=await pdf.getPage(index+1),viewport=page.getViewport({scale:.35}),canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);const context=canvas.getContext('2d')!;await page.render({canvas,canvasContext:context,viewport}).promise;const base=page.getViewport({scale:1});return {width:canvas.width,height:canvas.height,pixels:context.getImageData(0,0,canvas.width,canvas.height).data,page:{width:base.width,height:base.height}};}
+/** Whether two renderings of a page show different content. Edges are smoothed a little differently from
+ * one rendering to the next, so single faint pixels do not count: a real change (a word, an image, a
+ * colour) moves many pixels by a visible amount. */
+export function pixelsDiffer(a:ArrayLike<number>,b:ArrayLike<number>){if(a.length!==b.length)return true;let changed=0;const limit=Math.max(4,a.length/4*.0004);for(let i=0;i<a.length;i+=4)if(Math.abs(a[i]!-b[i]!)+Math.abs(a[i+1]!-b[i+1]!)+Math.abs(a[i+2]!-b[i+2]!)>96&&++changed>limit)return true;return false;}
+async function pageSize(pdf:PDFDocumentProxy,index:number){const base=(await pdf.getPage(index+1)).getViewport({scale:1});return {width:base.width,height:base.height};}
 function ComparePage({ pdf, index, width, marks, focus }: { pdf:PDFDocumentProxy; index:number;width:number;marks:{word:Word;kind:string;change:number}[];focus:number }) {
  const canvas=useRef<HTMLCanvasElement>(null),host=useRef<HTMLDivElement>(null),[visible,setVisible]=useState(false),[size,setSize]=useState({width:595,height:842});
  useEffect(()=>{const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){setVisible(true);observer.disconnect();}},{rootMargin:'500px'});if(host.current)observer.observe(host.current);return()=>observer.disconnect();},[pdf,index]);
@@ -196,9 +201,12 @@ export function CompareView({ documents, first, onClose, onOpen }: { documents: 
       for(let index=0;index<Math.max(pa.numPages,pb.numPages)&&alive;index++){
        if(changes.some(c=>[...c.a,...c.b].some(w=>w.page===index)))continue;
        let different=index>=pa.numPages||index>=pb.numPages;
-       if(!different){const [x,y]=await Promise.all([comparisonPixels(pa,index),comparisonPixels(pb,index)]);different=x.width!==y.width||x.height!==y.height||x.pixels.some((value,i)=>value!==y.pixels[i]);}
-       if(different){const word={text:'Alteração visual (imagem, forma, cor ou diagramação)',page:index,x:0,y:0,width:595,height:842};changes.push({kind:index>=pa.numPages?'inserted':index>=pb.numPages?'deleted':'changed',a:index<pa.numPages?[word]:[],b:index<pb.numPages?[word]:[]});}
+       if(!different){const [x,y]=await Promise.all([comparisonPixels(pa,index),comparisonPixels(pb,index)]);different=x.width!==y.width||x.height!==y.height||pixelsDiffer(x.pixels,y.pixels);}
+       // The mark covers the page as it really is in each document, whatever its paper size.
+       if(different){const mark=async(pdf:PDFDocumentProxy)=>({text:'Alteração visual (imagem, forma, cor ou diagramação)',page:index,x:0,y:0,...await pageSize(pdf,index)});changes.push({kind:index>=pa.numPages?'inserted':index>=pb.numPages?'deleted':'changed',a:index<pa.numPages?[await mark(pa)]:[],b:index<pb.numPages?[await mark(pb)]:[]});}
       }
+      // Visual changes take their place among the text changes, in page order.
+      const at=(c:typeof changes[number])=>Math.min(...[...c.a,...c.b].map(w=>w.page));changes.sort((x,y)=>at(x)-at(y));
       if (alive) setResult({ changes, words: [wa.length, wb.length] });
     })().catch((e) => alive && setError(e instanceof Error ? e.message : String(e))).finally(() => alive && setBusy(false));
     return () => { alive = false;for(const pdf of owned)void pdf.loadingTask.destroy().catch(()=>{}); };

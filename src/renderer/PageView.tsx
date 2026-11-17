@@ -448,7 +448,7 @@ export function PageView(props: Props) {
           if (next) {
             const fresh=await window.gcp.getSourceObjects(props.docId,pageRef.id),x=next.rect.x+next.rect.width/2,y=next.rect.y+next.rect.height/2;
             const paragraph=fresh.paragraphs.find(p=>x>=p.rect.x&&x<=p.rect.x+p.rect.width&&y>=p.rect.y&&y<=p.rect.y+p.rect.height);
-            props.onSourceSelect(paragraph?{page:pageRef.id,paragraph,generation:fresh.generation,color:sample(paragraph.rect).color,caret:{x:e.clientX,y:e.clientY}}:null);
+            props.onSourceSelect(paragraph?{page:pageRef.id,paragraph,generation:fresh.generation,color:paragraph.ink??sample(paragraph.rect).color,caret:{x:e.clientX,y:e.clientY}}:null);
           }
           else { props.onSourceSelect(null); setPickedImage(selectedBox?.[0] === "image" ? Number(selectedBox[1]) : null); }
         }).catch(props.onError);
@@ -461,7 +461,7 @@ export function PageView(props: Props) {
         if (target.closest("[data-grip]")) { e.preventDefault(); outer.current!.setPointerCapture(e.pointerId); setDrag({ kind: "source", start: point, dx: 0, dy: 0, target: { kind: "text", index: index + 1, rect: paragraph.rect } }); return; }
         // Prevent the click from moving focus away from the editor that opens right now.
         e.preventDefault();
-        if (props.sourceSelection?.paragraph.index !== index || props.sourceSelection.page !== pageRef.id) props.onSourceSelect({ page: pageRef.id, paragraph, generation:source.generation, color: sample(paragraph.rect).color, caret: { x: e.clientX, y: e.clientY } });
+        if (props.sourceSelection?.paragraph.index !== index || props.sourceSelection.page !== pageRef.id) props.onSourceSelect({ page: pageRef.id, paragraph, generation:source.generation, color: paragraph.ink ?? sample(paragraph.rect).color, caret: { x: e.clientX, y: e.clientY } });
       } else {
         const image = source.images.find((i) => i.index === index)!;
         e.preventDefault(); outer.current!.setPointerCapture(e.pointerId);
@@ -643,7 +643,7 @@ export function PageView(props: Props) {
               setEngineBusy(true);
               try{await window.gcp.editParagraph(props.docId,pageRef.id,{paragraph:activeParagraph.index,generation:source.generation,members});props.onSourceSelect(null);}finally{setEngineBusy(false);}
             }} onError={props.onError}/>}
-            {activeParagraph && !activeParagraph.members && <ParagraphEditor key={`${pageRef.id}:${activeParagraph.index}`} paragraph={activeParagraph} lines={paragraphLines(pageText.current, activeParagraph.rect, source.spacing)} caret={props.sourceSelection?.caret} colors={sample(activeParagraph.rect)} onCommit={async (text, width, trackedLines) => {
+            {activeParagraph && !activeParagraph.members && <ParagraphEditor key={`${pageRef.id}:${activeParagraph.index}`} paragraph={activeParagraph} lines={paragraphLines(pageText.current, activeParagraph.rect, source.spacing)} caret={props.sourceSelection?.caret} colors={{...sample(activeParagraph.rect),...(activeParagraph.ink?{color:activeParagraph.ink}:{})}} onCommit={async (text, width, trackedLines) => {
               const resized = width !== undefined && Math.abs(width - activeParagraph.rect.width) > 0.5;
               if (text === activeParagraph.text && !resized) { props.onSourceSelect(null); return; }
               setEngineBusy(true);
@@ -686,7 +686,7 @@ function paragraphLines(text: PageText | null, rect: Rect, spacing: TrackedText[
   const runs = text.items.map((item) => {
     const size = Math.hypot(item.transform[2]!, item.transform[3]!) || Math.hypot(item.transform[0]!, item.transform[1]!);
     return { ...item, size, x: item.transform[4]! - left, baseline: top - item.transform[5]! };
-  }).filter((r) => r.str.length && r.x >= rect.x - 1 && r.x + r.width <= rect.x + rect.width + Math.max(1.5, r.size * 0.12) && r.baseline >= rect.y && r.baseline <= rect.y + rect.height + Math.max(1, r.size * 0.2));
+  }).filter((r) => r.str.length && r.x >= rect.x - 1 && r.x + r.width <= rect.x + rect.width + Math.max(3, r.size * 0.5) && r.baseline >= rect.y && r.baseline <= rect.y + rect.height + Math.max(1, r.size * 0.2));
   for (const run of runs.sort((a, b) => a.baseline - b.baseline || a.x - b.x)) {
     let line = lines.find((l) => Math.abs(l.baseline - run.baseline) < run.size * 0.35);
     if (!line) { line = { runs: [], baseline: run.baseline, x: run.x, right: run.x }; lines.push(line); }
@@ -700,6 +700,13 @@ function paragraphLines(text: PageText | null, rect: Rect, spacing: TrackedText[
   }
   for (const line of lines) { const last = line.runs.at(-1); if (last) last.text = last.text.trimEnd(); }
   return lines.filter((l) => l.runs.some((r) => r.text.trim())).sort((a, b) => a.baseline - b.baseline);
+}
+/** Whether the printed lines found for a paragraph hold exactly its text. When a run was missed (or one
+ * of a neighbour slipped in), the editor must not open with them: leaving it would rewrite the paragraph
+ * with the wrong words. */
+function sameWords(lines: EditorLine[], text: string) {
+  const bare = (value: string) => value.normalize("NFKC").replace(/\s+/g, "");
+  return bare(lines.map((line) => line.runs.map((run) => run.text).join("")).join("")) === bare(text);
 }
 /** Focus may move to these while a text is being edited: formatting it must not apply and close the draft. */
 const KEEPS_EDITOR = ".property-bar, .properties-panel, .rail-right";
@@ -720,7 +727,10 @@ function ParagraphEditor({ paragraph, lines, caret, colors, onCommit, onError }:
   const [width, setWidth] = useState(paragraph.rect.width), [saving, setSaving] = useState(false);
   const resized = useRef(false), drag = useRef<{x:number;width:number;scale:number}|null>(null);
   const fallback = paragraph.family ? `"${paragraph.family}", Helvetica, Arial, sans-serif` : "Helvetica, Arial, sans-serif";
-  const usable = lines.length > 0, size = usable ? lines[0]!.runs[0]!.size : paragraph.size;
+  // The draft takes the paragraph's weight and slant: when the page's font is one the browser cannot load
+  // (the standard PDF fonts are never embedded) the fallback must be as wide as what the engine will write.
+  // Synthetic bold is off in the editor's style, so a page font that is already bold is not thickened twice.
+  const usable = lines.length > 0 && sameWords(lines, paragraph.text), size = usable ? lines[0]!.runs[0]!.size : paragraph.size;
   const pitch = usable && lines.length > 1 ? (lines.at(-1)!.baseline - lines[0]!.baseline) / (lines.length - 1) : size * 1.25;
   const top = usable ? lines[0]!.baseline - (pitch - size) / 2 - size * 0.8 : paragraph.rect.y;
   useLayoutEffect(() => {
@@ -771,7 +781,7 @@ function ParagraphEditor({ paragraph, lines, caret, colors, onCommit, onError }:
   };
   commitRef.current = () => commit(false);
   return <div ref={box} className="source-editor" data-saving={saving || undefined}
-    style={{left:paragraph.rect.x-2,top,width:width+4,minHeight:pitch*Math.max(1,usable?lines.length:paragraph.text.split("\n").length),fontSize:size,lineHeight:`${pitch}px`,fontFamily:fallback,fontWeight:!usable&&paragraph.bold?700:400,fontStyle:!usable&&paragraph.italic?"italic":"normal",background:colors.background,color:colors.color}}
+    style={{left:paragraph.rect.x-2,top,width:resized.current?width+4:"max-content",minWidth:resized.current?undefined:width+4,minHeight:pitch*Math.max(1,usable?lines.length:paragraph.text.split("\n").length),fontSize:size,lineHeight:`${pitch}px`,fontFamily:fallback,fontWeight:paragraph.bold?700:400,fontStyle:paragraph.italic?"italic":"normal",background:colors.background,color:colors.color}}
     onPointerDown={e=>e.stopPropagation()} onDoubleClick={e=>e.stopPropagation()}>
     <div ref={content} className="source-editor-content" contentEditable={!saving} suppressContentEditableWarning spellCheck={false}
       onPaste={e=>{e.preventDefault();document.execCommand("insertText",false,e.clipboardData.getData("text/plain"));}}
@@ -782,7 +792,7 @@ function ParagraphEditor({ paragraph, lines, caret, colors, onCommit, onError }:
     <span className="source-width-handle" role="slider" aria-label={translateUi("Largura da caixa de texto")} aria-valuenow={Math.round(width)} tabIndex={0}
       title={translateUi("Arraste para ajustar a largura da caixa de texto")}
       onKeyDown={e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();e.stopPropagation();resized.current=true;setWidth(w=>Math.max(20,w+(e.key==='ArrowRight'?5:-5)));}}}
-      onPointerDown={e=>{e.preventDefault();e.stopPropagation();if(saving)return;const node=box.current!;drag.current={x:e.clientX,width,scale:node.getBoundingClientRect().width/node.offsetWidth||1};e.currentTarget.setPointerCapture(e.pointerId);}}
+      onPointerDown={e=>{e.preventDefault();e.stopPropagation();if(saving)return;const node=box.current!;/* The box may have grown with the typing: the drag starts from the width it shows. */const shown=Math.max(width,node.offsetWidth-4);drag.current={x:e.clientX,width:shown,scale:node.getBoundingClientRect().width/node.offsetWidth||1};e.currentTarget.setPointerCapture(e.pointerId);}}
       onPointerMove={e=>{if(!drag.current)return;resized.current=true;setWidth(Math.max(20,drag.current.width+(e.clientX-drag.current.x)/drag.current.scale));}}
       onPointerUp={e=>{if(!drag.current)return;drag.current=null;e.currentTarget.releasePointerCapture(e.pointerId);content.current?.focus();}} />
     {saving && <span className="source-editor-hint" contentEditable={false}>{translateUi("Aplicando…")}</span>}
@@ -820,10 +830,10 @@ function BlockEditor({paragraph,pageText,spacing,caret,sample,onCommit,onError}:
     onPointerDown={e=>e.stopPropagation()} onKeyDown={e=>{e.stopPropagation();if(e.key==='Escape'){e.preventDefault();done.current=true;void onCommit(members.map(p=>({paragraph:p.index})));}else if(e.key==='Enter'&&e.ctrlKey){e.preventDefault();void apply();}}}
     onBlur={e=>{const to=e.relatedTarget as HTMLElement|null,pointer=lastPointer.current;if(box.current?.contains(to)||to?.closest(KEEPS_EDITOR)||(pointer&&Date.now()-pointer.at<200&&pointer.target.closest(KEEPS_EDITOR)))return;void apply();}}>
     {members.map(p=>{
-      const lines=paragraphLines(pageText,p.rect,spacing),colors=sample(p.rect),fallback=p.family?`"${p.family}",Arial,sans-serif`:'Arial,sans-serif';
+      const printed=paragraphLines(pageText,p.rect,spacing),lines=sameWords(printed,p.text)?printed:[],colors={...sample(p.rect),...(p.ink?{color:p.ink}:{})},fallback=p.family?`"${p.family}",Arial,sans-serif`:'Arial,sans-serif';
       const pitch=lines.length>1?(lines.at(-1)!.baseline-lines[0]!.baseline)/(lines.length-1):p.size*1.25;
       return <div key={p.index} data-member={p.index} ref={node=>{if(node)nodes.current.set(p.index,node);else nodes.current.delete(p.index);}} className="source-editor-content source-block-member" contentEditable={!saving} suppressContentEditableWarning spellCheck={false}
-        style={{position:'absolute',left:p.rect.x-paragraph.rect.x+2,top:lines.length?lines[0]!.baseline-p.size*.8-(pitch-p.size)/2-paragraph.rect.y+2:p.rect.y-paragraph.rect.y+2,minWidth:p.rect.width,minHeight:p.rect.height,fontFamily:fallback,fontSize:p.size,lineHeight:`${pitch}px`,background:colors.background,color:colors.color}}
+        style={{position:'absolute',left:p.rect.x-paragraph.rect.x+2,top:lines.length?lines[0]!.baseline-p.size*.8-(pitch-p.size)/2-paragraph.rect.y+2:p.rect.y-paragraph.rect.y+2,minWidth:p.rect.width,minHeight:p.rect.height,fontFamily:fallback,fontWeight:p.bold?700:400,fontStyle:p.italic?'italic':'normal',fontSize:p.size,lineHeight:`${pitch}px`,background:colors.background,color:colors.color}}
         onPaste={e=>{e.preventDefault();document.execCommand('insertText',false,e.clipboardData.getData('text/plain'));}}>
         {lines.length?lines.map((line,i)=><div key={i} style={{marginLeft:line.x-p.rect.x,minHeight:pitch,...scaleStyle(p)}}>{line.runs.map((r,j)=><span key={j} style={{fontFamily:`"${r.font}",${fallback}`,fontSize:r.size,...(r.tracking?{letterSpacing:r.tracking}:{})}}>{r.text}</span>)}</div>):p.text.split('\n').map((line,i)=><div key={i} style={{...scaleStyle(p),...(p.tracking?{letterSpacing:p.tracking}:{})}}>{line||<br/>}</div>)}
       </div>;

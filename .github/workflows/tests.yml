@@ -1,0 +1,32 @@
+name: Testes em Windows, Linux e macOS
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # O motor nativo do sistema: sem ele os testes de edição, marcadores e assinatura seriam pulados.
+      - run: npm run prepare:native
+      - run: npm run typecheck
+      # Inclui as conversões para Word, Excel e PowerPoint, que assim rodam nos três sistemas.
+      - run: npm test

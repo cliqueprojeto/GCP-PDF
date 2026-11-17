@@ -66,7 +66,7 @@ export function letterSpacing(glyphs:PageGlyphs,at:number,count:number,str:strin
  * coordinate space the editor's paragraphs use. */
 export async function trackedItems(page:PDFPageProxy) {
  const engine=await pdfjs(),viewport=page.getViewport({scale:1,rotation:0}),glyphs=await pageGlyphs(page),content=await page.getTextContent();
- const items:{x:number;baseline:number;width:number;size:number;tracking:number;scale:number;text:string}[]=[];
+ const items:{x:number;baseline:number;width:number;size:number;tracking:number;scale:number;text:string;bold:boolean;italic:boolean;color:string}[]=[];
  let cursor=0;
  for(const item of content.items) {
   if(!('str' in item)||!item.str.trim())continue;
@@ -75,7 +75,11 @@ export async function trackedItems(page:PDFPageProxy) {
   if(at<0)continue;
   cursor=at+visible.length;
   const spaced=letterSpacing(glyphs,at,visible.length,item.str,item.width,size,scale);
-  items.push({x:t[4],baseline:t[5],width:item.width,size,tracking:spaced?.tracking??0,scale,text:spaced?.text??item.str});
+  // The font program says whether it is bold or italic even when its name (a subset tag, "F1") does not.
+  let face:{name?:string;bold?:boolean;black?:boolean;italic?:boolean}|undefined;
+  try{face=page.commonObjs.get(item.fontName) as typeof face;}catch{}
+  const name=face?.name??'';
+  items.push({x:t[4],baseline:t[5],width:item.width,size,tracking:spaced?.tracking??0,scale,text:spaced?.text??item.str,bold:!!(face?.bold||face?.black)||/bold|black|heavy|semibold|demi/i.test(name),italic:!!face?.italic||/italic|oblique/i.test(name),color:glyphs.colors[at]??'#000000'});
  }
  return items;
 }

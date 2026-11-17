@@ -1,12 +1,11 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { PDFDocument, PDFName, PDFRawStream, PDFDict, PDFArray, PDFRef, ParseSpeeds, decodePDFRawStream, type PDFContext } from 'pdf-lib';
-import { Document, Packer, Paragraph, TextRun, ImageRun, AlignmentType, FrameAnchorType, FrameWrap, HeightRule, HorizontalPositionRelativeFrom, VerticalPositionRelativeFrom, TextWrappingType, SectionType, LineRuleType, Table, TableRow, TableCell, WidthType, TableLayoutType, TableAnchorType, OverlapType, VerticalAlign, BorderStyle, ShadingType, PageNumber, type ISectionOptions } from 'docx';
+import { Document, Packer, Paragraph, TextRun, ImageRun, ExternalHyperlink, UnderlineType, type ParagraphChild, AlignmentType, FrameAnchorType, FrameWrap, HeightRule, HorizontalPositionRelativeFrom, VerticalPositionRelativeFrom, TextWrappingType, SectionType, LineRuleType, Table, TableRow, TableCell, WidthType, TableLayoutType, TableAnchorType, OverlapType, VerticalAlign, BorderStyle, ShadingType, PageNumber, type ISectionOptions } from 'docx';
 import { pageGrid, tableOf, insideTable, type GridTable, type GridEdge } from './tables';
 import { shapeRun, shapeMarker, injectShapes } from './docx-shapes';
 import type { PDFPageProxy } from 'pdfjs-dist/types/src/display/api';
 import { inspectPage, loadPdf, pdfjs } from './conversion';
-import { faceFor, faceForPostscript, fontFamilies } from './fonts';
-import { readFile } from 'node:fs/promises';
+import { faceBytes, faceFor, faceForPostscript, fontFamilies } from './fonts';
 import { letterSpacing, locateGlyphs, pageGlyphs } from './text-spacing';
 import { embeddedFaces, type EmbeddedFace } from './embedded-fonts';
 import { bodyStyle, flowPage, flowSection, type FlowPage } from './docx-flow';
@@ -16,7 +15,7 @@ import { bodyStyle, flowPage, flowSection, type FlowPage } from './docx-flow';
  * text and placed behind the page, and every text block is rebuilt on top as real, editable Word
  * text with its own font, size, weight, colour and alignment. */
 
-export interface Run { text: string; x: number; baseline: number; width: number; size: number; font: string; bold: boolean; italic: boolean; color: string; space: boolean; /** Letter spacing in points. */ tracking?: number; /** Horizontal text scale (1 = none). */ scale?: number }
+export interface Run { text: string; x: number; baseline: number; width: number; size: number; font: string; bold: boolean; italic: boolean; color: string; space: boolean; /** Letter spacing in points. */ tracking?: number; /** Horizontal text scale (1 = none). */ scale?: number; /** Raised or lowered small text; `size` is then the size of the text it belongs to. */ script?: 'super' | 'sub'; /** Web or e-mail address the text links to. */ link?: string; underline?: boolean; strike?: boolean }
 export interface Line { runs: Run[]; x: number; right: number; baseline: number; size: number }
 export interface Block { lines: Line[]; x: number; right: number; size: number; align: 'left' | 'center' | 'right' | 'justify'; flow: boolean }
 
@@ -219,6 +218,10 @@ const METRIC_TWINS: Record<string, string[]> = {
   'times new roman': ['Liberation Serif', 'Tinos', 'Times'], times: ['Times New Roman', 'Liberation Serif', 'Tinos'], 'courier new': ['Liberation Mono', 'Cousine', 'Courier'], courier: ['Courier New', 'Liberation Mono'],
   carlito: ['Calibri'], caladea: ['Cambria'], 'liberation sans': ['Arial'], 'liberation serif': ['Times New Roman'], 'liberation mono': ['Courier New'],
 };
+/** Fonts every copy of Microsoft Office has, and that LibreOffice replaces by itself with a font of the same
+ * widths. Their names stay in the document whatever this computer has installed, so the same PDF gives the
+ * same Word and PowerPoint file on Windows, Linux and macOS. */
+const OFFICE_FONTS = new Set(['arial', 'arial narrow', 'arial black', 'calibri', 'calibri light', 'cambria', 'candara', 'comic sans ms', 'consolas', 'constantia', 'corbel', 'courier new', 'georgia', 'segoe ui', 'symbol', 'tahoma', 'times new roman', 'trebuchet ms', 'verdana', 'wingdings']);
 /** How the fonts of one conversion resolve: the PDF's own font programs, what this computer has, and the
  * faces the output document embeds so it opens with the original fonts on any system. */
 export class FontContext {
@@ -235,7 +238,7 @@ export class FontContext {
    * widths is preferred, then a close family, so lines do not overflow. */
   async family(family: string, generic: string | undefined, face?: EmbeddedFace) {
     const installed = new Set((await fontFamilies().catch(() => [] as string[])).map((f) => f.toLowerCase()));
-    if (!installed.size || installed.has(family.toLowerCase())) return family;
+    if (!installed.size || installed.has(family.toLowerCase()) || OFFICE_FONTS.has(family.toLowerCase())) return family;
     if (this.canEmbed && face?.data && face.complete && face.editable) {
       const slot = face.bold ? (face.italic ? 'boldItalic' : 'bold') : face.italic ? 'italic' : 'regular', entry = this.embedded.get(family) ?? {};
       entry[slot] ??= face.data; this.embedded.set(family, entry);
@@ -256,13 +259,62 @@ async function fitTracking(family: string, bold: boolean, italic: boolean, text:
   const key = `${family}|${bold}|${italic}`;
   let font = metrics.get(key);
   if (!font) {
-    font = faceFor(family, bold, italic).then(async (face) => (face ? (await import('@pdf-lib/fontkit')).default.create(await readFile(face.file)) as never : null)).catch(() => null);
+    font = faceFor(family, bold, italic).then(async (face) => (face ? (await import('@pdf-lib/fontkit')).default.create(Buffer.from(await faceBytes(face))) as never : null)).catch(() => null);
     metrics.set(key, font);
   }
   const loaded = await font, gaps = [...text].length - 1;
   if (!loaded || gaps < 1 || !(width > 0)) return undefined;
   const natural = (loaded.layout(text).advanceWidth / loaded.unitsPerEm) * size, tracking = (width - natural) / gaps;
   return Math.abs(tracking) < size * 0.004 || Math.abs(tracking) > size * 0.25 ? undefined : tracking;
+}
+/** Text printed at an angle (a vertical table heading, a side stamp, a diagonal watermark): where its
+ * baseline starts, the direction it runs in (degrees clockwise on the page) and its look. */
+export interface TurnedText { text: string; x: number; y: number; angle: number; width: number; size: number; font: string; bold: boolean; italic: boolean; color: string }
+export async function turnedText(page: PDFPageProxy): Promise<TurnedText[]> {
+  const engine = await pdfjs(), viewport = page.getViewport({ scale: 1 });
+  const palette = await pageGlyphs(page), content = await page.getTextContent(), out: TurnedText[] = [];
+  let cursor = 0;
+  for (const item of content.items) {
+    if (!('str' in item) || !item.str.trim()) continue;
+    const t = engine.Util.transform(viewport.transform, item.transform), size = Math.hypot(t[2], t[3]);
+    const visible = [...item.str].filter((c) => c.trim()), at = locateGlyphs(palette, visible.slice(0, 8), cursor);
+    if (at >= 0) cursor = at + visible.length;
+    if (!Number.isFinite(size) || size < 1 || Math.abs(t[1]) <= 0.01 * size) continue;
+    let raw = '';
+    try { raw = (page.commonObjs.get(item.fontName) as { name?: string })?.name ?? ''; } catch {}
+    const style = wordFont(raw || content.styles[item.fontName]?.fontFamily || 'Arial');
+    out.push({ text: item.str, x: t[4], y: t[5], angle: Math.atan2(t[1], t[0]) * 180 / Math.PI, width: Math.max(item.width, 1), size, font: style.family, bold: style.bold, italic: style.italic, color: at >= 0 ? palette.colors[at]! : '#000000' });
+  }
+  return out;
+}
+/** Area on the page that a piece of turned text covers. */
+export function turnedBox(t: TurnedText): Box {
+  const a = t.angle * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a);
+  const corners = [[0, t.size * 0.3], [t.width, t.size * 0.3], [0, -t.size], [t.width, -t.size]].map(([along, up]) => ({ x: t.x + cos * along! - sin * up!, y: t.y + sin * along! + cos * up! }));
+  const x = Math.min(...corners.map((c) => c.x)), y = Math.min(...corners.map((c) => c.y));
+  return { x, y, width: Math.max(...corners.map((c) => c.x)) - x, height: Math.max(...corners.map((c) => c.y)) - y };
+}
+/** Draws turned text on a canvas scaled `k` pixels per point, with (`ox`, `oy`) the page point at its origin. */
+export function drawTurned(context: { save(): void; restore(): void; translate(x: number, y: number): void; rotate(a: number): void; fillText(text: string, x: number, y: number, maxWidth?: number): void; font: string; fillStyle: unknown; textBaseline: unknown }, items: TurnedText[], k: number, ox = 0, oy = 0) {
+  for (const t of items) {
+    context.save();
+    context.translate((t.x - ox) * k, (t.y - oy) * k); context.rotate(t.angle * Math.PI / 180);
+    context.font = `${t.italic ? 'italic ' : ''}${t.bold ? 'bold ' : ''}${t.size * k}px "${t.font}", Arial, sans-serif`;
+    context.fillStyle = t.color; context.textBaseline = 'alphabetic';
+    // The printed width is kept, whatever font this computer draws it with.
+    context.fillText(t.text, 0, 0, t.width * k);
+    context.restore();
+  }
+}
+/** A transparent picture of turned text, for formats whose text cannot be rotated in place. */
+export function turnedImage(items: TurnedText[], dpi = 200): { bytes: Buffer; x: number; y: number; width: number; height: number } | null {
+  if (!items.length) return null;
+  const boxes = items.map(turnedBox), x = Math.min(...boxes.map((b) => b.x)) - 1, y = Math.min(...boxes.map((b) => b.y)) - 1;
+  const width = Math.max(...boxes.map((b) => b.x + b.width)) + 1 - x, height = Math.max(...boxes.map((b) => b.y + b.height)) + 1 - y, k = dpi / 72;
+  if (width * height * k * k > 40_000_000) return null;
+  const canvas = createCanvas(Math.max(1, Math.ceil(width * k)), Math.max(1, Math.ceil(height * k)));
+  drawTurned(canvas.getContext('2d') as never, items, k, x, y);
+  return { bytes: canvas.toBuffer('image/png'), x, y, width, height };
 }
 export async function pageRuns(page: PDFPageProxy, fonts: FontContext = new FontContext()): Promise<Run[]> {
   const engine = await pdfjs(), viewport = page.getViewport({ scale: 1 });
@@ -300,7 +352,64 @@ export async function pageRuns(page: PDFPageProxy, fonts: FontContext = new Font
     runs.push({ text: spaced?.text ?? item.str, x: t[4], baseline: t[5], width: Math.max(item.width, 0.5), size, font: style.family, bold: style.bold, italic: style.italic, color, space: pendingSpace, ...(spaced ? { tracking: spaced.tracking } : fitted ? { tracking: fitted } : {}), ...(Math.abs(scale - 1) > 0.02 ? { scale } : {}) });
     pendingSpace = false;
   }
-  return runs;
+  return markScripts(await linkRuns(page, runs));
+}
+/** Relative width of a character in a proportional font, to place a cut inside a run without its font. */
+const charWeight = (c: string) => (/[iljtfrI.,;:!|'’ ]/.test(c) ? 0.5 : /[mwMW@—]/.test(c) ? 1.5 : /[A-Z0-9]/.test(c) ? 1.15 : 1);
+/** Cuts a run at the given x positions, at the nearest character; the pieces keep the run's exact span. */
+export function splitRun(run: Run, cuts: number[]): Run[] {
+  const chars = [...run.text], total = chars.reduce((n, c) => n + charWeight(c), 0) || 1, edges: number[] = [];
+  for (const cut of [...cuts].sort((a, b) => a - b)) {
+    if (cut <= run.x + run.size * 0.2 || cut >= run.x + run.width - run.size * 0.2) continue;
+    let sum = 0, at = 0;
+    const target = (cut - run.x) / run.width * total;
+    while (at < chars.length && sum + charWeight(chars[at]!) / 2 < target) sum += charWeight(chars[at++]!);
+    if (at > (edges.at(-1) ?? 0) && at < chars.length) edges.push(at);
+  }
+  if (!edges.length) return [run];
+  const out: Run[] = [];
+  let start = 0, x = run.x;
+  for (const end of [...edges, chars.length]) {
+    const piece = chars.slice(start, end), width = run.width * piece.reduce((n, c) => n + charWeight(c), 0) / total;
+    out.push({ ...run, text: piece.join(''), x, width, space: start === 0 && run.space });
+    x += width; start = end;
+  }
+  return out;
+}
+/** Gives the text under a link annotation its web or e-mail address; a run only partly covered is cut there. */
+async function linkRuns(page: PDFPageProxy, runs: Run[]): Promise<Run[]> {
+  const viewport = page.getViewport({ scale: 1 }), annotations = await page.getAnnotations().catch(() => [] as any[]);
+  const links = annotations.flatMap((a: any) => {
+    if (a?.subtype !== 'Link' || typeof a.url !== 'string' || !/^(https?:|mailto:)/i.test(a.url) || !Array.isArray(a.rect)) return [];
+    const [x1, y1] = viewport.convertToViewportPoint(a.rect[0], a.rect[1]), [x2, y2] = viewport.convertToViewportPoint(a.rect[2], a.rect[3]);
+    return [{ url: a.url as string, x: Math.min(x1!, x2!), right: Math.max(x1!, x2!), y: Math.min(y1!, y2!), bottom: Math.max(y1!, y2!) }];
+  });
+  if (!links.length) return runs;
+  return runs.flatMap((run) => {
+    const middle = run.baseline - run.size * 0.3, over = links.filter((l) => middle >= l.y && middle <= l.bottom && l.x < run.x + run.width && l.right > run.x);
+    if (!over.length) return [run];
+    return splitRun(run, over.flatMap((l) => [l.x, l.right])).map((piece) => {
+      const centre = piece.x + piece.width / 2, link = over.find((l) => centre >= l.x && centre <= l.right);
+      return link ? { ...piece, link: link.url } : piece;
+    });
+  });
+}
+/** Superscripts and subscripts are printed as smaller text off the baseline of the word they follow.
+ * They rejoin that line as raised or lowered text instead of becoming lines of their own. */
+export function markScripts(runs: Run[]): Run[] {
+  const out = runs.map((r) => ({ ...r }));
+  for (const [i, run] of runs.entries()) {
+    const base = runs.find((b) => {
+      if (b === run || b.size < run.size * 1.2) return false;
+      const gap = Math.max(run.x - (b.x + b.width), b.x - (run.x + run.width));
+      if (gap < -b.size * 0.15 || gap > b.size * 0.6) return false;
+      const raised = b.baseline - run.baseline;
+      return (raised > b.size * 0.18 && raised < b.size * 0.75) || (raised < -b.size * 0.05 && raised > -b.size * 0.45);
+    });
+    if (!base) continue;
+    out[i] = { ...run, script: base.baseline > run.baseline ? 'super' : 'sub', baseline: base.baseline, size: base.size, color: run.color };
+  }
+  return out;
 }
 export function buildLines(runs: Run[]): Line[] {
   const rows: Run[][] = [];
@@ -317,8 +426,10 @@ export function buildLines(runs: Run[]): Line[] {
     for (const run of row) {
       const last = current.at(-1), gap = last ? run.x - (last.x + last.width) : 0;
       // A wide gap, or a clear gap where colour/size changes (badge then title, table cells), starts a new segment.
-      const styleChange = last && (last.color !== run.color || Math.abs(last.size - run.size) > last.size * 0.15);
-      if (last && (gap > Math.max(10, last.size * 1.6) || (styleChange && gap > last.size * 0.45))) flush();
+      // A coloured word inside justified prose (a link, a highlight) sits a stretched word gap from its
+      // neighbours; only a size change, or a colour change across a wider gap, separates two pieces.
+      const resized = last && Math.abs(last.size - run.size) > last.size * 0.15, recoloured = last && last.color !== run.color;
+      if (last && (gap > Math.max(10, last.size * 1.6) || (resized && gap > last.size * 0.45) || (recoloured && gap > last.size * 0.9))) flush();
       current.push(run);
     }
     flush();
@@ -375,17 +486,22 @@ export function spacesIn(gap: number, unit: number) { return gap > unit * 2.4 ? 
 export function runSpacing(run: Run): { characterSpacing?: number; scale?: number } {
   return { ...(run.tracking ? { characterSpacing: Math.round(run.tracking * 20) } : {}), ...(run.scale ? { scale: Math.round(run.scale * 100) } : {}) };
 }
+/** Raised/lowered text, underline and strikethrough of a run, as Word stores them. */
+export function runMarks(run: { script?: 'super' | 'sub'; underline?: boolean; strike?: boolean; link?: string }) {
+  return { ...(run.script === 'super' ? { superScript: true } : run.script === 'sub' ? { subScript: true } : {}), ...(run.underline || run.link ? { underline: { type: UnderlineType.SINGLE } } : {}), ...(run.strike ? { strike: true } : {}) };
+}
 /** Word runs for one line. In a header or footer, `fields` turns the page number (and the page count) the
  * PDF printed into Word's own page fields, so they count right after editing. */
-export function lineRuns(line: Line, leadingSpace: boolean, fields?: { page: string; total?: string }): TextRun[] {
+export function lineRuns(line: Line, leadingSpace: boolean, fields?: { page: string; total?: string }): ParagraphChild[] {
   const gaps = line.runs.slice(1).map((run, i) => run.x - (line.runs[i]!.x + line.runs[i]!.width)).filter((g) => g > 0.5);
   // With few gaps the narrowest may itself hold several spaces; a typical space (about a quarter em) is the unit then.
   const size = line.size, unit = Math.min(size * 0.4, Math.max(size * 0.2, gaps.length >= 4 ? Math.min(...gaps) : size * 0.25));
-  return line.runs.flatMap((run, index) => {
+  return line.runs.flatMap((run, index): ParagraphChild[] => {
     const previous = line.runs[index - 1], gap = previous ? run.x - (previous.x + previous.width) : 0;
     const space = (index === 0 && leadingSpace) || (index > 0 && run.space) || (gap > Math.max(0.8, run.size * 0.15) && !/^\s/.test(run.text) && !/\s$/.test(previous?.text ?? ''));
-    const style = { font: { ascii: run.font, hAnsi: run.font, cs: run.font, eastAsia: run.font }, size: Math.max(2, Math.round(run.size * 2)), bold: run.bold, italics: run.italic, color: run.color.replace('#', '').toUpperCase(), ...runSpacing(run) };
+    const style = { font: { ascii: run.font, hAnsi: run.font, cs: run.font, eastAsia: run.font }, size: Math.max(2, Math.round(run.size * 2)), bold: run.bold, italics: run.italic, color: run.color.replace('#', '').toUpperCase(), ...runSpacing(run), ...runMarks(run) };
     const text = (space ? ' '.repeat(index > 0 ? spacesIn(gap, unit) : 1) : '') + run.text;
+    if (run.link) return [new ExternalHyperlink({ link: run.link, children: [new TextRun({ text, ...style })] })];
     if (!fields) return [new TextRun({ text, ...style })];
     return text.split(/(\d+)/).filter(Boolean).map((piece) => piece === fields.page ? new TextRun({ children: [PageNumber.CURRENT], ...style }) : piece === fields.total ? new TextRun({ children: [PageNumber.TOTAL_PAGES], ...style }) : new TextRun({ text: piece, ...style }));
   });
@@ -398,7 +514,7 @@ function blockParagraph(block: Block, pageWidth: number): Paragraph {
   const slack = block.align === 'justify' ? 0.6 : block.flow ? block.size * 0.4 : block.lines.length === 1 ? block.size * 3 + (block.right - block.x) * 0.3 : block.size * 1.2 + (block.right - block.x) * 0.04;
   const width = Math.min(pageWidth - block.x, block.right - block.x + slack);
   const x = block.align === 'center' ? Math.max(0, (block.x + block.right) / 2 - width / 2) : block.x;
-  const children: TextRun[] = [];
+  const children: ParagraphChild[] = [];
   block.lines.forEach((line, index) => {
     if (index > 0 && !block.flow) children.push(new TextRun({ break: 1 }));
     children.push(...lineRuns(line, index > 0 && block.flow));
@@ -413,7 +529,7 @@ function blockParagraph(block: Block, pageWidth: number): Paragraph {
 /** Renders the artwork-only page; returns null when it is blank white. On a scanned page the words are
  * part of the picture: `erase` covers each recognized word with the paper colour around it, so only the
  * editable text shows. */
-async function artwork(page: PDFPageProxy, dpi: number, erase: Run[] = [], omit:ReadonlySet<number>=new Set(),transparent=false): Promise<Buffer | null> {
+async function artwork(page: PDFPageProxy, dpi: number, erase: Run[] = [], omit:ReadonlySet<number>=new Set(),transparent=false, turned: TurnedText[] = []): Promise<Buffer | null> {
   const viewport = page.getViewport({ scale: dpi / 72 }), canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height)), context = canvas.getContext('2d');
   await page.render({ canvas: canvas as never, canvasContext: context as never, viewport, background: transparent?'rgba(0,0,0,0)':'white',operationsFilter:index=>!omit.has(index) }).promise;
   const k = dpi / 72;
@@ -430,6 +546,8 @@ async function artwork(page: PDFPageProxy, dpi: number, erase: Run[] = [], omit:
     context.fillStyle = `rgb(${paper[0]},${paper[1]},${paper[2]})`;
     context.fillRect(x, y, w, h);
   }
+  // Text at an angle was hidden with the rest; a positioned Word frame cannot turn text, so it is drawn back.
+  drawTurned(context as never, turned, k);
   const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
   let ink = false;
   for (let i = 0; i < data.length && !ink; i += 4) if (transparent?data[i+3]!>0:data[i]! < 248 || data[i + 1]! < 248 || data[i + 2]! < 248) ink = true;
@@ -480,12 +598,14 @@ export async function toDocxLayout(bytes: Uint8Array, dpi: number, warnings: str
       }
       closeFlow(); laidOut++;
       const artPage = await art.getPage(i);
+      const turned = scanned ? [] : await turnedText(page).catch(() => []);
+      if (turned.length) warnings.push('Textos girados ou verticais foram mantidos na imagem de fundo da página, na posição original; no Word com layout preservado eles não são editáveis.');
       // Mixed pages keep the complex middle (gradients, masks) as a transparent bitmap; vectors drawn before
       // and after it become shapes and are left out of that bitmap.
       const partial = !editable.has(i - 1) && !scanned ? await vectorShapes(artPage) : undefined;
       const promoted = partial && partial.reason !== 'formas demais' ? partial.shapes.filter((v) => v.operation !== undefined && (v.operation < (partial.firstRaster ?? Infinity) || v.operation > (partial.lastRaster ?? -1))) : [];
       const omit = new Set(promoted.map((v) => v.operation!));
-      const [allRuns, background, images, grid] = await Promise.all([scanned ?? pageRuns(page, fonts), artwork(artPage, dpi, scanned, omit, !!partial), scanned ? { images: [] } : inspectPage(page, true), scanned ? null : pageGrid(page, fonts).catch(() => null)]);
+      const [allRuns, background, images, grid] = await Promise.all([scanned ?? pageRuns(page, fonts), artwork(artPage, dpi, scanned, omit, !!partial, turned), scanned ? { images: [] } : inspectPage(page, true), scanned ? null : pageGrid(page, fonts).catch(() => null)]);
       // A real table (cells separated by rules or fills, side by side) becomes a Word table at its place,
       // rows at their exact heights; its text and cell graphics are not repeated. Forms whose sections are
       // only separated by horizontal rules stay as positioned text over editable shapes.
@@ -536,6 +656,11 @@ export async function toDocxLayout(bytes: Uint8Array, dpi: number, warnings: str
 
 
 export const hex6 = (c: string) => c.replace('#', '').toUpperCase();
+/** Raised/lowered text, strikethrough and link of a run, as PowerPoint text options. Underlines stay the
+ * drawn lines they are on a slide, so they are not repeated here. */
+function slideMarks(run: { script?: 'super' | 'sub'; strike?: boolean; link?: string }) {
+  return { ...(run.script === 'super' ? { superscript: true } : run.script === 'sub' ? { subscript: true } : {}), ...(run.strike ? { strike: 'sngStrike' as const } : {}), ...(run.link ? { hyperlink: { url: run.link } } : {}) };
+}
 /** A grid table as a native PowerPoint table: merged cells, fills, white rules, rich text. */
 function addSlideTable(slide: any, t: GridTable, sx: number, sy: number) {
   const inch = (pt: number) => pt / 72, rows: any[][] = t.rowH.map(() => []);
@@ -548,7 +673,7 @@ function addSlideTable(slide: any, t: GridTable, sx: number, sy: number) {
       border: [edge(cell.borders?.top), edge(cell.borders?.right), edge(cell.borders?.bottom), edge(cell.borders?.left)],
       align: text?.align ?? 'left', valign: text?.valign ?? 'top', fontFace: text?.font, fontSize: text ? Math.max(1, text.size * sy) : 10, color: text ? hex6(text.color) : undefined,
     };
-    const content = text ? text.parts.flatMap((part) => part.text.split('\n').map((piece, k, all) => ({ text: piece, options: { bold: part.bold, italic: part.italic, color: hex6(part.color), fontSize: Math.max(1, part.size * sy), fontFace: part.font || text.font, breakLine: k < all.length - 1 } }))) : '';
+    const content = text ? text.parts.flatMap((part) => part.text.split('\n').map((piece, k, all) => ({ text: piece, options: { bold: part.bold, italic: part.italic, color: hex6(part.color), fontSize: Math.max(1, part.size * sy), fontFace: part.font || text.font, ...slideMarks(part), breakLine: k < all.length - 1 } }))) : '';
     rows[cell.row]!.push({ text: content, options });
   }
   slide.addTable(rows, { x: inch(t.x * sx), y: inch(t.y * sy), w: inch(t.width * sx), colW: t.colW.map((w) => inch(w * sx)), rowH: t.rowH.map((h) => inch(h * sy)), autoPage: false });
@@ -573,7 +698,7 @@ export function wordTable(t: GridTable, inline?: { indent: number; padding: numb
     children: t.cells.filter((c) => c.row === r).sort((a, b) => a.col - b.col).map((cell) => {
       const text = cell.text, align = text?.align === 'center' ? AlignmentType.CENTER : text?.align === 'right' ? AlignmentType.RIGHT : text?.align === 'justify' ? AlignmentType.JUSTIFIED : AlignmentType.LEFT;
       const paragraphs: Paragraph[] = [];
-      let current: TextRun[] = [];
+      let current: ParagraphChild[] = [];
       // In a flowing table the space above the text is the first paragraph's, as word processors write it:
       // Word adds a top cell margin to the row height it was given.
       // A floating (laid-out) table puts the text where the PDF shows it: the measured top inset, and lines at
@@ -582,7 +707,7 @@ export function wordTable(t: GridTable, inline?: { indent: number; padding: numb
       const pitch = !inline && text ? { line: Math.max(40, Math.round(text.size * 1.2 * 20)), lineRule: LineRuleType.EXACT } : {};
       for (const part of text?.parts ?? []) part.text.split('\n').forEach((piece, k) => {
         if (k > 0) { paragraphs.push(new Paragraph({ alignment: align, spacing: { before: before(), after: 0, ...pitch }, children: current })); current = []; }
-        if (piece) current.push(new TextRun({ text: piece, bold: part.bold, italics: part.italic, color: hex6(part.color), size: Math.max(2, Math.round(part.size * 2)), font: part.font || text!.font }));
+        if (piece) { const run = new TextRun({ text: piece, bold: part.bold, italics: part.italic, color: hex6(part.color), size: Math.max(2, Math.round(part.size * 2)), font: part.font || text!.font, ...runMarks(part) }); current.push(part.link ? new ExternalHyperlink({ link: part.link, children: [run] }) : run); }
       });
       paragraphs.push(new Paragraph({ alignment: align, spacing: { before: before(), after: 0, ...pitch }, children: current }));
       return new TableCell({
@@ -692,12 +817,21 @@ export async function toPptxLayout(bytes: Uint8Array, dpi: number, warnings: str
       }
       for (const block of buildBlocks(buildLines(runs))) {
         const pitch = block.lines.length > 1 ? (block.lines.at(-1)!.baseline - block.lines[0]!.baseline) / (block.lines.length - 1) : block.size * 1.2;
+        // Underlines and strikethroughs are drawn lines on the slide: text they mark keeps its line breaks,
+        // or rewrapping would leave the lines under other words.
+        if (block.flow && vector.some((v) => v.box.height < 1.5 && v.box.width > 2 && v.box.x >= block.x - 2 && v.box.x + v.box.width <= block.right + 2 && v.box.y > block.lines[0]!.baseline - block.size && v.box.y < block.lines.at(-1)!.baseline + block.size * 0.4)) block.flow = false;
         const top = block.lines[0]!.baseline - block.size * 0.95, width = block.right - block.x + block.size * (block.flow ? 0.6 : 1.4), height = pitch * (block.lines.length - 1) + block.size * 1.35;
         const text = block.lines.flatMap((line, index) => line.runs.map((run, r) => {
           const previous = line.runs[r - 1], gap = previous ? run.x - (previous.x + previous.width) : 0, space = (r > 0 && run.space) || (gap > run.size * 0.15 && !/^\s/.test(run.text)) || (r === 0 && index > 0 && block.flow);
-          return { text: (space ? ' ' : '') + run.text, options: { fontFace: run.font, fontSize: Math.max(1, run.size * sy), color: run.color.replace('#', '').toUpperCase(), bold: run.bold, italic: run.italic, ...(run.tracking ? { charSpacing: run.tracking * sx } : {}), breakLine: !block.flow && r === line.runs.length - 1 && index < block.lines.length - 1 } };
+          return { text: (space ? ' ' : '') + run.text, options: { fontFace: run.font, fontSize: Math.max(1, run.size * sy), color: run.color.replace('#', '').toUpperCase(), bold: run.bold, italic: run.italic, ...(run.tracking ? { charSpacing: run.tracking * sx } : {}), ...slideMarks(run), breakLine: !block.flow && r === line.runs.length - 1 && index < block.lines.length - 1 } };
         }));
         slide.addText(text, { x: inch(Math.max(0, (block.align === 'center' ? (block.x + block.right) / 2 - width / 2 : block.x) * sx)), y: inch(Math.max(0, top * sy)), w: inch(width * sx), h: inch(height * sy), align: block.align, valign: 'top', margin: 0, lineSpacing: Math.max(1, pitch * sy), fit: 'none', wrap: true });
+      }
+      // Text at an angle: an editable text box turned about its centre.
+      for (const t of scanned ? [] : await turnedText(page).catch(() => [])) {
+        const a = t.angle * Math.PI / 180, w = t.width + t.size * 0.6, h = t.size * 1.3;
+        const cx = t.x + Math.cos(a) * t.width / 2 + Math.sin(a) * t.size * 0.35, cy = t.y + Math.sin(a) * t.width / 2 - Math.cos(a) * t.size * 0.35;
+        slide.addText([{ text: t.text, options: { fontFace: await fonts.family(t.font, undefined), fontSize: Math.max(1, t.size * sy), color: hex6(t.color), bold: t.bold, italic: t.italic } }], { x: inch((cx - w / 2) * sx), y: inch((cy - h / 2) * sy), w: inch(w * sx), h: inch(h * sy), rotate: ((Math.round(t.angle) % 360) + 360) % 360, align: 'center', valign: 'middle', margin: 0, fit: 'none', wrap: false });
       }
       page.cleanup(); artPage.cleanup();
     }

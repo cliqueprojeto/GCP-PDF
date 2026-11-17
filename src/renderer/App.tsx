@@ -34,6 +34,7 @@ import { AiUsagePanel } from "./AiUsage";
 import { Markdown } from "./Markdown";
 import { DEFAULT_STYLE, uid, type Style, type Tool } from "./editor";
 import { loadAsset, loadPage, pageGeometry, releaseBases } from "./pdf";
+import { DocumentToolDialog, type DocumentToolKind } from "./DocumentTools";
 import { commitPendingParagraph, pendingParagraphEdit, paragraphSpacing, type PageMenu, type SourceSelection } from "./PageView";
 import { cloneObjects, copyable } from "../shared/object-clipboard";
 import { objectBounds, translateObject } from "../shared/geometry";
@@ -293,6 +294,12 @@ export default function App() {
   const [themeWelcomeDone, setThemeWelcomeDone] = useState(false);
   const [themeWelcomeOpen, setThemeWelcomeOpen] = useState(false);
   useEffect(() => { if (ready && workspace.themeChosen === false) setThemeWelcomeOpen(true); }, [ready, workspace.themeChosen]);
+  const [documentTool, setDocumentTool] = useState<DocumentToolKind | null>(null);
+  /** Removes the selected passage for good: its boxes become redaction marks applied at once. */
+  function redactPassage(menu: PageMenu) {
+    if (!active || !menu.rects?.length) return;
+    void perform(async () => { await window.gcp.applyDocumentTool(active.id, { kind: "redact", areas: [{ page: menu.page, rects: menu.rects! }] }); window.getSelection()?.removeAllRanges(); notify("Trecho ocultado. Use Desfazer para voltar atrás; depois de salvar, a remoção é definitiva."); }, "Ocultando o trecho…");
+  }
   const [pageContext, setPageContext] = useState<PageMenu | null>(null), [lookup, setLookup] = useState<{ text: string; mode: "synonyms" | "translate" } | null>(null);
   // Actions of the right-click menu on selected page text: they act on exactly the selected words.
   function markPassage(menu: PageMenu, kind: MarkupStyle) {
@@ -467,6 +474,8 @@ export default function App() {
     editImage: () => { const id = [...selectedObjects][0]; if (id) openImageEditor(id); },
     deleteObjects: () => deleteObjects(),
     compress: () => active && setModal("compress"),
+    documentTool: (kind) => active && setDocumentTool(kind),
+    importData: () => active && void perform(async () => { if (await window.gcp.importFormData(active.id)) notify("Dados importados para o formulário."); }, "Importando dados…"),
     detectFields: () => active && void perform(async () => { const n = await window.gcp.detectFormFields(active.id); notify(n ? `${n} campo${n > 1 ? "s" : ""} de formulário criado${n > 1 ? "s" : ""}. Use Selecionar para preencher.` : "Nenhum campo em branco foi encontrado."); }, "Reconhecendo formulário…"),
     exportData: (format) => active && void perform(async () => { const path = await window.gcp.exportFormData(active.id, format); if (path) notify("Dados do formulário exportados."); }),
     protect: () => active && setModal("protect"),
@@ -501,6 +510,7 @@ export default function App() {
     split: () => setModal("split"),
     numbering: () => setModal("numbering"),
     compress: () => setModal("compress"),
+    documentTool: (kind) => setDocumentTool(kind),
     close: () => setTab("Início"),
   };
   const none = !active || showHome;
@@ -1143,6 +1153,7 @@ export default function App() {
                 <hr />
                 <button onClick={() => commentPassage(pageContext)}><MessageSquarePlus size={14} />{" "}{translateUi("Adicionar comentário")}</button>
                 <button onClick={() => bookmarkPassage(pageContext)}><BookmarkPlus size={14} />{" "}{translateUi("Adicionar marcador")}</button>
+                <button className="danger" onClick={() => { const menu = pageContext; setPageContext(null); redactPassage(menu); }}><EyeOff size={14} />{" "}{translateUi("Ocultar definitivamente (tarja)")}</button>
               </>}
               <hr />
               <button onClick={() => setLookup({ text: pageContext.text!, mode: "synonyms" })}><BookA size={14} />{" "}{translateUi("Sinônimos…")}</button>
@@ -1185,7 +1196,7 @@ export default function App() {
           </div>
         </div>
       )}
-      {prompts[0] && <PromptDialog prompt={prompts[0]} onAnswer={(index) => { const current = prompts[0]!; setPrompts((list) => list.slice(1)); void window.gcp.answerPrompt(current.id, index); }} />}
+      {prompts[0] && <PromptDialog prompt={prompts[0]} onAnswer={(index, text) => { const current = prompts[0]!; setPrompts((list) => list.slice(1)); void window.gcp.answerPrompt(current.id, index, text); }} />}
       {modal === "new-pdf" && <NewPdfDialog onClose={() => setModal(null)} />}
       {modal === "scan" && <ScanDialog doc={active} index={page} onClose={() => setModal(null)} onError={onError} />}
       {modal === "export" && active && <ExportDialog name={active.name} initialFormat={exportFormat} onClose={() => setModal(null)} onExport={exportDocument} />}
@@ -1205,6 +1216,7 @@ export default function App() {
       {modal === "print" && active && <PrintDialog doc={active} current={page} selected={selectedPages} onClose={() => setModal(null)} onPrint={(input) => { setModal(null); void perform(async () => { await window.gcp.printPages(active.id, input); notify("Enviado para a impressora."); }); }} />}
       {imageEdit && <ImageEditor src={imageEdit.src} onClose={() => setImageEdit(null)} onApply={(dataUrl, aspect) => { const edit = imageEdit; setImageEdit(null); if (!edit.source) { applyImageEdit(edit.id, dataUrl, aspect); return; } const s = edit.source; void perform(async () => { await window.gcp.editSourceImage(active!.id, s.page, { image: s.image, action: "replace", dataUrl }); if (Math.abs(s.rect.width / s.rect.height - aspect) > 0.01) { const fresh = (await window.gcp.getWorkspace()).documents.find((d) => d.id === active!.id); const page = fresh?.pages.find((p) => p.id === s.page) ? s.page : s.page; await window.gcp.editSourceImage(active!.id, page, { image: s.image, action: "resize", from: s.rect, to: { ...s.rect, height: s.rect.width / aspect } }); } }, "Aplicando a imagem editada…"); }} />}
       {fieldProps && active && <FieldPropsDialog key={fieldProps.name} name={fieldProps.name} type={fieldProps.type} onClose={() => setFieldProps(null)} onApply={(props) => { const target = fieldProps; setFieldProps(null); void perform(async () => { await window.gcp.setFormFieldProps(active.id, target.page, target.name, props); notify("Propriedades do campo aplicadas."); }, "Aplicando propriedades…"); }} />}
+      {documentTool && active && <DocumentToolDialog doc={active} kind={documentTool} selection={selectedPages} onClose={() => setDocumentTool(null)} onDone={(message) => notify(message)} onError={onError} />}
       {modal === "compress" && active && <CompressDialog doc={active} onClose={() => setModal(null)} onDone={(message) => notify(message)} onError={onError} />}
       {modal === "split" && active && (
         <Modal title={translateUi("Dividir documento")} description={`${active.name} · ${active.pageCount} páginas`} onClose={() => setModal(null)}>

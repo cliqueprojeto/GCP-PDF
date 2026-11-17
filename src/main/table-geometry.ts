@@ -116,7 +116,10 @@ export function frameTable(frame: Segment[], shades: { box: Box; color: string }
     const edge = (s?: Segment): GridEdge | undefined => (s && !s.invisible ? { color: s.color, width: s.width } : undefined);
     const borders = { top: edge(line(hs, box.y, box.x, box.x + box.width)), bottom: edge(line(hs, box.y + box.height, box.x, box.x + box.width)), left: edge(line(vs, box.x, box.y, box.y + box.height)), right: edge(line(vs, box.x + box.width, box.y, box.y + box.height)) };
     const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-    const shade = [...shades].reverse().find((s) => centre.x >= s.box.x && centre.x <= s.box.x + s.box.width && centre.y >= s.box.y && centre.y <= s.box.y + s.box.height && s.box.width * s.box.height < box.width * box.height * 4);
+    // A shading painted once behind several cells (a header band) colours each of them; one reaching beyond
+    // the table is the page's or a panel's, not a cell's.
+    const within = (s: Box) => s.x >= xs[0]! - TOL && s.y >= ys[0]! - TOL && s.x + s.width <= xs.at(-1)! + TOL && s.y + s.height <= ys.at(-1)! + TOL;
+    const shade = [...shades].reverse().find((s) => centre.x >= s.box.x && centre.x <= s.box.x + s.box.width && centre.y >= s.box.y && centre.y <= s.box.y + s.box.height && (within(s.box) || s.box.width * s.box.height < box.width * box.height * 4));
     const text = cellText(runs.filter((run) => inside(run, box)), box, true);
     if (text?.inset !== undefined && text.align !== 'center') insets.push(text.inset);
     const inCell = runs.filter((run) => inside(run, box));

@@ -54,7 +54,7 @@ export class EditorBlockReader {
 
 /** Letter spacing and horizontal scale the engine does not report: most of a paragraph's printed
  * characters must share them, so a single tracked word does not respace the whole paragraph. */
-export function withSpacing(paragraphs:SourceParagraph[],items:{x:number;baseline:number;width:number;size:number;tracking:number;scale:number;text?:string}[]):SourceParagraph[] {
+export function withSpacing(paragraphs:SourceParagraph[],items:{x:number;baseline:number;width:number;size:number;tracking:number;scale:number;text?:string;bold?:boolean;italic?:boolean;color?:string}[]):SourceParagraph[] {
   return paragraphs.map(p=>{
     const inside=items.filter(i=>i.x>=p.rect.x-1&&i.x+i.width<=right(p.rect)+Math.max(2,i.size*.3)&&i.baseline>=p.rect.y&&i.baseline<=bottom(p.rect)+i.size*.3);
     const total=inside.reduce((n,i)=>n+i.width,0);if(!total)return p;
@@ -64,7 +64,11 @@ export function withSpacing(paragraphs:SourceParagraph[],items:{x:number;baselin
     const scale=share(i=>Math.abs(i.scale-1)>.02)>.6?median(inside.map(i=>i.scale)):1;
     const baselines=[...new Set(inside.map(i=>Math.round(i.baseline*2)/2))].sort((a,b)=>a-b).filter((b,i,all)=>i===0||b-all[i-1]!>p.size*.5);
     const lineSpacing=baselines.length>1?(baselines.at(-1)!-baselines[0]!)/(baselines.length-1)/p.size:undefined;
-    return {...p,...(tracked?{tracking:Math.round(tracked*100)/100}:{}),...(scale!==1?{scale:Math.round(scale*1000)/1000}:{}),...(lineSpacing?{lineSpacing:Math.round(lineSpacing*100)/100}:{})};
+    // Weight, slant and ink colour as most of the paragraph is printed.
+    const inks=new Map<string,number>();for(const i of inside)if(i.color)inks.set(i.color,(inks.get(i.color)??0)+i.width);
+    const ink=[...inks].sort((a,b)=>b[1]-a[1])[0]?.[0];
+    const style={bold:p.bold||share(i=>!!i.bold)>.6,italic:p.italic||share(i=>!!i.italic)>.6,...(ink&&/^#[0-9a-f]{6}$/i.test(ink)?{color:ink.toLowerCase(),ink:ink.toLowerCase()}:{})};
+    return {...p,...style,...(tracked?{tracking:Math.round(tracked*100)/100}:{}),...(scale!==1?{scale:Math.round(scale*1000)/1000}:{}),...(lineSpacing?{lineSpacing:Math.round(lineSpacing*100)/100}:{})};
   });
 }
 

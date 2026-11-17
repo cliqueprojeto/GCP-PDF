@@ -6,7 +6,7 @@ import {strokes} from './table-geometry';
  * ruling lines become columns and rows; cells that one rectangle covers (and no line divides) are
  * merged; text and fill colour belong to the cell that contains them. Coordinates are page points
  * (top-left origin). */
-export interface GridPart { text: string; bold: boolean; italic: boolean; color: string; size: number; /** Its own family: a cell may mix a semibold figure with regular text. */font: string }
+export interface GridPart { text: string; bold: boolean; italic: boolean; color: string; size: number; /** Its own family: a cell may mix a semibold figure with regular text. */font: string; script?: 'super' | 'sub'; link?: string; underline?: boolean; strike?: boolean }
 export interface GridText { parts: GridPart[]; text: string; font: string; size: number; bold: boolean; italic: boolean; color: string; align: 'left' | 'center' | 'right' | 'justify'; valign: 'top' | 'middle' | 'bottom'; inset?: number; /** Space above the text inside its cell, in points. */insetTop?: number; /** One line wider than its cell: it spills over the empty cells beside it, as in a spreadsheet. */overflow?: boolean }
 export interface GridEdge { color: string; width: number }
 export interface GridRegion { row: number; col: number; rows: number; cols: number; fill?: string; page?: boolean; text?: GridText; borders?: { top?: GridEdge; right?: GridEdge; bottom?: GridEdge; left?: GridEdge } }
@@ -22,12 +22,12 @@ const snap = (edges: number[], v: number) => edges.reduce((best, e, i) => (Math.
 
 /** Text of one cell: lines by baseline, joined into paragraphs the way the cell wraps them. A flowing
  * document (`flow`) also keeps the blank lines between paragraphs and recognizes justified text. */
-export function cellText(runs: Run[], box: { x: number; y: number; width: number; height: number }, flow = false): GridText | undefined {
+export function cellText(runs: Run[], box: { x: number; y: number; width: number; height: number }, flow = false, keepLines = false): GridText | undefined {
   if (!runs.length) return undefined;
   const sorted = [...runs].sort((a, b) => a.baseline - b.baseline || a.x - b.x), lines: Run[][] = [];
   for (const run of sorted) { const line = lines.find((l) => Math.abs(l[0]!.baseline - run.baseline) < run.size * 0.4); if (line) line.push(run); else lines.push([run]); }
   // Formatted pieces in reading order, so partly bold or coloured cells keep their look (Excel rich text).
-  const parts: GridPart[] = [], push = (text: string, run: Run) => { const last = parts.at(-1); if (last && last.bold === run.bold && last.italic === run.italic && last.color === run.color && last.size === run.size && last.font === run.font) last.text += text; else parts.push({ text, bold: run.bold, italic: run.italic, color: run.color, size: run.size, font: run.font }); };
+  const parts: GridPart[] = [], push = (text: string, run: Run) => { const last = parts.at(-1); if (last && last.bold === run.bold && last.italic === run.italic && last.color === run.color && last.size === run.size && last.script === run.script && last.link === run.link && !last.underline === !run.underline && !last.strike === !run.strike && last.font === run.font) last.text += text; else parts.push({ text, bold: run.bold, italic: run.italic, color: run.color, size: run.size, font: run.font, ...(run.script ? { script: run.script } : {}), ...(run.link ? { link: run.link } : {}), ...(run.underline ? { underline: true } : {}), ...(run.strike ? { strike: true } : {}) }); };
   const texts: string[] = [];
   // In a flowing document a line that stops well short of the cell's text edge was ended on purpose
   // (form lines like "Nome:", "CPF:"); only lines that reach it wrapped.
@@ -41,10 +41,10 @@ export function cellText(runs: Run[], box: { x: number; y: number; width: number
       const head = line[0]!, firstWord = head.width * (head.text.trim().split(/\s+/)[0]!.length / Math.max(1, head.text.trim().length));
       const room = box.x + box.width - (textLeft - box.x) - lineEnd(lines[li - 1]!);
       // A clearly different text size (a big figure over its caption) is a new paragraph too.
-      const breakLine = /^[✓✔•▪●◦‣\-–—*]/.test(first) || gap > size * 1.75 || Math.abs(line[0]!.size - size) > Math.max(line[0]!.size, size) * 0.3 || /[:;]$/.test(texts[li - 1]!) || (flow && (lineEnd(lines[li - 1]!) < widest - size * 4 || room > firstWord + size * 0.3));
+      const breakLine = keepLines || /^[✓✔•▪●◦‣\-–—*]/.test(first) || gap > size * 1.75 || Math.abs(line[0]!.size - size) > Math.max(line[0]!.size, size) * 0.3 || /[:;]$/.test(texts[li - 1]!) || (flow && (lineEnd(lines[li - 1]!) < widest - size * 4 || room > firstWord + size * 0.3));
       // A gap of two or more line pitches held blank lines.
       const blanks = flow && gap > size * 1.75 ? Math.min(3, Math.max(1, Math.round(gap / (size * 1.22)) - 1)) : 0;
-      push(breakLine ? '\n'.repeat(1 + blanks) : ' ', parts.at(-1) ? { ...line[0]!, bold: parts.at(-1)!.bold, italic: parts.at(-1)!.italic, color: parts.at(-1)!.color, size: parts.at(-1)!.size, font: parts.at(-1)!.font } : line[0]!);
+      { const last = parts.at(-1), plain = { ...line[0]!, script: undefined, link: undefined, underline: undefined, strike: undefined }; push(breakLine ? '\n'.repeat(1 + blanks) : ' ', last ? { ...plain, bold: last.bold, italic: last.italic, color: last.color, size: last.size, font: last.font, script: last.script, link: last.link, underline: last.underline, strike: last.strike } : plain); }
     }
     let lineText = '';
     line.forEach((run, i) => { const prev = line[i - 1], gap = prev ? run.x - (prev.x + prev.width) : 0, piece = ((i && (run.space || gap > run.size * 0.15) && !/^\s/.test(run.text) ? ' '.repeat(flow ? spacesIn(gap, run.size * 0.25) : 1) : '') + run.text).replace(i ? /$^/ : /^\s+/, ''); lineText += piece; push(i === line.length - 1 ? piece.trimEnd() : piece, run); });
@@ -84,6 +84,19 @@ export async function pageGrid(page: PDFPageProxy, fonts?: FontContext): Promise
   const xs = cluster([0, width, ...cells.flatMap((f) => [f.box.x, f.box.x + f.box.width]), ...rules.filter((r) => r.box.width < 1.5).map((r) => r.box.x)]).filter((x) => x >= -1 && x <= width + 1);
   const ys = cluster([0, height, ...cells.flatMap((f) => [f.box.y, f.box.y + f.box.height]), ...rules.filter((r) => r.box.height < 1.5).map((r) => r.box.y)]).filter((y) => y >= -1 && y <= height + 1);
   if (xs.length < 4 || ys.length < 4) return null;
+  // Text above and below the drawn structure has no lines to separate it: each printed line gets a row of
+  // its own there, as a spreadsheet lists text, instead of sharing one tall cell.
+  const drawnY = [...cells.flatMap((f) => [f.box.y, f.box.y + f.box.height]), ...rules.flatMap((r) => [r.box.y, r.box.y + r.box.height])], drawnTop = Math.min(...drawnY), drawnBottom = Math.max(...drawnY);
+  const loose = new Set<number>(), bands: { top: number; bottom: number }[] = [];
+  for (const run of [...runs].filter((r) => r.text.trim() && (r.baseline < drawnTop - 1 || r.baseline - r.size * 0.7 > drawnBottom + 1)).sort((a, b) => a.baseline - b.baseline)) {
+    const top = run.baseline - run.size * 0.8, bottom = run.baseline + run.size * 0.22, last = bands.at(-1);
+    if (last && top < last.bottom - run.size * 0.3) last.bottom = Math.max(last.bottom, bottom); else bands.push({ top, bottom });
+  }
+  for (const [i, band] of bands.entries()) {
+    const previous = bands[i - 1], edge = previous && band.top - previous.bottom < 40 ? (previous.bottom + band.top) / 2 : band.top - 1;
+    for (const y of [edge, ...(bands[i + 1] && bands[i + 1]!.top - band.bottom < 40 ? [] : [band.bottom + 1])]) if (!ys.some((v) => Math.abs(v - y) <= TOLERANCE)) { ys.push(y); loose.add(y); }
+  }
+  ys.sort((a, b) => a - b);
   const R = ys.length - 1, C = xs.length - 1;
   // The fill painted last over each grid cell (page backgrounds count, so margins keep the page colour).
   const owner: number[][] = Array.from({ length: R }, () => Array(C).fill(-1));
@@ -97,7 +110,7 @@ export async function pageGrid(page: PDFPageProxy, fonts?: FontContext): Promise
     : Math.abs(r.box.y - at) <= TOLERANCE && r.box.x <= from + TOLERANCE && r.box.x + r.box.width >= to - TOLERANCE;
   // A wall separates two neighbouring grid cells when different fills own them or a rule runs between them.
   const wallRight = (r: number, c: number) => owner[r]![c] !== owner[r]![c + 1] || rules.some((x) => covered(x, 'x', xs[c + 1]!, ys[r]!, ys[r + 1]!));
-  const wallBelow = (r: number, c: number) => owner[r]![c] !== owner[r + 1]![c] || rules.some((x) => covered(x, 'y', ys[r + 1]!, xs[c]!, xs[c + 1]!));
+  const wallBelow = (r: number, c: number) => loose.has(ys[r + 1]!) || owner[r]![c] !== owner[r + 1]![c] || rules.some((x) => covered(x, 'y', ys[r + 1]!, xs[c]!, xs[c + 1]!));
   // Text belongs to the grid cell holding the centre of each run.
   const textAt: Run[][][] = Array.from({ length: R }, () => Array.from({ length: C }, () => []));
   // A phrase stays whole: pieces of one line that follow each other (a bold label, then italic, then plain

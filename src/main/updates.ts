@@ -1,5 +1,6 @@
 import {app,shell} from 'electron';
-import {installerPattern} from './update-target';
+import {installerPattern,linuxPackaging} from './update-target';
+import {existsSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {join} from 'node:path';
@@ -54,8 +55,9 @@ export async function checkForUpdate():Promise<UpdateInfo|null>{
  const releases=(await response.json()) as any[];
  const best=releases.filter(r=>!r.draft&&!r.prerelease&&typeof r.tag_name==='string').sort((a,b)=>newer(a.tag_name,b.tag_name)?-1:newer(b.tag_name,a.tag_name)?1:0)[0];
  if(!best||!newer(best.tag_name,app.getVersion()))return null;
- const pattern=installerPattern(process.platform,process.arch);
- const asset=(best.assets??[]).find((a:any)=>typeof a.name==='string'&&pattern.test(a.name));
+ // A package format the release lacks falls back to the AppImage, which runs on every distribution.
+ const names=(pattern:RegExp)=>(best.assets??[]).find((a:any)=>typeof a.name==='string'&&pattern.test(a.name));
+ const asset=names(installerPattern(process.platform,process.arch,linuxPackaging(process.env,existsSync)))??names(installerPattern(process.platform,process.arch));
  if(!asset)throw new Error(`A versão ${best.tag_name} ainda não tem instalador para ${process.platform}/${process.arch}.`);
  if(process.platform!=='win32')return {version:best.tag_name.replace(/^v/i,''),current:app.getVersion(),notes:String(best.body??''),published:best.published_at??'',size:Number(asset.size)||0,assetUrl:`${WEB}/releases/tag/${encodeURIComponent(best.tag_name)}`,assetName:asset.name,manual:true};
  const notes=String(best.body??''),sha=new RegExp(`${asset.name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\s*[:=]?\\s*\`?([0-9a-f]{64})`,'i').exec(notes)?.[1]??/sha-?256\s*[:=]\s*`?([0-9a-f]{64})/i.exec(notes)?.[1];

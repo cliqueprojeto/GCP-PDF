@@ -76,3 +76,14 @@ test('invalid arguments and an unavailable sidecar fail clearly before editing',
   await assert.rejects(listTextParagraphs(bytes, 0, path.join(tmpdir(), 'gcp-pdf-missing-sidecar-5148072.exe')), /motor de edição de texto não está disponível/);
   await assert.rejects(listTextParagraphs(new Uint8Array(), 0, executable), /vazio/);
 });
+
+test('linhas digitadas de propósito cabem; quebra acidental que invade o que está abaixo é recusada',async()=>{
+ const {draftFits}=await import('../src/main/pdfcraft-session');
+ const title={height:14,lines:1,size:12};
+ assert.equal(draftFits(title,{height:14,lines:1}),true);
+ assert.equal(draftFits(title,{height:28.5,lines:2}),true,'a second line the user typed');
+ assert.equal(draftFits(title,{height:28.5,lines:1}),false,'one typed line that wrapped into two');
+ assert.equal(draftFits({height:42,lines:3,size:12},{height:57,lines:3}),true,'within the tolerance for metric differences');
+ assert.equal(draftFits({height:42,lines:3,size:12},{height:72,lines:3}),false);
+ assert.equal(draftFits({height:42,lines:3,size:12},{height:72,lines:5}),true);
+});

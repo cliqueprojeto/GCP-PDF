@@ -8,7 +8,7 @@ import ExcelJS from 'exceljs';
 import { pageGrid, type PageGrid } from './tables';
 import PptxGenJS from 'pptxgenjs';
 import type { ExportOptions } from '../shared/types';
-import { toDocxLayout, toPptxLayout, type OcrRuns } from './word-layout';
+import { toDocxLayout, toPptxLayout, turnedText, turnedBox, type OcrRuns, type TurnedText } from './word-layout';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/types/src/display/api';
 
 const localRequire = createRequire(typeof __filename === 'string' ? __filename : pathToFileURL(resolve('package.json')));
@@ -233,7 +233,7 @@ function paperSize(width:number,height:number){
 }
 const argb=(hex:string)=>'FF'+hex.replace('#','').toUpperCase();
 /** Writes a page grid as a worksheet: one sheet column per grid column, merges, fills, fonts, wrap. */
-function gridSheet(sheet:ExcelJS.Worksheet,grid:PageGrid,images:{x:number;y:number;width:number;height:number;id:number}[]) {
+function gridSheet(sheet:ExcelJS.Worksheet,grid:PageGrid,images:{x:number;y:number;width:number;height:number;id:number}[],turned:TurnedText[]=[]) {
   // Rows after the last text or cell fill are page background only: not exported, as in Acrobat.
   const used=grid.regions.filter(r=>r.text||(r.fill&&!r.page)),lastRow=Math.max(0,...used.map(r=>r.row+r.rows)),rows=Math.max(1,lastRow);
   sheet.columns=grid.xs.slice(0,-1).map((x,c)=>({width:Math.max(1,(grid.xs[c+1]!-x)/PT_PER_CHAR)}));
@@ -252,6 +252,15 @@ function gridSheet(sheet:ExcelJS.Worksheet,grid:PageGrid,images:{x:number;y:numb
     // A one-line text wider than its cell spills over the empty cells beside it instead of wrapping.
     cell.alignment={horizontal:typeof parsed.value==='number'&&t.align==='left'?'right':t.align,vertical:t.valign==='middle'?'middle':t.valign,wrapText:!t.overflow};
   }
+  // Text printed at an angle goes to the cell under it, turned the same way (Excel turns text up to 90°).
+  const track=(edges:number[],v:number)=>{let i=0;while(i<edges.length-2&&v>edges[i+1]!)i++;return i;};
+  for(const t of turned){
+    const box=turnedBox(t),r=track(grid.ys,box.y+box.height/2),c=track(grid.xs,box.x+box.width/2);if(r>=rows)continue;
+    const cell=sheet.getCell(r+1,c+1),master=cell.master??cell,rotation=Math.max(-90,Math.min(90,Math.round(-t.angle)));
+    master.value=master.value?`${String(typeof master.value==='object'&&'richText' in master.value?master.value.richText.map(p=>p.text).join(''):master.value)} ${t.text}`:t.text;
+    master.font={name:t.font,size:Math.round(t.size*10)/10,bold:t.bold,italic:t.italic,color:{argb:argb(t.color)}};
+    master.alignment={...master.alignment,textRotation:rotation,horizontal:'center',vertical:'middle'};
+  }
   // Pictures float over the cells at their place on the page.
   const at=(edges:number[],v:number)=>{let i=0;while(i<edges.length-2&&v>edges[i+1]!)i++;return i+Math.max(0,Math.min(1,(v-edges[i]!)/((edges[i+1]!-edges[i]!)||1)));};
   for(const image of images)sheet.addImage(image.id,{tl:{col:at(grid.xs,image.x),row:at(grid.ys,image.y)} as never,ext:{width:image.width*96/72,height:image.height*96/72}});
@@ -265,7 +274,7 @@ async function toXlsx(pdf:PDFDocumentProxy,dpi:number,warnings:string[],onProgre
     const grid=await pageGrid(data.page).catch(()=>null);
     if(grid&&grid.regions.some(r=>r.text)) {
       const images=data.images.filter(im=>im.width>8&&im.height>8).map(im=>({x:im.x,y:im.y,width:im.width,height:im.height,id:workbook.addImage({buffer:im.bytes as any,extension:"png"})}));
-      gridSheet(sheet,grid,images);gridPages++;data.page.cleanup();continue;
+      gridSheet(sheet,grid,images,await turnedText(data.page).catch(()=>[]));gridPages++;data.page.cleanup();continue;
     }
     sheet.views=[{showGridLines:true}];
     const rows=data.lines.map(line=>({line,cells:lineCells(line)})),anchors:number[]=[];
@@ -288,6 +297,8 @@ async function toXlsx(pdf:PDFDocumentProxy,dpi:number,warnings:string[],onProgre
         }
         previousBottom=row.line.y+row.line.height;
       }
+      // Text printed at an angle has no row of its own among the lines: it follows them, turned as printed.
+      for(const t of await turnedText(data.page).catch(()=>[])){const cell=sheet.getRow(rowNumber++).getCell(1);cell.value=t.text;cell.font={name:t.font,size:Math.max(8,Math.min(30,t.size)),bold:t.bold,italic:t.italic};cell.alignment={textRotation:Math.max(-90,Math.min(90,Math.round(-t.angle))),vertical:'middle'};}
     }
     data.page.cleanup();
   }

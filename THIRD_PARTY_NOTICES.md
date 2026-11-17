@@ -7,6 +7,8 @@ A identidade visual, o ícone e a interface do GCP-PDF são próprios. Nenhum í
 
 ## Componentes incluídos
 
+- **Módulo Android** — Kotlin, AndroidX/Jetpack Compose e PDFBox Android 2.0.27.0 (Tom Roush e colaboradores / Apache PDFBox), sob Apache-2.0. PDFBox Android inclui Bouncy Castle 1.72, sob a licença Bouncy Castle. A interface usa vetores próprios, fonte Inter (OFL-1.1) e banco SQLite do sistema Android. Esse módulo não inclui os executáveis PdfCraft nem o runtime Electron do computador. Detalhes de paridade e validação em `android/README.md`.
+
 - **Motor de edição de PDF** — baseado no PdfCraft CLI (ArtCraft Team e colaboradores do PdfCraft), sob MIT OU Apache-2.0. As licenças e o NOTICE originais estão em `assets/pdfcraft`. Este crédito não substitui os créditos dos autores do motor.
 - **Fonte Inter** — SIL Open Font License 1.1 (`assets/OFL-Inter.txt`); a interface também usa o pacote `@fontsource/inter`, sob OFL.
 - **Modelos de OCR em português, inglês e espanhol** (`por.traineddata`, `eng.traineddata`, `spa.traineddata`) — repositório oficial tesseract-ocr/tessdata_fast, tag 4.1.0, sob Apache-2.0 (`assets/tessdata/LICENSE`). O reconhecimento de texto roda no computador; nenhuma página é enviada para OCR remoto.

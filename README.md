@@ -11,6 +11,8 @@ O GCP-PDF reúne num só programa o que normalmente exige vários: ler, comentar
 
 Desenvolvido por **Bruno Albertini | [Gestão Cultural Pro](https://gestaoculturalpro.com.br/)**.
 
+**Android (prévia de desenvolvimento):** módulo nativo em Kotlin/Jetpack Compose para celular e tablet, em retrato e paisagem, com APK assinado localmente para instalação direta. Inclui biblioteca de assinaturas com remoção de fundo e IA via API. Ainda não possui todas as funções desktop; consulte os recursos, pendências e comandos em [android/README.md](android/README.md).
+
 ![Página inicial do GCP-PDF](docs/screenshots/01-inicio.png)
 
 ## Telas

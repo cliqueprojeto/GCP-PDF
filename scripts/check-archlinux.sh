@@ -14,10 +14,26 @@ runuser -u builder -- bash -euc '
   makepkg --printsrcinfo > .SRCINFO
   makepkg --cleanbuild --noconfirm
   cp -- *.pkg.tar.zst /work/release/archlinux/
-  tar -czf /work/release/archlinux/GCP-PDF-aur-recipe.tar.gz PKGBUILD .SRCINFO
+  tar -czf /work/release/archlinux/GCP-PDF-aur-recipe.tar.gz PKGBUILD .SRCINFO gcp-pdf-bin.install gcp-pdf-mirrorlist
 '
 pacman -U --noconfirm release/archlinux/*.pkg.tar.zst
 pacman -Qi gcp-pdf-bin > evidence/archlinux/pacman.txt
+# The package registers its pacman repository, so later versions arrive through pacman -Syu and Pamac.
+grep -qxF '[gcp-pdf]' /etc/pacman.conf
+grep -qxF 'Include = /etc/pacman.d/gcp-pdf-mirrorlist' /etc/pacman.conf
+grep -q '^Server = https://github.com/cliqueprojeto/GCP-PDF/releases/download/archlinux-repo$' /etc/pacman.d/gcp-pdf-mirrorlist
+# The repository published with this version: database plus package, read back by pacman itself.
+mkdir -p release/archlinux-repo
+cp release/archlinux/*.pkg.tar.zst release/archlinux-repo/
+repo-add release/archlinux-repo/gcp-pdf.db.tar.gz release/archlinux-repo/*.pkg.tar.zst
+# GitHub releases cannot hold symbolic links: pacman asks for gcp-pdf.db and gcp-pdf.files.
+for name in gcp-pdf.db gcp-pdf.files; do cp --remove-destination "$(readlink -f "release/archlinux-repo/$name")" "release/archlinux-repo/$name"; done
+cp /etc/pacman.d/gcp-pdf-mirrorlist /tmp/gcp-pdf-mirrorlist.published
+echo 'Server = file:///work/release/archlinux-repo' > /etc/pacman.d/gcp-pdf-mirrorlist
+pacman -Sy --noconfirm
+pacman -Si gcp-pdf/gcp-pdf-bin > evidence/archlinux/repository.txt
+grep -q "^Version *: $(pacman -Q gcp-pdf-bin | cut -d' ' -f2)\$" evidence/archlinux/repository.txt
+cp /tmp/gcp-pdf-mirrorlist.published /etc/pacman.d/gcp-pdf-mirrorlist
 pacman -Qkk gcp-pdf-bin > evidence/archlinux/files.txt
 desktop-file-validate /usr/share/applications/gcp-pdf.desktop
 grep -Eq '^Exec=.* %F([[:space:]]|$)' /usr/share/applications/gcp-pdf.desktop
@@ -37,3 +53,7 @@ runuser -u builder -- env PATH="$PATH" ELECTRON_SKIP_BINARY_DOWNLOAD=1 bash -euc
 '
 cd release/archlinux
 sha256sum -- *.pkg.tar.zst GCP-PDF-aur-recipe.tar.gz > SHA256SUMS-ArchLinux.txt
+cd /work
+# Removing the package takes the repository out of pacman.conf again.
+pacman -R --noconfirm gcp-pdf-bin
+if grep -q 'gcp-pdf' /etc/pacman.conf; then echo 'O repositório ficou no pacman.conf depois da remoção.'; exit 1; fi

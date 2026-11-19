@@ -5,7 +5,7 @@ on:
       release_tag:
         description: Release pública de origem e destino
         required: true
-        default: v0.13.0
+        default: v0.13.1
 permissions:
   contents: read
 concurrency:
@@ -48,6 +48,12 @@ jobs:
           name: package-archlinux
           path: release/archlinux/
           if-no-files-found: error
+      - name: Guardar repositório pacman validado
+        uses: actions/upload-artifact@v4
+        with:
+          name: repository-archlinux
+          path: release/archlinux-repo/
+          if-no-files-found: error
   publish:
     needs: archlinux
     runs-on: ubuntu-24.04
@@ -64,3 +70,27 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: gh release upload "$RELEASE_TAG" archlinux/*
+      - uses: actions/download-artifact@v4
+        with:
+          name: repository-archlinux
+          path: repo
+      # Repositório pacman fixo (Server em /etc/pacman.d/gcp-pdf-mirrorlist): quem instalou o pacote recebe
+      # a nova versão pelo pacman -Syu e pelo Pamac. Pré-lançamento, para nunca ser a "última versão" do site.
+      - name: Atualizar o repositório pacman
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          test -s repo/gcp-pdf.db && test -s repo/gcp-pdf.files && ls repo/*.pkg.tar.zst
+          if ! gh release view archlinux-repo >/dev/null 2>&1; then
+            gh release create archlinux-repo --prerelease --latest=false --target main --title "Repositório pacman (Arch Linux, BigLinux, Manjaro)" \
+              --notes "Arquivos usados pelo pacman e pelo Pamac para atualizar o GCP-PDF automaticamente. Para instalar, use o pacote .pkg.tar.zst da versão mais recente; ele ativa este repositório sozinho."
+          fi
+          old=$(gh release view archlinux-repo --json assets --jq '.assets[].name' | grep '\.pkg\.tar\.zst$' || true)
+          # Pacote primeiro, banco depois: o banco publicado nunca aponta para um pacote ausente.
+          gh release upload archlinux-repo repo/*.pkg.tar.zst --clobber
+          gh release upload archlinux-repo repo/gcp-pdf.db repo/gcp-pdf.db.tar.gz repo/gcp-pdf.files repo/gcp-pdf.files.tar.gz --clobber
+          for name in $old; do
+            [ -e "repo/$name" ] || gh release delete-asset archlinux-repo "$name" --yes
+          done

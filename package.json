@@ -1,6 +1,6 @@
 {
   "name": "gcp-pdf",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "Editor e leitor de PDFs local em português brasileiro",
   "author": "Bruno Albertini | Gestão Cultural Pro",
   "private": true,
@@ -37,7 +37,6 @@
     "fflate": "0.8.3",
     "libarchive-wasm": "1.2.0",
     "lucide-react": "1.64.0",
-    "mammoth": "1.11.0",
     "pdf-lib": "1.17.1",
     "pdfjs-dist": "6.4.299",
     "pptxgenjs": "4.0.1",

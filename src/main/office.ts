@@ -5,10 +5,9 @@ import {tmpdir} from 'node:os';
 import {join,extname,basename} from 'node:path';
 import {privateDirectory} from './pdfcraft-sidecar';
 
-/** Office documents become PDF without LibreOffice: through the installed Microsoft Office (the same
- * engine as its "Save as PDF"), or, without Office, through the built-in Word/Excel readers that the
- * caller renders with Chromium. */
-export type HtmlToPdf = (html: string) => Promise<Uint8Array>;
+/** Renders HTML with Chromium; header and footer templates are printed in the page margins. */
+export interface HtmlPdfOptions { headerTemplate?: string; footerTemplate?: string }
+export type HtmlToPdf = (html: string, options?: HtmlPdfOptions) => Promise<Uint8Array>;
 const WORD = ['.docx', '.doc', '.rtf', '.odt', '.txt'], EXCEL = ['.xlsx', '.xls', '.ods'], POWERPOINT = ['.pptx', '.ppt', '.odp'];
 // AutomationSecurity=3 (msoAutomationSecurityForceDisable): automation would otherwise run document
 // macros; they stay off for every file, and links are never refreshed (Excel UpdateLinks=0).
@@ -41,34 +40,36 @@ async function viaOffice(path: string, app: string): Promise<Uint8Array> {
  } finally { await rm(folder, {recursive: true, force: true}).catch(() => {}); }
 }
 const escape = (text: string) => text.replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]!));
-const PAGE_CSS = '@page{size:A4;margin:20mm 18mm}body{font-family:Calibri,"Segoe UI",Arial,sans-serif;font-size:11pt;line-height:1.35;color:#111}img{max-width:100%}table{border-collapse:collapse;width:100%;margin:8pt 0}td,th{border:1px solid #999;padding:3pt 5pt;vertical-align:top}h1{font-size:20pt}h2{font-size:16pt}h3{font-size:13pt}p{margin:0 0 6pt}';
-async function wordToHtml(path: string) {
- const mammoth = await import('mammoth');
- const result = await mammoth.convertToHtml({path}, {styleMap: ['p[style-name=\'Title\'] => h1:fresh', 'p[style-name=\'Subtitle\'] => h2:fresh']});
- return `<!doctype html><html lang="pt-BR"><meta charset="utf-8"><style>${PAGE_CSS}</style><body>${result.value}</body></html>`;
+const PAGE_CSS = '@page{size:A4;margin:20mm 18mm}body{font-family:Calibri,Carlito,"Segoe UI",Arial,sans-serif;font-size:11pt;line-height:1.35;color:#111}';
+/** Word through the built-in layout engine (see docx-html.ts): page geometry, fonts, spacing, tables,
+ * pictures, headers and footers come from the document itself. */
+async function wordToPdf(path: string, htmlToPdf: HtmlToPdf) {
+ const {docxToHtml} = await import('./docx-html');
+ const result = docxToHtml(new Uint8Array(await readFile(path)));
+ return htmlToPdf(result.html, {headerTemplate: result.headerTemplate, footerTemplate: result.footerTemplate});
 }
-async function excelToHtml(path: string) {
- const ExcelJS = (await import('exceljs')).default, workbook = new ExcelJS.Workbook();
- await workbook.xlsx.readFile(path);
- const sheets = workbook.worksheets.map(sheet => {
-  const rows: string[] = [];
-  sheet.eachRow({includeEmpty: false}, row => {
-   const cells: string[] = [];
-   for (let c = 1; c <= Math.max(sheet.columnCount, 1); c++) { const cell = row.getCell(c); const bold = cell.font?.bold ? 'font-weight:700;' : ''; cells.push(`<td style="${bold}${typeof cell.value === 'number' ? 'text-align:right' : ''}">${escape(cell.text ?? '')}</td>`); }
-   rows.push(`<tr>${cells.join('')}</tr>`);
-  });
-  return `<h2>${escape(sheet.name)}</h2><table>${rows.join('')}</table>`;
- });
- return `<!doctype html><html lang="pt-BR"><meta charset="utf-8"><style>${PAGE_CSS}@page{size:A4 landscape}td{font-size:9pt}</style><body>${sheets.join('<div style="page-break-after:always"></div>')}</body></html>`;
+async function excelToPdf(path: string, htmlToPdf: HtmlToPdf) {
+ const {xlsxToHtml} = await import('./xlsx-html');
+ return htmlToPdf(await xlsxToHtml(new Uint8Array(await readFile(path))));
 }
-export async function officeToPdf(path: string, htmlToPdf: HtmlToPdf, libreOffice?: () => Promise<Uint8Array>): Promise<Uint8Array> {
+/** Office documents keep their original look: Microsoft Office when installed (Windows), otherwise
+ * LibreOffice when installed (every system), otherwise the built-in Word and Excel layout engines.
+ * The PDF always carries real, selectable text. */
+export async function officeToPdf(path: string, htmlToPdf: HtmlToPdf, libreOffice?: () => Promise<Uint8Array | null>): Promise<Uint8Array> {
  const app = kind(path);
  if (!app) throw new Error('Formato de documento não reconhecido.');
- if (await officeAvailable(app)) return viaOffice(path, app);
+ if (await officeAvailable(app)) {
+  try { return await viaOffice(path, app); }
+  catch (error) { if (!libreOffice && !['.docx', '.xlsx'].includes(extname(path).toLowerCase())) throw error; }
+ }
  const extension = extname(path).toLowerCase();
- if (extension === '.docx') return htmlToPdf(await wordToHtml(path));
- if (extension === '.xlsx') return htmlToPdf(await excelToHtml(path));
- if (extension === '.txt') return htmlToPdf(`<!doctype html><meta charset="utf-8"><style>${PAGE_CSS}body{white-space:pre-wrap;font-family:Consolas,monospace;font-size:10pt}</style><body>${escape(await readFile(path, 'utf8'))}</body>`);
- if (libreOffice) return libreOffice();
- throw new Error(app === 'powerpoint' ? 'Para converter apresentações, instale o Microsoft PowerPoint (ou o LibreOffice).' : 'Este formato antigo precisa do Microsoft Office instalado. Arquivos .docx e .xlsx são convertidos mesmo sem ele.');
+ if (extension === '.txt') return htmlToPdf(`<!doctype html><meta charset="utf-8"><style>${PAGE_CSS}body{white-space:pre-wrap;font-family:Consolas,"Liberation Mono",monospace;font-size:10pt}</style><body>${escape(await readFile(path, 'utf8'))}</body>`);
+ const internal = extension === '.docx' || extension === '.xlsx';
+ if (libreOffice) {
+  try { const bytes = await libreOffice(); if (bytes) return bytes; }
+  catch (error) { if (!internal) throw error; }
+ }
+ if (extension === '.docx') return wordToPdf(path, htmlToPdf);
+ if (extension === '.xlsx') return excelToPdf(path, htmlToPdf);
+ throw new Error(app === 'powerpoint' ? 'Para converter apresentações, instale o Microsoft PowerPoint (ou o LibreOffice).' : 'Este formato antigo precisa do Microsoft Office ou do LibreOffice instalado. Arquivos .docx e .xlsx são convertidos mesmo sem eles.');
 }

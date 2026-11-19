@@ -1,5 +1,14 @@
 # Histórico de versões do GCP-PDF
 
+## 0.13.1 — 19/11/2026
+
+- “Converter para PDF” e “Combinar em um PDF”, no menu do botão direito do Windows, Linux e macOS, agora mantêm o documento do Word idêntico ao original: fontes, tamanhos, cores, alinhamento, espaçamentos, bordas, tabelas, listas, imagens, cabeçalho e rodapé com numeração de páginas.
+- O texto do PDF gerado continua sendo texto de verdade: dá para selecionar, copiar e pesquisar, sem virar imagem.
+- Planilhas do Excel convertidas para PDF mantêm a largura das colunas, as células mescladas, as cores, as bordas, os números e datas no formato brasileiro, a orientação e o ajuste à página.
+- Com o LibreOffice instalado, ele também é usado para Word e Excel, como já acontecia com o Microsoft Office no Windows.
+- Documentos com fotos grandes passam a ser convertidos sem falhas.
+
+
 ## 0.13.0 — 17/11/2026
 
 - Conversões para Word, Excel e PowerPoint mantêm sobrescritos e subscritos, links clicáveis, sublinhados e tachados.

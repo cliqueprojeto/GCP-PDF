@@ -1,0 +1,76 @@
+name: Publicar versão (Windows, Linux e macOS)
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Etiqueta já enviada ao GitHub (ex. v0.13.1)
+        required: true
+        default: v0.13.1
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ inputs.release_tag }}
+  cancel-in-progress: false
+jobs:
+  windows:
+    name: Instalador Windows e release
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Versão confere com a etiqueta
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: node --input-type=module -e 'import p from "./package.json" with {type:"json"}; if (`v${p.version}` !== process.env.RELEASE_TAG) { console.error(`package.json traz ${p.version}`); process.exit(1); }'
+      - run: npm ci
+      - run: npm run prepare:native
+      - run: npm run typecheck
+      - run: npm test
+      - name: Gerar instalador e versão portátil
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run pack:win
+      # Mesmos arquivos que o Publicar-GCP-PDF.cmd gera: notas da release e o manifesto lido pelo atualizador.
+      - name: Notas e manifesto de atualização
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          node --input-type=module -e '
+          import {readFileSync,writeFileSync} from "node:fs";
+          import {createHash} from "node:crypto";
+          const version=process.env.RELEASE_TAG.slice(1);
+          const entry=JSON.parse(readFileSync("assets/novidades.json","utf8")).find(v=>v.versao===version);
+          if(!entry?.itens?.length)throw new Error(`assets/novidades.json não tem novidades da versão ${version}`);
+          const assetName=`GCP-PDF-Instalador-${version}-x64.exe`,bytes=readFileSync(`release/${assetName}`);
+          if(!bytes.length||!readFileSync(`release/GCP-PDF-Portatil-${version}-x64.exe`).length)throw new Error("Instalador vazio");
+          const sha=createHash("sha256").update(bytes).digest("hex"),list=entry.itens.map(i=>`- ${i}`).join("\n");
+          writeFileSync("release/novidades.md",`## Novidades da versão ${version}\n\n${list}\n\nSHA-256 ${assetName}: \`${sha}\`\n`);
+          writeFileSync("release/atualizacao.json",JSON.stringify({version,notes:list,published:new Date().toISOString(),assetName,size:bytes.length,sha256:sha},null,1));
+          '
+      - name: Criar a release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          VERSION=${RELEASE_TAG#v}
+          gh release create "$RELEASE_TAG" "release/GCP-PDF-Instalador-$VERSION-x64.exe" "release/GCP-PDF-Portatil-$VERSION-x64.exe" release/atualizacao.json --verify-tag --title "GCP-PDF $VERSION" --notes-file release/novidades.md
+  linux-macos:
+    name: Instaladores Linux e macOS
+    needs: windows
+    permissions:
+      contents: write
+    uses: ./.github/workflows/packages.yml
+    with:
+      release_tag: ${{ inputs.release_tag }}

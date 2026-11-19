@@ -1,9 +1,12 @@
 # GCP-PDF
 
-## Novidades 0.11.0
+## Novidades 0.13.1
 
-Crie PDFs em branco com papel, orientação e quantidade de páginas. Digitalize com scanner ou multifuncional, OCR local automático, prévias, rotação, reordenação e combinação de páginas. Veja [requisitos, uso e limites da digitalização](docs/digitalizacao.md). A integração de scanner ainda não foi testada com equipamentos físicos.
+- **Converter para PDF** e **Combinar em um PDF**, no menu do botão direito do Windows, Linux e macOS, mantêm o documento do Word idêntico ao original: fontes, tamanhos, cores, alinhamento, espaçamentos, bordas, tabelas, listas, imagens, cabeçalho e rodapé com numeração de páginas. O texto do PDF continua selecionável e pesquisável.
+- Planilhas do Excel viram PDF com a largura das colunas, as células mescladas, as cores, as bordas, os números e datas no formato brasileiro e o ajuste à página.
+- **Arch Linux, BigLinux e Manjaro:** o pacote `.pkg.tar.zst` ativa o repositório do GCP-PDF, e as próximas versões chegam pelo `pacman -Syu` e pelas atualizações do Pamac.
 
+Na versão 0.13.0: conversões para Word, Excel e PowerPoint com sobrescritos, links e textos girados, marca-d'água, cabeçalho e rodapé, tarja de redação, PDF/A e PDFs protegidos por senha. Veja o [histórico completo de versões](HISTORICO.md).
 
 **Leitor e editor de PDF com interface em português, inglês e espanhol, que funciona no seu computador.**
 
@@ -35,7 +38,7 @@ Baixe a versão mais recente na página de [versões publicadas](https://github.
 - **GCP-PDF-Portatil-x.y.z-x64.exe** — roda sem instalar, por exemplo a partir de um pendrive.
 - **GCP-PDF-x.y.z-linux-amd64.deb** — Ubuntu/Debian de 64 bits: instale pelo gerenciador de aplicativos ou com `sudo apt install ./GCP-PDF-x.y.z-linux-amd64.deb`.
 - **GCP-PDF-x.y.z-linux-x86_64.rpm** — Fedora e distribuições compatíveis: `sudo dnf install ./GCP-PDF-x.y.z-linux-x86_64.rpm`.
-- **gcp-pdf-bin-x.y.z-1-x86_64.pkg.tar.zst** — Arch Linux, BigLinux e Manjaro: instale com `sudo pacman -U ./nome-do-pacote.pkg.tar.zst` ou pelo Pamac em **Instalar pacotes locais**. Veja [instalação, atualizações e receita compatível com AUR](packaging/archlinux/README.md). A receita está no GitHub; ainda não está cadastrada no catálogo AUR.
+- **gcp-pdf-bin-x.y.z-1-x86_64.pkg.tar.zst** — Arch Linux, BigLinux e Manjaro: instale com `sudo pacman -U ./nome-do-pacote.pkg.tar.zst` ou pelo Pamac em **Instalar pacotes locais**. O pacote ativa o repositório do GCP-PDF: as versões seguintes chegam pelo `sudo pacman -Syu` e pelas atualizações do Pamac. Veja [instalação, atualizações e receita compatível com AUR](packaging/archlinux/README.md). A receita está no GitHub; ainda não está cadastrada no catálogo AUR.
 - **GCP-PDF-x.y.z-linux-x86_64.AppImage** — versão portátil Linux: marque o arquivo como executável (`chmod +x arquivo.AppImage`) e abra. Requer FUSE 2; sem FUSE, extraia com `./arquivo.AppImage --appimage-extract` e execute `squashfs-root/AppRun`.
 - **GCP-PDF-x.y.z-macOS-arm64.dmg** — Macs Apple Silicon (M1, M2 e posteriores).
 - **GCP-PDF-x.y.z-macOS-x64.dmg** — Macs Intel. Abra o DMG e arraste o GCP-PDF para Aplicativos. Os arquivos `.zip` contêm o mesmo aplicativo.
@@ -47,13 +50,13 @@ O pacote Arch e a receita AUR têm seus hashes em `SHA256SUMS-ArchLinux.txt`.
 
 Como o instalador ainda não tem assinatura digital de código, o Windows pode mostrar "O Windows protegeu o computador". Clique em **Mais informações** e depois em **Executar assim mesmo**.
 
-Por padrão, o programa verifica atualizações ao abrir e avisa quando houver uma versão nova. Você pode escolher outra frequência em **Configurações › Atualizações** (ou nunca). No Windows, o instalador é conferido pelo SHA-256 e executado automaticamente. No Linux e macOS, o aviso abre os downloads do GitHub para instalar o pacote correspondente.
+Por padrão, o programa verifica atualizações ao abrir e avisa quando houver uma versão nova. Você pode escolher outra frequência em **Configurações › Atualizações** (ou nunca). No Windows, o instalador é conferido pelo SHA-256 e executado automaticamente. No Linux e macOS, o aviso abre os downloads do GitHub para instalar o pacote correspondente; no Arch Linux, BigLinux e Manjaro, depois de instalado o pacote `.pkg.tar.zst`, as atualizações também chegam pelo próprio sistema (pacman e Pamac).
 
 **Certificado digital A1 nos novos pacotes Linux/macOS:** escolha o arquivo `.pfx`/`.p12` em **Assinar › Escolher arquivo A1**, informe a senha e assine. A senha não fica salva. O aplicativo verifica a assinatura gerada antes de gravar o PDF. O macOS também lista identidades do Chaves. No instalador Windows 0.3.7 já publicado, instale o A1 no repositório de certificados do Windows e selecione-o na lista do programa. A confiança na cadeia depende das autoridades reconhecidas localmente: uma assinatura íntegra pode aparecer com cadeia não reconhecida. Confira certificados ICP-Brasil no validador do ITI. Tokens/cartões A3 fora do Windows não estão incluídos nesta compatibilidade.
 
 **Atalhos e ações rápidas:** no Linux, o aplicativo aparece em **Escritório**. Após a primeira abertura, as ações **Combinar em um PDF** e **Converter para PDF** são configuradas por usuário: **Scripts › GCP-PDF** em Nautilus/GNOME e Caja, submenu **GCP-PDF** no Dolphin/KDE e ações com prefixo GCP-PDF no Nemo e Thunar. No macOS, arraste o aplicativo para **Aplicativos**; as ações do Finder são instaladas em `~/Library/Services` e aparecem em **Ações Rápidas** ou **Serviços**. Se necessário, habilite-as em **Ajustes do Sistema › Teclado › Atalhos de Teclado › Serviços**. Pode ser necessário reabrir o gerenciador de arquivos para atualizar o menu. Você pode desativar as ações em **Configurações › Ações rápidas nos arquivos**. As ações existentes são preservadas; backups de arquivos alterados ficam em `~/.local/share/gcp-pdf/integration-backups` (ou no diretório XDG de dados configurado).
 
-Os demais formatos Office além de `.docx`, `.xlsx` e `.txt` podem exigir LibreOffice instalado separadamente.
+**Converter para PDF** usa o Microsoft Office no Windows quando ele está instalado; senão, o LibreOffice, quando instalado; senão, o conversor próprio do GCP-PDF para `.docx` e `.xlsx`, que mantém o layout do documento com texto selecionável. Os demais formatos Office (`.doc`, `.xls`, `.pptx`, `.odt` e outros) precisam do Microsoft Office ou do LibreOffice.
 
 ## O que ele faz
 
@@ -88,6 +91,7 @@ Os demais formatos Office além de `.docx`, `.xlsx` e `.txt` podem exigir LibreO
 - Girar, excluir, extrair, copiar, colar e reordenar páginas arrastando as miniaturas.
 - Combinar vários arquivos em um PDF e dividir um documento em partes.
 - Numeração de páginas e numeração Bates.
+- Criar PDFs em branco com papel, orientação e quantidade de páginas. Digitalizar com scanner ou multifuncional, com OCR local automático, prévias, rotação, reordenação e combinação de páginas. Veja [requisitos, uso e limites da digitalização](docs/digitalizacao.md); a integração de scanner ainda não foi testada com equipamentos físicos.
 
 ### Formulários
 - Preenchimento de formulários PDF, com máscaras automáticas para CPF, CNPJ, CEP, telefone, data e valores em reais.
@@ -111,7 +115,7 @@ Os demais formatos Office além de `.docx`, `.xlsx` e `.txt` podem exigir LibreO
 - PowerPoint com formas, molduras e fundos editáveis; Excel com cada célula da tabela no seu lugar e números como números.
 - Páginas escaneadas são reconhecidas automaticamente (OCR) ao converter, com fonte, tamanho e negrito estimados e logotipos preservados.
 - Exportar para PDF de imagens.
-- Converter arquivos para PDF e criar um PDF novo em branco.
+- Converter arquivos para PDF e criar um PDF novo em branco. Documentos do Word e planilhas do Excel mantêm o layout original (fontes, espaçamentos, bordas, tabelas, imagens, cabeçalho e rodapé), com texto selecionável.
 - Reconhecimento de texto (OCR) em português, inglês e espanhol, feito no próprio computador e sem baixar modelos durante o uso. O idioma do sistema é detectado; em **Configurações › Idioma**, a interface e o OCR podem ser escolhidos separadamente. Idiomas não reconhecidos usam PT-BR.
 - Compressão de PDF em vários níveis, com prévia do tamanho final.
 

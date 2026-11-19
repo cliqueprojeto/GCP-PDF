@@ -1,0 +1,25 @@
+# Registers the GCP-PDF pacman repository so that "pacman -Syu" and Pamac deliver new versions.
+# The block is delimited by markers and removed again when the package is removed.
+_conf=/etc/pacman.conf
+_begin='# >>> gcp-pdf: atualizações do GCP-PDF (gerenciado pelo pacote gcp-pdf-bin)'
+_end='# <<< gcp-pdf'
+
+_add_repo() {
+  [ -w "$_conf" ] || return 0
+  grep -qxF "$_begin" "$_conf" && return 0
+  # A repository section the user wrote by hand is kept as it is.
+  grep -Eq '^\[gcp-pdf\][[:space:]]*$' "$_conf" && return 0
+  printf '\n%s\n[gcp-pdf]\nSigLevel = Optional TrustAll\nInclude = /etc/pacman.d/gcp-pdf-mirrorlist\n%s\n' "$_begin" "$_end" >> "$_conf"
+  echo ':: GCP-PDF: repositório [gcp-pdf] ativado; as próximas versões chegam pelo pacman -Syu e pelo Pamac.'
+}
+
+post_install() { _add_repo; }
+post_upgrade() { _add_repo; }
+
+post_remove() {
+  [ -w "$_conf" ] || return 0
+  grep -qxF "$_begin" "$_conf" || return 0
+  sed -i "\|^$_begin\$|,\|^$_end\$|d" "$_conf"
+  # The blank line printed before the block goes too, when it is the last line.
+  sed -i '${/^$/d}' "$_conf"
+}

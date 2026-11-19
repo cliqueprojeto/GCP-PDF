@@ -1,0 +1,3 @@
+# Repositório pacman oficial do GCP-PDF, hospedado nas releases do GitHub.
+# Com ele, "pacman -Syu" e o Pamac instalam as novas versões automaticamente.
+Server = https://github.com/cliqueprojeto/GCP-PDF/releases/download/archlinux-repo

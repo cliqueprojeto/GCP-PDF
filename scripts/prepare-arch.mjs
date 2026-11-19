@@ -1,6 +1,7 @@
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {mkdir,writeFile} from 'node:fs/promises';
+import {readFileSync} from 'node:fs';
 
 // Repackage the verified upstream binary; never compile a different app under the same version.
 const version=process.argv[2];
@@ -12,6 +13,9 @@ const asset=release.assets.find(asset=>asset.name===`GCP-PDF-${version}-linux-am
 if(!asset||asset.state!=='uploaded'||!/^sha256:[a-f0-9]{64}$/.test(asset.digest??''))throw new Error('DEB publicado sem digest SHA-256 verificável.');
 const license=execFileSync('git',['show',`${tag}:LICENSE`],{windowsHide:true});
 const licenseHash=createHash('sha256').update(license).digest('hex');
+// The pacman repository address ships with the package; its install script adds the repository to pacman.conf.
+const mirrorlist=readFileSync('packaging/archlinux/gcp-pdf-bin/gcp-pdf-mirrorlist');
+const mirrorHash=createHash('sha256').update(mirrorlist).digest('hex');
 const text=`# Maintainer: Bruno Albertini <cliqueprojeto@users.noreply.github.com>
 # Official upstream binary, repackaged for pacman. See packaging/archlinux/README.md.
 pkgname=gcp-pdf-bin
@@ -26,10 +30,14 @@ optdepends=('libreoffice-fresh: import Office documents as PDF' 'sane: scanimage
 provides=('gcp-pdf')
 conflicts=('gcp-pdf')
 options=('!strip' '!debug')
+install=gcp-pdf-bin.install
+backup=('etc/pacman.d/gcp-pdf-mirrorlist')
 source=("https://github.com/cliqueprojeto/GCP-PDF/releases/download/v\$pkgver/GCP-PDF-\$pkgver-linux-amd64.deb"
-        "LICENSE-\$pkgver::https://raw.githubusercontent.com/cliqueprojeto/GCP-PDF/v\$pkgver/LICENSE")
+        "LICENSE-\$pkgver::https://raw.githubusercontent.com/cliqueprojeto/GCP-PDF/v\$pkgver/LICENSE"
+        'gcp-pdf-mirrorlist')
 sha256sums=('${asset.digest.slice(7)}'
-            '${licenseHash}')
+            '${licenseHash}'
+            '${mirrorHash}')
 
 prepare() {
   mkdir -p upstream
@@ -46,6 +54,7 @@ package() {
   # Debian's maintainer script is not run by pacman. Set the helper's required permissions here.
   chmod 4755 "\$pkgdir/usr/lib/gcp-pdf/chrome-sandbox"
   install -Dm644 "LICENSE-\$pkgver" "\$pkgdir/usr/share/licenses/\$pkgname/LICENSE"
+  install -Dm644 gcp-pdf-mirrorlist "\$pkgdir/etc/pacman.d/gcp-pdf-mirrorlist"
   # Arch container policy excludes /usr/share/doc. Keep upstream notices with the licenses.
   if [[ -d "\$pkgdir/usr/share/doc" ]]; then
     mv "\$pkgdir/usr/share/doc" "\$pkgdir/usr/share/licenses/\$pkgname/upstream-doc"

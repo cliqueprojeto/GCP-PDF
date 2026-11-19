@@ -3,9 +3,13 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Etiqueta já enviada ao GitHub (ex. v0.13.1)
+        description: Versão a publicar (ex. v0.13.1); a etiqueta é criada no commit escolhido abaixo se ainda não existir
         required: true
         default: v0.13.1
+      ref:
+        description: Ramo ou commit de onde sai a versão
+        required: true
+        default: main
 permissions:
   contents: read
 concurrency:
@@ -21,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.release_tag }}
+          ref: ${{ inputs.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -65,7 +69,8 @@ jobs:
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           VERSION=${RELEASE_TAG#v}
-          gh release create "$RELEASE_TAG" "release/GCP-PDF-Instalador-$VERSION-x64.exe" "release/GCP-PDF-Portatil-$VERSION-x64.exe" release/atualizacao.json --verify-tag --title "GCP-PDF $VERSION" --notes-file release/novidades.md
+          # Sem a etiqueta no GitHub, ela é criada no commit que acabou de ser testado e empacotado.
+          gh release create "$RELEASE_TAG" "release/GCP-PDF-Instalador-$VERSION-x64.exe" "release/GCP-PDF-Portatil-$VERSION-x64.exe" release/atualizacao.json --target "$(git rev-parse HEAD)" --title "GCP-PDF $VERSION" --notes-file release/novidades.md
   linux-macos:
     name: Instaladores Linux e macOS
     needs: windows

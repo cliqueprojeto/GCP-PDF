@@ -9,6 +9,7 @@ import {resolveLocale,OCR_LANGUAGES} from '../shared/locale';
 import {app,BrowserWindow,ipcMain,dialog,Menu,shell,clipboard,nativeTheme,screen,session} from 'electron';
 import {join,basename,extname,resolve,dirname,isAbsolute} from 'node:path';
 import {readFile,mkdir,stat,mkdtemp,rm,writeFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
 import {existsSync} from 'node:fs';
 import {execFile} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
@@ -35,6 +36,7 @@ import {installUnixIntegration,type DesktopOptions} from './desktop-integration'
 import {privateDirectory} from './pdfcraft-sidecar';
 import {signatureList,signatureSummary,validateNewSignature,sameFilePath,refusesSignedOverwrite} from './signatures';
 import {registerWindowsContextMenu,readInputPdf,readInputDocument,isPdfInput,INPUT_EXTENSIONS} from './system';
+import type {HtmlPdfOptions} from './office';
 import {toPage,fromPage} from '../shared/geometry';
 import {faceBytes,faceFor,faceForPostscript,fontFamilies} from './fonts';
 import {displayedRect,isEncryptedPdf,markCount,nothingMatched,planDocumentTool,reportLines} from './document-tools';
@@ -62,10 +64,16 @@ const engine=new PdfCraftSession(sidecar);
 const certificateFiles=new CertificateFiles();
 const engineRoot=()=>engine.folder;
 /** Renders HTML to PDF with Chromium in a hidden, script-free window (built-in Word/Excel conversion). */
-async function htmlToPdf(html:string){
+async function htmlToPdf(html:string,options:HtmlPdfOptions={}){
+ // A private temporary file rather than a data: URL, which Chromium limits in size (documents with photos).
+ const folder=await mkdtemp(join(tmpdir(),'gcp-pdf-html-')),file=join(folder,'documento.html');
  const window=new BrowserWindow({show:false,webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false,javascript:false}});
- try{await window.loadURL('data:text/html;charset=utf-8,'+encodeURIComponent(html));return new Uint8Array(await window.webContents.printToPDF({pageSize:'A4',printBackground:true,preferCSSPageSize:true}));}
- finally{window.destroy();}
+ try{
+  await writeFile(file,html,{mode:0o600});await window.loadFile(file);
+  const headerFooter=!!(options.headerTemplate||options.footerTemplate);
+  return new Uint8Array(await window.webContents.printToPDF({pageSize:'A4',printBackground:true,preferCSSPageSize:true,generateDocumentOutline:true,displayHeaderFooter:headerFooter,headerTemplate:options.headerTemplate||'<span></span>',footerTemplate:options.footerTemplate||'<span></span>'}));
+ }
+ finally{window.destroy();await rm(folder,{recursive:true,force:true}).catch(()=>{});}
 }
 const readPdf=(path:string)=>readInputPdf(path,htmlToPdf);
 const rendererUrl=()=>pathToFileURL(join(app.getAppPath(),'dist','renderer')).href;

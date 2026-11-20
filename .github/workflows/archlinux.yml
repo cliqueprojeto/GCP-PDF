@@ -5,7 +5,7 @@ on:
       release_tag:
         description: Release pública de origem e destino
         required: true
-        default: v0.13.1
+        default: v0.13.2
 permissions:
   contents: read
 concurrency:

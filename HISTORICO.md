@@ -1,5 +1,15 @@
 # Histórico de versões do GCP-PDF
 
+## 0.13.2 — 20/11/2026
+
+- “Converter para PDF” agora também converte apresentações do PowerPoint (.pptx) sem precisar do Microsoft Office nem do LibreOffice: cada slide vira uma página com o fundo, as formas, as imagens, as tabelas e o texto selecionável.
+- Planilhas do Excel com fórmulas que não têm o resultado salvo no arquivo não mostram mais “[object Object]”: a célula fica vazia, como no Excel antes de recalcular.
+- Planilhas com linhas ocultas dentro de células mescladas saem alinhadas, e planilhas mais largas que a página não perdem colunas: as que não cabem vão para as páginas seguintes, como na impressão do Excel.
+- Documentos do Word com cabeçalho só na primeira página não repetem esse cabeçalho nas demais, e listas numeradas que continuam em outro trecho seguem a numeração como no Word.
+- Arquivos de texto (.txt) salvos no Windows mantêm os acentos ao virar PDF.
+- Quando o Microsoft Office instalado não consegue converter um arquivo antigo, a mensagem mostra o motivo real em vez de pedir para instalar o Office.
+
+
 ## 0.13.1 — 19/11/2026
 
 - “Converter para PDF” e “Combinar em um PDF”, no menu do botão direito do Windows, Linux e macOS, agora mantêm o documento do Word idêntico ao original: fontes, tamanhos, cores, alinhamento, espaçamentos, bordas, tabelas, listas, imagens, cabeçalho e rodapé com numeração de páginas.

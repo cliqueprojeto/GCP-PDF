@@ -91,3 +91,71 @@ test('Excel para PDF mantém larguras, mesclas, cores, bordas e área usada da p
   // Excel prints no gridlines unless asked to.
   assert.doesNotMatch(html, /#d0d0d0/);
 });
+
+test('fórmula do Excel sem valor calculado salvo fica vazia, sem "[object Object]"', async () => {
+  const workbook = new ExcelJS.Workbook(), sheet = workbook.addWorksheet('Contas');
+  sheet.getCell('A1').value = 'Sem resultado'; sheet.getCell('B1').value = { formula: 'SUM(C1:C3)' } as never;
+  sheet.getCell('A2').value = 'Com resultado'; sheet.getCell('B2').value = { formula: 'C1*2', result: 1570.7 } as never; sheet.getCell('B2').numFmt = '"R$" #,##0.00';
+  sheet.getCell('A3').value = 'Texto calculado'; sheet.getCell('B3').value = { formula: 'C1&"x"', result: 'ok' } as never;
+  sheet.getCell('A4').value = 'Erro'; sheet.getCell('B4').value = { formula: '1/0', result: { error: '#DIV/0!' } } as never;
+  sheet.getCell('A5').value = 'Link'; sheet.getCell('B5').value = { text: { richText: [{ text: 'site ' }, { text: 'oficial', font: { bold: true } }] }, hyperlink: 'https://example.org' } as never;
+  const html = await xlsxToHtml(new Uint8Array(await workbook.xlsx.writeBuffer() as ArrayBuffer));
+  assert.doesNotMatch(html, /object Object/);
+  // The formula cell without a result is an empty cell.
+  assert.match(html, />Sem resultado<\/div><\/td><td style="[^"]*"><\/td>/);
+  assert.match(html, />R\$ 1\.570,70</);
+  assert.match(html, />ok</);
+  assert.match(html, />#DIV\/0!</);
+  assert.match(html, /site oficial|site <\/span>/);
+});
+
+test('planilha: linha oculta em célula mesclada e colunas que não cabem na página', async () => {
+  const workbook = new ExcelJS.Workbook(), sheet = workbook.addWorksheet('Larga');
+  sheet.mergeCells('A1:A3'); sheet.getCell('A1').value = 'Mesclada';
+  sheet.getCell('B1').value = 'L1'; sheet.getCell('B2').value = 'L2'; sheet.getCell('B3').value = 'L3'; sheet.getRow(2).hidden = true;
+  for (let c = 3; c <= 30; c++) sheet.getCell(1, c).value = 'Col' + c;
+  const html = await xlsxToHtml(new Uint8Array(await workbook.xlsx.writeBuffer() as ArrayBuffer));
+  // The merge spans only the two printed rows, and the hidden row's value is not printed.
+  assert.match(html, /rowspan="2"[^>]*>Mesclada</);
+  assert.doesNotMatch(html, />L2</);
+  // Every column is printed: those beyond the page width go to the next pages.
+  assert.match(html, />Col30</);
+  assert.ok((html.match(/break-before:page;/g) ?? []).length >= 1);
+});
+
+test('Word: cabeçalho só da primeira página não se repete; listas continuam ou reiniciam como no Word', async () => {
+  const { Header: H, PageBreak } = await import('docx');
+  const first = new Document({ sections: [{ properties: { titlePage: true }, headers: { first: new H({ children: [new Paragraph('SÓ NA PRIMEIRA')] }) }, children: [new Paragraph('Página 1'), new Paragraph({ children: [new PageBreak(), new TextRun('Página 2')] })] }] });
+  const result = docxToHtml(new Uint8Array(await Packer.toBuffer(first)));
+  assert.equal(result.headerTemplate, undefined);
+  assert.match(result.html, /@page s0:first\{margin-top:0\}/);
+  assert.match(result.html, /SÓ NA PRIMEIRA/);
+});
+
+test('PowerPoint para PDF: um slide por página com fundo, textos, forma, imagem e tabela', async () => {
+  const PptxGenJS = (await import('pptxgenjs')).default, pptx = new PptxGenJS();
+  pptx.layout = 'LAYOUT_WIDE';
+  const slide = pptx.addSlide(); slide.background = { color: '1F3864' };
+  slide.addText('Relatório Natalino', { x: .5, y: .4, w: 12, h: 1, fontSize: 40, bold: true, color: 'FFFFFF', fontFace: 'Arial' });
+  slide.addShape(pptx.ShapeType.roundRect, { x: .5, y: 1.7, w: 5, h: 2, fill: { color: '6C43D9' } });
+  slide.addImage({ data: 'image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', x: 7, y: 1.7, w: 4, h: 2 });
+  slide.addTable([['Item', 'Valor'], ['Brinquedos', 'R$ 1.000,00']].map(row => row.map(text => ({ text }))), { x: .5, y: 4.6, w: 8, colW: [5, 3] });
+  pptx.addSlide().addText('Segundo slide', { x: 1, y: 1, w: 6, h: 1 });
+  const { pptxToHtml } = await import('../src/main/pptx-html');
+  const html = pptxToHtml(new Uint8Array(await pptx.write({ outputType: 'nodebuffer' }) as Buffer));
+  assert.match(html, /@page\{size:960pt 540pt;margin:0\}/);
+  assert.equal((html.match(/class="slide"/g) ?? []).length, 2);
+  assert.match(html, /class="slide" style="background:#1f3864;"/);
+  assert.match(html, /font-size:40pt;font-weight:700[^"]*color:#ffffff">Relatório Natalino</);
+  assert.match(html, /background:#6c43d9;/);
+  assert.match(html, /<img src="data:image\/png;base64,/);
+  assert.match(html, /<table[\s\S]*>Brinquedos<[\s\S]*>R\$ 1\.000,00</);
+  assert.match(html, />Segundo slide</);
+});
+
+test('texto .txt em UTF-8, UTF-16 ou ANSI do Windows mantém os acentos', async () => {
+  const { decodeText } = await import('../src/main/office');
+  assert.equal(decodeText(new TextEncoder().encode('﻿Ação')), 'Ação');
+  assert.equal(decodeText(new Uint8Array([0x41, 0xe7, 0xe3, 0x6f])), 'Ação');
+  assert.equal(decodeText(new Uint8Array([0xff, 0xfe, 0x41, 0, 0xe7, 0, 0xe3, 0, 0x6f, 0])), 'Ação');
+});

@@ -100,20 +100,27 @@ function formatDate(d: Date, fmt: string) {
  return out;
 }
 
+/** What a cell shows. A formula saved without its calculated value (files written by programs that do not
+ * calculate, or with calculation left to Excel) shows nothing, as Excel would before recalculating; any other
+ * value of an unexpected shape also shows nothing rather than "[object Object]". */
 function cellText(cell: Cell): {text: string; color?: string; number: boolean; html?: string} {
- const v = cell.value as unknown;
+ return valueText(cell.value as unknown, cell.numFmt);
+}
+function valueText(v: unknown, numFmt: string | undefined): {text: string; color?: string; number: boolean; html?: string} {
  if (v === null || v === undefined) return {text: '', number: false};
- if (typeof v === 'number') { const f = formatValue(v, cell.numFmt); return {...f, number: true}; }
- if (v instanceof Date) return {text: formatValue(v, cell.numFmt).text, number: true};
+ if (typeof v === 'number') return {...formatValue(v, numFmt), number: true};
+ if (v instanceof Date) return {text: formatValue(v, numFmt).text, number: true};
  if (typeof v === 'boolean') return {text: v ? 'VERDADEIRO' : 'FALSO', number: false};
- if (typeof v === 'object') {
-  const o = v as Record<string, unknown>;
-  if ('result' in o) { const r = o.result as unknown; if (typeof r === 'number' || r instanceof Date) { const f = formatValue(r as number, cell.numFmt); return {...f, number: true}; } if (r && typeof r === 'object' && 'error' in (r as object)) return {text: String((r as {error: string}).error), number: false}; return {text: r === undefined || r === null ? '' : String(r), number: false}; }
-  if ('richText' in o) { const runs = o.richText as {text: string; font?: Partial<ExcelJSType.Font>}[]; return {text: runs.map(r => r.text).join(''), number: false, html: runs.map(r => `<span style="${fontCss(r.font)}">${escape(r.text)}</span>`).join('')}; }
-  if ('text' in o) return {text: String(o.text), number: false};
-  if ('error' in o) return {text: String(o.error), number: false};
- }
- return {text: String(v), number: false};
+ if (typeof v === 'string') return {text: v, number: false};
+ if (typeof v !== 'object') return {text: String(v), number: false};
+ const o = v as Record<string, unknown>;
+ // Formulas (plain, shared or array): the saved result, or nothing when none was saved.
+ if ('formula' in o || 'sharedFormula' in o || 'result' in o) return 'result' in o ? valueText(o.result, numFmt) : {text: '', number: false};
+ if ('error' in o) return {text: String(o.error ?? ''), number: false};
+ if (Array.isArray(o.richText)) { const runs = o.richText as {text?: unknown; font?: Partial<ExcelJSType.Font>}[]; const part = (r: {text?: unknown}) => typeof r.text === 'string' ? r.text : ''; return {text: runs.map(part).join(''), number: false, html: runs.map(r => `<span style="${fontCss(r.font)}">${escape(part(r))}</span>`).join('')}; }
+ // Hyperlinks: their text may itself be plain or rich text.
+ if ('text' in o) return valueText(o.text, numFmt);
+ return {text: '', number: false};
 }
 function fontCss(font: Partial<ExcelJSType.Font> | undefined) {
  if (!font) return '';
@@ -154,48 +161,69 @@ function sheetHtml(sheet: Worksheet, workbook: Workbook, index: number): {css: s
  const defaultWidth = sheet.properties.defaultColWidth ?? 8.43, defaultHeight = sheet.properties.defaultRowHeight ?? 15;
  const widths: number[] = [];
  for (let c = left; c <= right; c++) { const col = sheet.getColumn(c); widths.push(col.hidden ? 0 : Math.round(((col.width ?? defaultWidth) * 7 + 5)) * .75); }
- // Merged cells.
- const merges = new Map<string, {rows: number; cols: number}>(), covered = new Set<string>();
+ // Merged cells: each range starts at its first visible row (a hidden first row must not take the cell
+ // away) and spans only the rows that are printed.
+ type Merge = {top: number; left: number; bottom: number; right: number; first: number; rows: number};
+ const mergeAt = new Map<string, Merge>();
  const mergeList: string[] = ((sheet as unknown as {model: {merges?: string[]}}).model.merges) ?? [];
- for (const ref of mergeList) { const b = range(ref); if (!b) continue; merges.set(`${b.top}:${b.left}`, {rows: b.bottom - b.top + 1, cols: b.right - b.left + 1}); for (let r = b.top; r <= b.bottom; r++) for (let c = b.left; c <= b.right; c++) if (r !== b.top || c !== b.left) covered.add(`${r}:${c}`); }
- const gridlines = !!(setup as {showGridLines?: boolean}).showGridLines || !!(sheet as unknown as {pageSetup: {printOptions?: {gridLines?: boolean}}}).pageSetup?.printOptions?.gridLines;
- const rows: string[] = [];
- const rowTops: number[] = []; let y = 0;
- for (let r = top; r <= bottom; r++) {
-  const row = sheet.getRow(r); rowTops[r] = y;
-  if (row.hidden) { continue; }
-  const height = row.height ?? defaultHeight; y += height;
-  const cells: string[] = [];
-  for (let c = left; c <= right; c++) {
-   if (covered.has(`${r}:${c}`)) continue;
-   const cell = row.getCell(c), merge = merges.get(`${r}:${c}`), info = cellText(cell), style = cell.style ?? {};
-   const css: string[] = [];
-   const font = fontCss(style.font); if (font) css.push(font);
-   const fill = style.fill as {type?: string; pattern?: string; fgColor?: never; bgColor?: never; stops?: {color: never}[]} | undefined;
-   const bg = fill?.type === 'pattern' && fill.pattern && fill.pattern !== 'none' ? color(fill.fgColor) ?? color(fill.bgColor) : fill?.type === 'gradient' ? color(fill.stops?.[0]?.color) : undefined;
-   if (bg) css.push(`background-color:${bg}`);
-   for (const side of ['top', 'right', 'bottom', 'left'] as const) { const b = border(style.border?.[side]); if (b) css.push(`border-${side}:${b}`); else if (gridlines) css.push(`border-${side}:.5pt solid #d0d0d0`); }
-   const a = style.alignment ?? {};
-   const h = a.horizontal ?? (info.number ? 'right' : typeof cell.value === 'boolean' ? 'center' : 'left');
-   css.push(`text-align:${h === 'centerContinuous' ? 'center' : h === 'distributed' ? 'justify' : h === 'fill' ? 'left' : h}`);
-   css.push(`vertical-align:${a.vertical === 'middle' ? 'middle' : a.vertical === 'top' ? 'top' : a.vertical === 'distributed' || a.vertical === 'justify' ? 'middle' : 'bottom'}`);
-   if (a.wrapText || a.horizontal === 'justify' || a.vertical === 'justify') css.push('white-space:pre-wrap'); else css.push('white-space:pre');
-   if (a.indent) css.push(`padding-${h === 'right' ? 'right' : 'left'}:${pt(a.indent * 9 + 2)}`);
-   if (info.color) css.push(`color:${info.color}`);
-   const rotation = typeof a.textRotation === 'number' ? (a.textRotation > 90 ? -(a.textRotation - 90) : a.textRotation) : a.textRotation === 'vertical' ? 'vertical' : 0;
-   let content = info.html ?? escape(info.text);
-   if (rotation === 'vertical') content = `<span style="writing-mode:vertical-rl;text-orientation:upright">${content}</span>`;
-   else if (rotation) content = `<span style="display:inline-block;transform:rotate(${-rotation}deg);white-space:pre">${content}</span>`;
-   // Text that does not wrap may spill into empty cells to its right, as in Excel.
-   const next = c < right ? row.getCell(c + 1).value : 'end', nextEmpty = next === null || next === undefined || next === '';
-   const spill = !a.wrapText && !merge && !info.number && info.text && h === 'left' && nextEmpty ? `<div class="spill">${content}</div>` : content;
-   const link = (cell.value as {hyperlink?: string} | null)?.hyperlink;
-   const body = link && /^(https?:|mailto:)/i.test(link) ? `<a href="${escape(link)}">${spill}</a>` : spill;
-   cells.push(`<td${merge && merge.cols > 1 ? ` colspan="${merge.cols}"` : ''}${merge && merge.rows > 1 ? ` rowspan="${merge.rows}"` : ''} style="${css.join(';')}">${body}</td>`);
-  }
-  rows.push(`<tr style="height:${pt(height)}">${cells.join('')}</tr>`);
+ for (const ref of mergeList) {
+  const b = range(ref); if (!b) continue;
+  const visible: number[] = []; for (let r = b.top; r <= b.bottom; r++) if (!sheet.getRow(r).hidden) visible.push(r);
+  const merge = {...b, first: visible[0] ?? b.top, rows: Math.max(visible.length, 1)};
+  for (let r = b.top; r <= b.bottom; r++) for (let c = b.left; c <= b.right; c++) mergeAt.set(`${r}:${c}`, merge);
  }
+ const gridlines = !!(setup as {showGridLines?: boolean}).showGridLines || !!(sheet as unknown as {pageSetup: {printOptions?: {gridLines?: boolean}}}).pageSetup?.printOptions?.gridLines;
+ const rowTops: number[] = []; let y = 0;
+ for (let r = top; r <= bottom; r++) { rowTops[r] = y; const row = sheet.getRow(r); if (!row.hidden) y += row.height ?? defaultHeight; }
  rowTops[bottom + 1] = y;
+ const cellHtml = (row: ExcelJSType.Row, c: number, colspan: number, rowspan: number, origin: Cell, lastCol: number) => {
+  const cell = origin, info = cellText(cell), style = cell.style ?? {};
+  const css: string[] = [];
+  const font = fontCss(style.font); if (font) css.push(font);
+  const fill = style.fill as {type?: string; pattern?: string; fgColor?: never; bgColor?: never; stops?: {color: never}[]} | undefined;
+  const bg = fill?.type === 'pattern' && fill.pattern && fill.pattern !== 'none' ? color(fill.fgColor) ?? color(fill.bgColor) : fill?.type === 'gradient' ? color(fill.stops?.[0]?.color) : undefined;
+  if (bg) css.push(`background-color:${bg}`);
+  for (const side of ['top', 'right', 'bottom', 'left'] as const) { const b = border(style.border?.[side]); if (b) css.push(`border-${side}:${b}`); else if (gridlines) css.push(`border-${side}:.5pt solid #d0d0d0`); }
+  const a = style.alignment ?? {};
+  const h = a.horizontal ?? (info.number ? 'right' : typeof cell.value === 'boolean' ? 'center' : 'left');
+  css.push(`text-align:${h === 'centerContinuous' ? 'center' : h === 'distributed' ? 'justify' : h === 'fill' ? 'left' : h}`);
+  css.push(`vertical-align:${a.vertical === 'middle' ? 'middle' : a.vertical === 'top' ? 'top' : a.vertical === 'distributed' || a.vertical === 'justify' ? 'middle' : 'bottom'}`);
+  if (a.wrapText || a.horizontal === 'justify' || a.vertical === 'justify') css.push('white-space:pre-wrap'); else css.push('white-space:pre');
+  if (a.indent) css.push(`padding-${h === 'right' ? 'right' : 'left'}:${pt(a.indent * 9 + 2)}`);
+  if (info.color) css.push(`color:${info.color}`);
+  const rotation = typeof a.textRotation === 'number' ? (a.textRotation > 90 ? -(a.textRotation - 90) : a.textRotation) : a.textRotation === 'vertical' ? 'vertical' : 0;
+  let content = info.html ?? escape(info.text);
+  if (rotation === 'vertical') content = `<span style="writing-mode:vertical-rl;text-orientation:upright">${content}</span>`;
+  else if (rotation) content = `<span style="display:inline-block;transform:rotate(${-rotation}deg);white-space:pre">${content}</span>`;
+  // Text that does not wrap may spill into empty cells to its right, as in Excel.
+  const nextEmpty = c < lastCol && !mergeAt.has(`${row.number}:${c + 1}`) && valueText(row.getCell(c + 1).value as unknown, undefined).text === '';
+  const spill = !a.wrapText && colspan === 1 && rowspan === 1 && !info.number && info.text && h === 'left' && nextEmpty ? `<div class="spill">${content}</div>` : content;
+  const link = (cell.value as {hyperlink?: string} | null)?.hyperlink;
+  const body = link && /^(https?:|mailto:)/i.test(link) ? `<a href="${escape(link)}">${spill}</a>` : spill;
+  return `<td${colspan > 1 ? ` colspan="${colspan}"` : ''}${rowspan > 1 ? ` rowspan="${rowspan}"` : ''} style="${css.join(';')}">${body}</td>`;
+ };
+ /** The printed rows for columns first..last (one page width). A merge cut by the page edge continues on
+  * the next page as an empty cell with the same borders and fill. */
+ const tableRows = (first: number, last: number) => {
+  const out: string[] = [];
+  for (let r = top; r <= bottom; r++) {
+   const row = sheet.getRow(r);
+   if (row.hidden) continue;
+   const cells: string[] = [];
+   for (let c = first; c <= last; c++) {
+    const merge = mergeAt.get(`${r}:${c}`);
+    if (!merge) { cells.push(cellHtml(row, c, 1, 1, row.getCell(c), last)); continue; }
+    const startCol = Math.max(merge.left, first);
+    if (r !== merge.first || c !== startCol) continue;
+    const colspan = Math.min(merge.right, last) - startCol + 1, origin = sheet.getRow(merge.top).getCell(merge.left);
+    const html = cellHtml(row, c, colspan, merge.rows, origin, last);
+    // The value is printed once, on the page where the merge starts.
+    cells.push(startCol === merge.left ? html : html.replace(/>[\s\S]*<\/td>$/, '></td>'));
+   }
+   out.push(`<tr style="height:${pt(row.height ?? defaultHeight)}">${cells.join('')}</tr>`);
+  }
+  return out.join('');
+ };
  const tableWidth = widths.reduce((a, b) => a + b, 0);
  // Page: size, orientation, margins (inches) and scale.
  let [pw, ph] = PAPER[setup.paperSize as number] ?? PAPER[9]!;
@@ -209,22 +237,36 @@ function sheetHtml(sheet: Worksheet, workbook: Workbook, index: number): {css: s
   const zw = wide ? usable * wide / tableWidth : Infinity, zh = tall ? usableH * tall / y : Infinity;
   zoom = Math.min(1, zw, zh);
  }
- // Pictures, anchored to cells.
+ // Columns that do not fit the page width go to the next pages, after all the rows ("down, then over"),
+ // as Excel prints; nothing is cut off at the right edge.
+ const groups: [number, number][] = [];
+ for (let c = left, start = left, sum = 0; c <= right; c++) {
+  const w = widths[c - left]! * zoom;
+  if (sum + w > usable + .5 && c > start) { groups.push([start, c - 1]); start = c; sum = 0; }
+  sum += w;
+  if (c === right) groups.push([start, right]);
+ }
+ const xAt = (col: number, off = 0) => widths.slice(0, Math.max(col + 1 - left, 0)).reduce((a, b) => a + b, 0) + off / 12700;
+ // Pictures, anchored to cells; each goes on the page holding the column it starts in.
  const pictures = images.map(img => {
-  const data = workbook.getImage(Number(img.imageId)) as {buffer?: Buffer; base64?: string; extension?: string}; if (!data) return '';
-  const base64 = data.base64?.replace(/^data:[^,]+,/, '') ?? (data.buffer ? Buffer.from(data.buffer).toString('base64') : ''); if (!base64) return '';
+  const data = workbook.getImage(Number(img.imageId)) as {buffer?: Buffer; base64?: string; extension?: string}; if (!data) return null;
+  const base64 = data.base64?.replace(/^data:[^,]+,/, '') ?? (data.buffer ? Buffer.from(data.buffer).toString('base64') : ''); if (!base64) return null;
   const tl = img.range.tl as unknown as {nativeCol: number; nativeRow: number; nativeColOff?: number; nativeRowOff?: number}, br = img.range.br as unknown as {nativeCol: number; nativeRow: number; nativeColOff?: number; nativeRowOff?: number} | undefined;
   const ext = (img.range as unknown as {ext?: {width: number; height: number}}).ext;
-  const xAt = (col: number, off = 0) => widths.slice(0, Math.max(col + 1 - left, 0)).reduce((a, b) => a + b, 0) + off / 12700;
   const yAt = (row: number, off = 0) => (rowTops[row + 1] ?? y) + off / 12700;
   const x0 = xAt(tl.nativeCol, tl.nativeColOff), y0 = yAt(tl.nativeRow, tl.nativeRowOff);
   const w = br ? xAt(br.nativeCol, br.nativeColOff) - x0 : (ext?.width ?? 96) * .75, hgt = br ? yAt(br.nativeRow, br.nativeRowOff) - y0 : (ext?.height ?? 96) * .75;
-  return `<img src="data:image/${data.extension === 'jpg' ? 'jpeg' : data.extension ?? 'png'};base64,${base64}" style="position:absolute;left:${pt(x0)};top:${pt(y0)};width:${pt(w)};height:${pt(hgt)}">`;
- }).join('');
+  return {col: tl.nativeCol + 1, x0, html: (x: number) => `<img src="data:image/${data.extension === 'jpg' ? 'jpeg' : data.extension ?? 'png'};base64,${base64}" style="position:absolute;left:${pt(x)};top:${pt(y0)};width:${pt(w)};height:${pt(hgt)}">`};
+ }).filter((p): p is NonNullable<typeof p> => !!p);
  const name = `x${index}`;
  const css = `@page ${name}{size:${pt(pw)} ${pt(ph)};margin:${pt(mt)} ${pt(mr)} ${pt(mb)} ${pt(ml)}}`;
  const centered = (setup as {horizontalCentered?: boolean}).horizontalCentered ? 'margin-left:auto;margin-right:auto;' : '';
- const html = `<section style="page:${name};break-before:${index ? 'page' : 'auto'}"><div style="zoom:${Math.round(zoom * 1000) / 1000};width:${pt(tableWidth)};${centered}position:relative"><table style="width:${pt(tableWidth)}"><colgroup>${widths.map(w => `<col style="width:${pt(w)}">`).join('')}</colgroup>${rows.join('')}</table>${pictures}</div></section>`;
+ const parts = groups.map(([first, last], g) => {
+  const cols = widths.slice(first - left, last - left + 1), width = cols.reduce((a, b) => a + b, 0), offset = xAt(first - 1);
+  const pics = pictures.filter(p => p.col >= first && p.col <= last || (g === 0 && p.col < first) || (g === groups.length - 1 && p.col > last)).map(p => p.html(p.x0 - offset)).join('');
+  return `<div style="zoom:${Math.round(zoom * 1000) / 1000};width:${pt(width)};${centered}position:relative;${g ? 'break-before:page;' : ''}"><table style="width:${pt(width)}"><colgroup>${cols.map(w => `<col style="width:${pt(w)}">`).join('')}</colgroup>${tableRows(first, last)}</table>${pics}</div>`;
+ });
+ const html = `<section style="page:${name};break-before:${index ? 'page' : 'auto'}">${parts.join('')}</section>`;
  return {css, html};
 }
 

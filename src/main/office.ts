@@ -53,23 +53,40 @@ async function excelToPdf(path: string, htmlToPdf: HtmlToPdf) {
  return htmlToPdf(await xlsxToHtml(new Uint8Array(await readFile(path))));
 }
 /** Office documents keep their original look: Microsoft Office when installed (Windows), otherwise
- * LibreOffice when installed (every system), otherwise the built-in Word and Excel layout engines.
+ * LibreOffice when installed (every system), otherwise the built-in Word, Excel and PowerPoint layout engines.
  * The PDF always carries real, selectable text. */
+/** Plain text in UTF-8 (with or without BOM), UTF-16 with BOM, or the Windows ANSI code page (Windows-1252),
+ * still common for .txt files saved on Brazilian computers. */
+export function decodeText(bytes: Uint8Array): string {
+ if (bytes[0] === 0xff && bytes[1] === 0xfe) return new TextDecoder('utf-16le').decode(bytes.subarray(2));
+ if (bytes[0] === 0xfe && bytes[1] === 0xff) return new TextDecoder('utf-16be').decode(bytes.subarray(2));
+ try { return new TextDecoder('utf-8', {fatal: true}).decode(bytes).replace(/^\uFEFF/, ''); }
+ catch { return new TextDecoder('windows-1252').decode(bytes); }
+}
+async function presentationToPdf(path: string, htmlToPdf: HtmlToPdf) {
+ const {pptxToHtml} = await import('./pptx-html');
+ return htmlToPdf(pptxToHtml(new Uint8Array(await readFile(path))));
+}
 export async function officeToPdf(path: string, htmlToPdf: HtmlToPdf, libreOffice?: () => Promise<Uint8Array | null>): Promise<Uint8Array> {
  const app = kind(path);
  if (!app) throw new Error('Formato de documento não reconhecido.');
+ const extension = extname(path).toLowerCase();
+ const internal = extension === '.docx' || extension === '.xlsx' || extension === '.pptx';
+ // When Microsoft Office is installed but fails, its message is kept: it explains the problem better than
+ // "install Office" would.
+ let officeError: unknown;
  if (await officeAvailable(app)) {
   try { return await viaOffice(path, app); }
-  catch (error) { if (!libreOffice && !['.docx', '.xlsx'].includes(extname(path).toLowerCase())) throw error; }
+  catch (error) { officeError = error; }
  }
- const extension = extname(path).toLowerCase();
- if (extension === '.txt') return htmlToPdf(`<!doctype html><meta charset="utf-8"><style>${PAGE_CSS}body{white-space:pre-wrap;font-family:Consolas,"Liberation Mono",monospace;font-size:10pt}</style><body>${escape(await readFile(path, 'utf8'))}</body>`);
- const internal = extension === '.docx' || extension === '.xlsx';
+ if (extension === '.txt') return htmlToPdf(`<!doctype html><meta charset="utf-8"><style>${PAGE_CSS}body{white-space:pre-wrap;font-family:Consolas,"Liberation Mono",monospace;font-size:10pt}</style><body>${escape(decodeText(new Uint8Array(await readFile(path))))}</body>`);
  if (libreOffice) {
   try { const bytes = await libreOffice(); if (bytes) return bytes; }
-  catch (error) { if (!internal) throw error; }
+  catch (error) { if (!internal) throw officeError ?? error; }
  }
  if (extension === '.docx') return wordToPdf(path, htmlToPdf);
  if (extension === '.xlsx') return excelToPdf(path, htmlToPdf);
- throw new Error(app === 'powerpoint' ? 'Para converter apresentações, instale o Microsoft PowerPoint (ou o LibreOffice).' : 'Este formato antigo precisa do Microsoft Office ou do LibreOffice instalado. Arquivos .docx e .xlsx são convertidos mesmo sem eles.');
+ if (extension === '.pptx') return presentationToPdf(path, htmlToPdf);
+ if (officeError) throw officeError;
+ throw new Error('Este formato antigo precisa do Microsoft Office ou do LibreOffice instalado. Arquivos .docx, .xlsx e .pptx são convertidos mesmo sem eles.');
 }

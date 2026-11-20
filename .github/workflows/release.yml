@@ -5,7 +5,7 @@ on:
       release_tag:
         description: Versão a publicar (ex. v0.13.1); a etiqueta é criada no commit escolhido abaixo se ainda não existir
         required: true
-        default: v0.13.1
+        default: v0.13.2
       ref:
         description: Ramo ou commit de onde sai a versão
         required: true

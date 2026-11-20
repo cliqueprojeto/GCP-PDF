@@ -1,10 +1,12 @@
 # GCP-PDF
 
-## Novidades 0.13.1
+## Novidades 0.13.2
 
-- **Converter para PDF** e **Combinar em um PDF**, no menu do botão direito do Windows, Linux e macOS, mantêm o documento do Word idêntico ao original: fontes, tamanhos, cores, alinhamento, espaçamentos, bordas, tabelas, listas, imagens, cabeçalho e rodapé com numeração de páginas. O texto do PDF continua selecionável e pesquisável.
-- Planilhas do Excel viram PDF com a largura das colunas, as células mescladas, as cores, as bordas, os números e datas no formato brasileiro e o ajuste à página.
-- **Arch Linux, BigLinux e Manjaro:** o pacote `.pkg.tar.zst` ativa o repositório do GCP-PDF, e as próximas versões chegam pelo `pacman -Syu` e pelas atualizações do Pamac.
+- **Converter para PDF** agora também converte apresentações do PowerPoint (`.pptx`) sem precisar do Microsoft Office nem do LibreOffice: cada slide vira uma página com o fundo, as formas, as imagens, as tabelas e o texto selecionável.
+- Planilhas com fórmulas sem o resultado salvo não mostram mais "[object Object]"; linhas ocultas dentro de células mescladas e planilhas mais largas que a página saem completas e alinhadas.
+- Documentos do Word com cabeçalho só na primeira página e listas numeradas que continuam saem como no Word; arquivos de texto salvos no Windows mantêm os acentos.
+
+Na versão 0.13.1: **Converter para PDF** e **Combinar em um PDF** mantêm o Word e o Excel idênticos ao original, e no Arch Linux, BigLinux e Manjaro as novas versões chegam pelo `pacman -Syu` e pelo Pamac.
 
 Na versão 0.13.0: conversões para Word, Excel e PowerPoint com sobrescritos, links e textos girados, marca-d'água, cabeçalho e rodapé, tarja de redação, PDF/A e PDFs protegidos por senha. Veja o [histórico completo de versões](HISTORICO.md).
 
@@ -56,7 +58,7 @@ Por padrão, o programa verifica atualizações ao abrir e avisa quando houver u
 
 **Atalhos e ações rápidas:** no Linux, o aplicativo aparece em **Escritório**. Após a primeira abertura, as ações **Combinar em um PDF** e **Converter para PDF** são configuradas por usuário: **Scripts › GCP-PDF** em Nautilus/GNOME e Caja, submenu **GCP-PDF** no Dolphin/KDE e ações com prefixo GCP-PDF no Nemo e Thunar. No macOS, arraste o aplicativo para **Aplicativos**; as ações do Finder são instaladas em `~/Library/Services` e aparecem em **Ações Rápidas** ou **Serviços**. Se necessário, habilite-as em **Ajustes do Sistema › Teclado › Atalhos de Teclado › Serviços**. Pode ser necessário reabrir o gerenciador de arquivos para atualizar o menu. Você pode desativar as ações em **Configurações › Ações rápidas nos arquivos**. As ações existentes são preservadas; backups de arquivos alterados ficam em `~/.local/share/gcp-pdf/integration-backups` (ou no diretório XDG de dados configurado).
 
-**Converter para PDF** usa o Microsoft Office no Windows quando ele está instalado; senão, o LibreOffice, quando instalado; senão, o conversor próprio do GCP-PDF para `.docx` e `.xlsx`, que mantém o layout do documento com texto selecionável. Os demais formatos Office (`.doc`, `.xls`, `.pptx`, `.odt` e outros) precisam do Microsoft Office ou do LibreOffice.
+**Converter para PDF** usa o Microsoft Office no Windows quando ele está instalado; senão, o LibreOffice, quando instalado; senão, o conversor próprio do GCP-PDF para `.docx`, `.xlsx` e `.pptx`, que mantém o layout do documento com texto selecionável. Os formatos antigos ou abertos (`.doc`, `.xls`, `.ppt`, `.odt`, `.ods`, `.odp` e `.rtf`) precisam do Microsoft Office ou do LibreOffice.
 
 ## O que ele faz
 
@@ -115,7 +117,7 @@ Por padrão, o programa verifica atualizações ao abrir e avisa quando houver u
 - PowerPoint com formas, molduras e fundos editáveis; Excel com cada célula da tabela no seu lugar e números como números.
 - Páginas escaneadas são reconhecidas automaticamente (OCR) ao converter, com fonte, tamanho e negrito estimados e logotipos preservados.
 - Exportar para PDF de imagens.
-- Converter arquivos para PDF e criar um PDF novo em branco. Documentos do Word e planilhas do Excel mantêm o layout original (fontes, espaçamentos, bordas, tabelas, imagens, cabeçalho e rodapé), com texto selecionável.
+- Converter arquivos para PDF e criar um PDF novo em branco. Documentos do Word, planilhas do Excel e apresentações do PowerPoint mantêm o layout original (fontes, espaçamentos, bordas, tabelas, imagens, cabeçalho e rodapé, slides com fundo e formas), com texto selecionável.
 - Reconhecimento de texto (OCR) em português, inglês e espanhol, feito no próprio computador e sem baixar modelos durante o uso. O idioma do sistema é detectado; em **Configurações › Idioma**, a interface e o OCR podem ser escolhidos separadamente. Idiomas não reconhecidos usam PT-BR.
 - Compressão de PDF em vários níveis, com prévia do tamanho final.
 

@@ -5,7 +5,7 @@ on:
       release_tag:
         description: Release existente que receberá os instaladores
         required: true
-        default: v0.13.1
+        default: v0.13.2
   # Chamado pela publicação completa (release.yml), logo depois de a release ser criada.
   workflow_call:
     inputs:

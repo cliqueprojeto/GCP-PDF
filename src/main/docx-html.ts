@@ -38,7 +38,7 @@ const emu = (value: string | null | undefined) => num(value) / 12700;
 const hex = (value: string | null | undefined) => value && /^[0-9a-f]{6}$/i.test(value) ? '#' + value.toLowerCase() : undefined;
 const HIGHLIGHT: Record<string, string> = {yellow: '#ffff00', green: '#00ff00', cyan: '#00ffff', magenta: '#ff00ff', blue: '#0000ff', red: '#ff0000', darkBlue: '#000080', darkCyan: '#008080', darkGreen: '#008000', darkMagenta: '#800080', darkRed: '#800000', darkYellow: '#808000', darkGray: '#808080', lightGray: '#c0c0c0', black: '#000000', white: '#ffffff'};
 /** Metric-compatible fonts installed on Linux and macOS take the place of the Office fonts they mirror. */
-const SUBSTITUTES: Record<string, string[]> = {
+export const SUBSTITUTES: Record<string, string[]> = {
  calibri: ['Carlito'], cambria: ['Caladea'], arial: ['Liberation Sans', 'Arimo', 'Helvetica'], helvetica: ['Arial', 'Liberation Sans', 'Arimo'],
  'times new roman': ['Liberation Serif', 'Tinos', 'Times'], 'courier new': ['Liberation Mono', 'Cousine', 'Courier'], 'arial narrow': ['Liberation Sans Narrow'],
  georgia: ['Gelasio'], 'segoe ui': ['Selawik', 'Noto Sans', 'Open Sans'], tahoma: ['DejaVu Sans', 'Verdana'], verdana: ['DejaVu Sans'], 'symbol': ['OpenSymbol'],
@@ -46,7 +46,7 @@ const SUBSTITUTES: Record<string, string[]> = {
 };
 /** Height of a single-spaced line, as a multiple of the font size (Word uses the font's own ascent + descent). */
 const LINE: Record<string, number> = {calibri: 1.22, carlito: 1.22, cambria: 1.172, caladea: 1.172, arial: 1.149, 'liberation sans': 1.149, helvetica: 1.149, 'times new roman': 1.15, 'liberation serif': 1.15, 'courier new': 1.133, 'segoe ui': 1.33, georgia: 1.136, verdana: 1.215, tahoma: 1.207, 'century gothic': 1.225, lato: 1.2, 'open sans': 1.362, roboto: 1.172, inter: 1.21};
-const lineFactor = (font: string) => LINE[font.toLowerCase()] ?? 1.17;
+export const lineFactor = (font: string) => LINE[font.toLowerCase()] ?? 1.17;
 
 interface RunProps { font?: string; size?: number; bold?: boolean; italic?: boolean; underline?: string; strike?: boolean; dstrike?: boolean; color?: string; highlight?: string; shading?: string; vertAlign?: string; caps?: boolean; smallCaps?: boolean; spacing?: number; hidden?: boolean; position?: number; scale?: number; outline?: boolean; shadow?: boolean; emboss?: boolean }
 interface Border { style: string; width: number; color: string; space: number }
@@ -92,6 +92,8 @@ class Renderer {
  sizes: {size: number; font?: string}[] = [];
  /** Word version the document is laid out for (15 = Word 2013 and later). */
  compatMode = 15;
+ /** List instances (numId) already used, for restarts. */
+ listsSeen = new Set<string>();
  constructor(public pkg: Package) {
   const main = this.mainPart();
   this.part = main;
@@ -336,7 +338,14 @@ class Renderer {
    const content = this.blocks(section.blocks, g.width - g.left - g.right);
    // Notes close the section they belong to.
    const notes = this.notes.length ? `<div class="notes">${this.notes.join('')}</div>` : ''; this.notes = [];
-   parts.push(`<section style="page:${name};${breakBefore}${columns}">${content}${notes}</section>`);
+   // "Different first page" with a header only for the first page (letterhead): drawn on page 1 alone, in
+   // place of the page's top margin.
+   let firstHeader = '';
+   if (index === 0 && attr(child(sect, 'titlePg'), 'val') !== '0' && child(sect, 'titlePg') && !children(sect, 'headerReference').some(r => (attr(r, 'type') ?? 'default') === 'default')) {
+    const block = this.partContent(sect, 'header', 'first', g);
+    if (block) { firstHeader = `<div style="height:${pt(Math.max(g.top, g.header + this.partHeight(sect, 'header', 'first')))};box-sizing:border-box;padding-top:${pt(g.header)};overflow:visible">${block}</div>`; this.pageRules.push(`@page ${name}:first{margin-top:0}`); }
+   }
+   parts.push(`<section style="page:${name};${breakBefore}${columns}">${firstHeader}${content}${notes}</section>`);
    if (index === 0) { header = this.headerFooter(headerSect, 'header', g); footer = this.headerFooter(footerSect, 'footer', g); }
   });
   const background = hex(attr(child(this.doc.documentElement as unknown as El, 'background'), 'color'));
@@ -366,8 +375,8 @@ class Renderer {
   return {width, height, top: Math.abs(twip(attr(margin, 'top') ?? '1440')), bottom: Math.abs(twip(attr(margin, 'bottom') ?? '1440')), left: twip(attr(margin, 'left') ?? '1440') + gutter, right: twip(attr(margin, 'right') ?? '1440'), header: twip(attr(margin, 'header') ?? '720'), footer: twip(attr(margin, 'footer') ?? '720')};
  }
  /** Approximate height of a header or footer: its lines, pictures, spacing and borders. */
- partHeight(sect: El | null, kind: 'header' | 'footer'): number {
-  const refs = children(sect, kind + 'Reference'), ref = refs.find(r => attr(r, 'type') === 'default') ?? refs.find(r => !attr(r, 'type')) ?? (refs.length === 1 ? refs[0] : undefined);
+ partHeight(sect: El | null, kind: 'header' | 'footer', type?: 'first'): number {
+  const refs = children(sect, kind + 'Reference'), ref = refs.find(r => attr(r, 'type') === (type ?? 'default')) ?? (type ? undefined : refs.find(r => !attr(r, 'type')));
   const rel = ref && this.rels.get(ref.getAttributeNS(R, 'id') || ref.getAttribute('r:id') || ''), doc = rel && this.pkg.xml(rel.target);
   if (!doc) return 0;
   const para = (p: El): number => {
@@ -382,9 +391,20 @@ class Renderer {
   const block = (e: El): number => local(e) === 'p' ? para(e) : local(e) === 'tbl' ? children(e, 'tr').reduce((t, tr) => t + Math.max(...children(tr, 'tc').map(tc => kids(tc).reduce((h, k) => h + block(k), 0)), 0), 0) : local(e) === 'sdt' ? kids(child(e, 'sdtContent')).reduce((h, k) => h + block(k), 0) : 0;
   return kids(doc.documentElement as unknown as El).reduce((h, e) => h + block(e), 0);
  }
+ /** The content of one header or footer part (first, even or default), laid out as body HTML. */
+ partContent(sect: El | null, kind: 'header' | 'footer', type: string, g: ReturnType<Renderer['geometry']>): string | undefined {
+  const ref = children(sect, kind + 'Reference').find(r => attr(r, 'type') === type);
+  const rel = ref && this.rels.get(ref.getAttributeNS(R, 'id') || ref.getAttribute('r:id') || ''), doc = rel && this.pkg.xml(rel.target);
+  if (!rel || !doc) return undefined;
+  const savedRels = this.rels, savedPart = this.part; this.rels = this.pkg.rels(rel.target); this.part = rel.target;
+  const content = this.blocks(kids(doc.documentElement as unknown as El), g.width - g.left - g.right, true);
+  this.rels = savedRels; this.part = savedPart;
+  return content.replace(/<[^>]+>/g, '').trim() || /<img|<svg/.test(content) ? content : undefined;
+ }
  /** Chromium prints header and footer templates inside the page margins; page fields become its counters. */
  headerFooter(sect: El | null, kind: 'header' | 'footer', g: ReturnType<Renderer['geometry']>) {
-  const refs = children(sect, kind + 'Reference'), ref = refs.find(r => attr(r, 'type') === 'default') ?? refs.find(r => !attr(r, 'type')) ?? (refs.length === 1 ? refs[0] : undefined);
+  // Only the header that repeats on every page: a first-page or even-page header must not repeat.
+  const refs = children(sect, kind + 'Reference'), ref = refs.find(r => attr(r, 'type') === 'default') ?? refs.find(r => !attr(r, 'type'));
   if (!ref) return undefined;
   const rel = this.rels.get(ref.getAttributeNS(R, 'id') || ref.getAttribute('r:id') || ''), doc = rel && this.pkg.xml(rel.target);
   if (!doc) return undefined;
@@ -499,8 +519,14 @@ class Renderer {
  }
  markerText(numId: string, ilvl: number, lvl: El): string | null {
   const n = this.numbering.get(numId)!, abstractId = attr(n.abstract, 'abstractNumId') ?? numId;
-  const key = abstractId + ':' + numId, counters = this.counters.get(key) ?? [];
+  // Like Word, lists that share an abstract numbering continue each other's count; a list instance that
+  // overrides a level's start restarts that level the first time it is used.
+  const key = abstractId, counters = this.counters.get(key) ?? [];
   const startOf = (level: number) => { const o = n.overrides.get(level); if (o?.start !== undefined) return o.start; const l = this.level(numId, level); return num(attr(child(l, 'start'), 'val'), 1); };
+  if (!this.listsSeen.has(numId)) {
+   this.listsSeen.add(numId);
+   for (const [level, o] of n.overrides) if (o.start !== undefined) for (let i = level; i < 9; i++) counters[i] = undefined as never;
+  }
   counters[ilvl] = counters[ilvl] === undefined ? startOf(ilvl) : counters[ilvl]! + 1;
   for (let i = ilvl + 1; i < 9; i++) counters[i] = undefined as never;
   for (let i = 0; i < ilvl; i++) if (counters[i] === undefined) counters[i] = startOf(i);

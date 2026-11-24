@@ -1,7 +1,7 @@
 # Maintainer: Bruno Albertini <cliqueprojeto@users.noreply.github.com>
 # Official upstream binary, repackaged for pacman. See packaging/archlinux/README.md.
 pkgname=gcp-pdf-bin
-pkgver=0.14.0
+pkgver=0.14.1
 pkgrel=1
 pkgdesc='Local PDF editor and reader with OCR, forms and signatures'
 arch=('x86_64')
@@ -17,7 +17,7 @@ backup=('etc/pacman.d/gcp-pdf-mirrorlist')
 source=("https://github.com/cliqueprojeto/GCP-PDF/releases/download/v$pkgver/GCP-PDF-$pkgver-linux-amd64.deb"
         "LICENSE-$pkgver::https://raw.githubusercontent.com/cliqueprojeto/GCP-PDF/v$pkgver/LICENSE"
         'gcp-pdf-mirrorlist')
-sha256sums=('b4117b6b476364a4a22b900744f23bdafd9b9ed33a6ca5f2f7993092df21a86a'
+sha256sums=('b51810d3ec49e0d974480142a70580870c5ef2cee0f91ae2764ea00afe274960'
             '3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986'
             '1479ccb5c0a4d3e1e76a250d4c1cf309221fb7437a64e90867c590d2c10476d3')
 

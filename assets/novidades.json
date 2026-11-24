@@ -1,5 +1,16 @@
 [
   {
+    "versao": "0.14.1",
+    "data": "2026-11-24",
+    "itens": [
+      "Conversões para Word e PowerPoint não escrevem mais textos por cima dos campos: em tabelas e formulários, rótulo e valor ficam cada um no seu lugar, com o espaçamento original das linhas.",
+      "Páginas escaneadas que já tinham texto reconhecido (OCR) por outro programa saem com o texto editável no lugar das letras impressas, sem duplicar, mantendo a digitalização, as linhas e as assinaturas ao fundo.",
+      "Corrigida a conversão para Word e PowerPoint que parava com erro em alguns PDFs com desenhos e textos.",
+      "Android: tocar dentro da caixa de edição de texto posiciona o cursor sem fechar o editor, e a caixa cresce conforme o texto.",
+      "Android: a tela Organizar rola normalmente com o dedo para chegar a todas as páginas."
+    ]
+  },
+  {
     "versao": "0.14.0",
     "data": "2026-11-24",
     "itens": [

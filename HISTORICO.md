@@ -1,5 +1,16 @@
 # Histórico de versões do GCP-PDF
 
+## 0.14.0 — 24/11/2026
+
+- GCP-PDF para Android: o mesmo programa do computador no celular e no tablet, adaptado ao toque, com pinça para zoom, seleção de texto por toque longo, digitalização pela câmera, “Abrir com” e “Compartilhar”. Conversões para Word, Excel e PowerPoint saem com o mesmo layout do computador.
+- Assinaturas com certificado ICP-Brasil e gov.br agora aparecem como válidas no próprio GCP-PDF em qualquer sistema: as cadeias públicas do ITI vêm junto com o programa.
+- Novo carimbo da assinatura com certificado digital: mais compacto, com prévia do tamanho exato antes de inserir e o código SHA-256 do documento para conferência.
+- Ao converter um PDF escaneado ou com letras desenhadas para Word, PowerPoint ou Excel, o programa pergunta se deve reconhecer o texto (OCR) e não sobrepõe mais o texto reconhecido ao original.
+- Edição do texto original do PDF reduz um pouco a letra quando o texto novo não cabe, em vez de recusar a alteração.
+- Interface em inglês e espanhol completa nas Configurações, no conversor de EPUB, nos dicionários, nas propriedades do documento e no assistente de IA.
+- Em telas de toque, a aba e o botão selecionados mantêm a cor certa do texto em todos os temas.
+
+
 ## 0.13.2 — 20/11/2026
 
 - “Converter para PDF” agora também converte apresentações do PowerPoint (.pptx) sem precisar do Microsoft Office nem do LibreOffice: cada slide vira uma página com o fundo, as formas, as imagens, as tabelas e o texto selecionável.

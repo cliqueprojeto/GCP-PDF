@@ -8,7 +8,7 @@ import ExcelJS from 'exceljs';
 import { pageGrid, type PageGrid } from './tables';
 import PptxGenJS from 'pptxgenjs';
 import type { ExportOptions } from '../shared/types';
-import { toDocxLayout, toPptxLayout, turnedText, turnedBox, type OcrRuns, type TurnedText } from './word-layout';
+import { toDocxLayout, toPptxLayout, turnedText, turnedBox, type OcrRuns, type Run as LayoutRun, type TurnedText } from './word-layout';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/types/src/display/api';
 
 const localRequire = createRequire(typeof __filename === 'string' ? __filename : pathToFileURL(resolve('package.json')));
@@ -164,7 +164,7 @@ export async function convertPdf(bytes:Uint8Array,options:ExportOptions,onProgre
     }
     if(options.format==='docx'&&options.mode!=='fidelity')return await toDocxLayout(bytes,options.dpi??150,warnings,onProgress,ocr);
     if(options.format==='docx')return await toDocx(pdf,options,dpi,warnings,onProgress);
-    if(options.format==='xlsx')return await toXlsx(pdf,dpi,warnings,onProgress);
+    if(options.format==='xlsx')return await toXlsx(pdf,dpi,warnings,onProgress,ocr);
     if(options.mode!=='fidelity')return await toPptxLayout(bytes,options.dpi??150,warnings,onProgress,ocr);
     return await toPptx(pdf,options,dpi,warnings,onProgress);
   }finally{await pdf.loadingTask.destroy();}
@@ -265,12 +265,25 @@ function gridSheet(sheet:ExcelJS.Worksheet,grid:PageGrid,images:{x:number;y:numb
   const at=(edges:number[],v:number)=>{let i=0;while(i<edges.length-2&&v>edges[i+1]!)i++;return i+Math.max(0,Math.min(1,(v-edges[i]!)/((edges[i+1]!-edges[i]!)||1)));};
   for(const image of images)sheet.addImage(image.id,{tl:{col:at(grid.xs,image.x),row:at(grid.ys,image.y)} as never,ext:{width:image.width*96/72,height:image.height*96/72}});
 }
-async function toXlsx(pdf:PDFDocumentProxy,dpi:number,warnings:string[],onProgress?:((message:string)=>void)) {
+async function toXlsx(pdf:PDFDocumentProxy,dpi:number,warnings:string[],onProgress?:((message:string)=>void),ocr:OcrRuns=new Map()) {
   const workbook=new ExcelJS.Workbook();workbook.creator='Bruno Albertini | Gestão Cultural Pro';workbook.company='Gestão Cultural Pro';
   let gridPages=0;
   for(let i=1;i<=pdf.numPages;i++) {
     progress(onProgress,i,pdf.numPages);const data=await inspectPage(await pdf.getPage(i),true),sheet=workbook.addWorksheet(`Página ${i}`,{pageSetup:{paperSize:paperSize(data.width,data.height) as never,orientation:data.width>data.height?'landscape':'portrait',fitToPage:true,fitToWidth:1,fitToHeight:0,horizontalCentered:false,verticalCentered:false,margins:{left:0,right:0,top:0,bottom:0,header:0,footer:0}},properties:{defaultRowHeight:18},views:[{showGridLines:false}]});
     // Pages drawn as tables (filled cells, ruling lines) become real merged cells, like Acrobat's export.
+    // Recognized pages (scans, letters drawn as outlines) have no drawn table to trust: their words go in rows.
+    // Recognized pages (scans, letters drawn as outlines): the sheet shows the page exactly as printed and the
+    // recognized lines go to their own tab, one per row, to copy and calculate with.
+    const recognized=ocr.get(i-1);
+    if(recognized?.length){
+      const png=await renderPage(data.page,dpi,warnings),imageId=workbook.addImage({buffer:png as any,extension:'png'});sheet.addImage(imageId,{tl:{col:0,row:0},ext:{width:data.width*96/72,height:data.height*96/72}});
+      const text=workbook.addWorksheet(`Texto ${i}`),lines:LayoutRun[][]=[];
+      for(const run of [...recognized].sort((a,b)=>a.baseline-b.baseline||a.x-b.x)){const line=lines.find(l=>Math.abs(l[0]!.baseline-run.baseline)<run.size*0.4);if(line)line.push(run);else lines.push([run]);}
+      text.columns=[{width:90}];
+      for(const line of lines){const row=text.addRow([line.sort((a,b)=>a.x-b.x).map(r=>r.text).join(' ')]);row.getCell(1).alignment={wrapText:true};}
+      warnings.push(`A página ${i} foi mantida como imagem na planilha, com a aparência original; o texto reconhecido por OCR está na aba "Texto ${i}".`);
+      data.page.cleanup();continue;
+    }
     const grid=await pageGrid(data.page).catch(()=>null);
     if(grid&&grid.regions.some(r=>r.text)) {
       const images=data.images.filter(im=>im.width>8&&im.height>8).map(im=>({x:im.x,y:im.y,width:im.width,height:im.height,id:workbook.addImage({buffer:im.bytes as any,extension:"png"})}));

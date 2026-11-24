@@ -17,6 +17,13 @@ const median = (values: number[]) => { const sorted = [...values].sort((a, b) =>
 /** Words whose letters are all the same height class say little about the font; longer ones measure best. */
 const measurable = (w: OcrWord) => w.text.length >= 4 && /^[\p{L}\p{N}]/u.test(w.text);
 
+/** A box edge touching a word is read as "|" (or an unpaired bracket) glued to it: the edge is drawing. */
+function withoutFrameEdges(w: OcrWord): OcrWord {
+  const text = w.text.trim(), lead = /^[|¦]+|^\[(?!.*\])|^\](?=.)/.exec(text)?.[0].length ?? 0, tail = /[|¦]+$|(?<!\[.*)\]$|\[$/.exec(text)?.[0].length ?? 0;
+  if (!lead && !tail || lead + tail >= text.length) return w;
+  const per = w.width / text.length, kept = text.slice(lead, text.length - tail).trim();
+  return { ...w, text: kept, x: w.x + per * lead, width: w.width - per * (lead + tail) };
+}
 /** Turns OCR lines into the runs the Office exports lay out, recovering what a scan does not say:
  * - artwork read as text (logos: a line box far taller than its row) and unsure words stay in the picture;
  * - bold from stroke thickness: a bold word's strokes are clearly thicker than the page's typical word, and
@@ -27,7 +34,7 @@ export function ocrRuns(lines: OcrLine[], measure: OcrMeasure, families: string[
   const kept = lines
     .filter((line) => !(line.rowHeight > 0 && line.height > line.rowHeight * 1.8))
     // Vertical rules and frame edges come back as "|" or "I" pieces; they are drawing, not text.
-    .map((line) => ({ ...line, words: line.words.filter((w) => w.confidence >= MIN_CONFIDENCE && w.text.trim() && !/^[|¦!]+$/.test(w.text.trim())) }))
+    .map((line) => ({ ...line, words: line.words.filter((w) => w.confidence >= MIN_CONFIDENCE && w.text.trim() && !/^[|¦!\[\]]+$/.test(w.text.trim())).map(withoutFrameEdges) }))
     .filter((line) => line.words.length);
   const typical = median(kept.flatMap((line) => line.words.filter(measurable).map((w) => measure.stroke(w))));
   const heavy = kept.map((line) => line.words.map((w) => typical > 0 && w.text.length >= 3 && measure.stroke(w) > typical * 1.25));

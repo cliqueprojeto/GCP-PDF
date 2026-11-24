@@ -9,6 +9,8 @@ import { SignaturePreview } from "./Security";
 import { fromPage, inkPath, measureLabel, objectBounds, pageTransform, resizeObject, shapePath, toPage, translateObject } from "../shared/geometry";
 import { loadAsset, loadPage, pdfjs, displaySize, type PageGeometry } from "./pdf";
 import { uid, type Style, type Tool } from "./editor";
+import { createPortal } from "react-dom";
+import { MobileTextSheet } from "./MobileChrome";
 
 export interface SourceSelection { page: string; paragraph: SourceParagraph; color: string; generation?:number; caret?: { x: number; y: number } }
 /** PDF.js text of the rendered page, kept so the paragraph editor can show the page's own embedded fonts. */
@@ -415,6 +417,12 @@ export function PageView(props: Props) {
   }
   function onPointerDown(e: React.PointerEvent) {
     if (e.button !== 0) return;
+    // On touch there is no hover preview: the first tap shows the stamp there, a tap on it signs.
+    if (tool.kind === "sign-place" && e.pointerType === "touch") {
+      const p = pagePoint(e), left = ghost ? Math.max(0, Math.min(size.width - tool.width, ghost.x - tool.width / 2)) : 0, top = ghost ? Math.max(0, Math.min(size.height - tool.height, ghost.y - tool.height / 2)) : 0;
+      if (!ghost || p.x < left || p.x > left + tool.width || p.y < top || p.y > top + tool.height) { e.preventDefault(); setGhost(p); return; }
+      e.preventDefault(); props.onArea(pageRef.id, { x: left, y: top, width: tool.width, height: tool.height }); return;
+    }
     if (tool.kind === "sign-place") { e.preventDefault(); const p = pagePoint(e); props.onArea(pageRef.id, { x: Math.max(0, Math.min(size.width - tool.width, p.x - tool.width / 2)), y: Math.max(0, Math.min(size.height - tool.height, p.y - tool.height / 2)), width: tool.width, height: tool.height }); return; }
     const target = e.target as HTMLElement, point = pagePoint(e);
     const noteId = target.closest<HTMLElement>(".overlay-note[data-object-id]")?.dataset.objectId;
@@ -579,12 +587,15 @@ export function PageView(props: Props) {
     <div
       ref={outer}
       className={`page-sheet tool-${tool.kind} ${rendered ? "" : "loading"}`}
-      onPointerLeave={() => setGhost(null)}
+      // A finger lifting also "leaves" the page: the touch preview stays until the next tap.
+      onPointerLeave={(e) => { if (e.pointerType !== "touch") setGhost(null); }}
       style={{ width: display.width, height: display.height }}
       data-page={props.index + 1}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      // A touch that turns into scrolling or zooming the page ends any drag the finger had started.
+      onPointerCancel={() => setDrag(null)}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
     >
@@ -617,7 +628,7 @@ export function PageView(props: Props) {
           );
         })()}
         {props.openNote && (() => { const n = own.find((o) => o.id === props.openNote && o.kind === "note") as PdfNote | undefined; return n ? <NoteBubble note={n} onChange={(next) => props.onUpdate([next])} onDelete={() => { props.onOpenNote?.(null); props.onDelete([n.id]); }} onClose={() => { if (!n.text && !(n.replies ?? []).length) props.onDelete([n.id]); props.onOpenNote?.(null); }} /> : null; })()}
-        {tool.kind === "sign-place" && ghost && <div className="signature-ghost" style={{ left: Math.max(0, Math.min(size.width - tool.width, ghost.x - tool.width / 2)), top: Math.max(0, Math.min(size.height - tool.height, ghost.y - tool.height / 2)) }}><SignaturePreview lines={tool.lines} image={tool.image} width={tool.width} height={tool.height} scale={tool.height / (26 + tool.lines.length * 11)} /></div>}
+        {tool.kind === "sign-place" && ghost && <div className="signature-ghost" style={{ left: Math.max(0, Math.min(size.width - tool.width, ghost.x - tool.width / 2)), top: Math.max(0, Math.min(size.height - tool.height, ghost.y - tool.height / 2)) }}>{tool.layout && <SignaturePreview layout={tool.layout} image={tool.image} px={tool.width / tool.layout.width} />}</div>}
         {tool.kind === "edit" && source && (
           <>
             {/* Editar texto / Editar imagens limit what can be picked; Editar tudo shows both. */}
@@ -641,12 +652,23 @@ export function PageView(props: Props) {
                 </div>
               );
             })}
-            {activeParagraph?.members && <BlockEditor key={`${pageRef.id}:${activeParagraph.index}`} paragraph={activeParagraph} pageText={pageText.current} spacing={source.spacing} caret={props.sourceSelection?.caret} sample={sample} onCommit={async members=>{
+            {activeParagraph && phoneEditor() && createPortal(<MobileTextSheet key={`${pageRef.id}:${activeParagraph.index}`} busy={engineBusy}
+              texts={activeParagraph.members ? activeParagraph.members.map((m) => m.text) : [activeParagraph.text]}
+              onCancel={() => props.onSourceSelect(null)}
+              onApply={async (texts) => {
+                setEngineBusy(true);
+                try {
+                  if (activeParagraph.members) await window.gcp.editParagraph(props.docId, pageRef.id, { paragraph: activeParagraph.index, generation: source.generation, members: activeParagraph.members.map((m, i) => ({ paragraph: m.index, ...(texts[i] !== m.text ? { text: texts[i] } : {}) })) });
+                  else await window.gcp.editParagraph(props.docId, pageRef.id, { paragraph: activeParagraph.index, text: texts[0]!, ...paragraphSpacing(activeParagraph) });
+                  props.onSourceSelect(null);
+                } catch (error) { props.onError(error); } finally { setEngineBusy(false); }
+              }} />, document.body)}
+            {activeParagraph?.members && !phoneEditor() && <BlockEditor key={`${pageRef.id}:${activeParagraph.index}`} paragraph={activeParagraph} pageText={pageText.current} spacing={source.spacing} caret={props.sourceSelection?.caret} sample={sample} onCommit={async members=>{
               if(!members.some(m=>m.text!==undefined)){props.onSourceSelect(null);return;}
               setEngineBusy(true);
               try{await window.gcp.editParagraph(props.docId,pageRef.id,{paragraph:activeParagraph.index,generation:source.generation,members});props.onSourceSelect(null);}finally{setEngineBusy(false);}
             }} onError={props.onError}/>}
-            {activeParagraph && !activeParagraph.members && <ParagraphEditor key={`${pageRef.id}:${activeParagraph.index}`} paragraph={activeParagraph} lines={paragraphLines(pageText.current, activeParagraph.rect, source.spacing)} caret={props.sourceSelection?.caret} colors={{...sample(activeParagraph.rect),...(activeParagraph.ink?{color:activeParagraph.ink}:{})}} onCommit={async (text, width, trackedLines) => {
+            {activeParagraph && !activeParagraph.members && !phoneEditor() && <ParagraphEditor key={`${pageRef.id}:${activeParagraph.index}`} paragraph={activeParagraph} lines={paragraphLines(pageText.current, activeParagraph.rect, source.spacing)} caret={props.sourceSelection?.caret} colors={{...sample(activeParagraph.rect),...(activeParagraph.ink?{color:activeParagraph.ink}:{})}} onCommit={async (text, width, trackedLines) => {
               const resized = width !== undefined && Math.abs(width - activeParagraph.rect.width) > 0.5;
               if (text === activeParagraph.text && !resized) { props.onSourceSelect(null); return; }
               setEngineBusy(true);
@@ -718,6 +740,8 @@ function scaleStyle(paragraph: SourceParagraph): React.CSSProperties {
   return paragraph.scale ? { display: "inline-block", transform: `scaleX(${paragraph.scale})`, transformOrigin: "left center" } : {};
 }
 /** Spacing the engine must keep when it rewrites a paragraph. */
+/** Phones edit PDF text in a sheet: the page is too small to type on. */
+const phoneEditor = () => document.documentElement.classList.contains("mobile") && (innerWidth < 900 || innerHeight < 600);
 export function paragraphSpacing(paragraph: SourceParagraph): Pick<ParagraphEdit, "charSpacing" | "scale"> {
   return { ...(paragraph.tracking ? { charSpacing: paragraph.tracking } : {}), ...(paragraph.scale ? { scale: paragraph.scale } : {}) };
 }

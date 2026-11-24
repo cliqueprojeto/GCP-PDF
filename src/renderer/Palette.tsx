@@ -5,6 +5,7 @@ import {
   CornerDownLeft,
   BookOpen,
   ChevronRight,
+  ChevronLeft,
   X,
   FolderOpen,
   Save,
@@ -631,6 +632,18 @@ export function HelpDialog({
 }) {
   const [current, setCurrent] = useState(topic ?? TOPICS[0]!.id),
     item = TOPICS.find((t) => t.id === current) ?? TOPICS[0]!;
+  // Phones show one column: the topic list, then the chosen article with a way back.
+  const [reading, setReading] = useState(!!topic), nav = useRef<HTMLElement>(null);
+  // Escape (and Android's back): from an article shown alone, back to the topics; otherwise close.
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      if (nav.current && getComputedStyle(nav.current).display === "none") setReading(false); else onClose();
+    };
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [onClose]);
   return (
     <div
       className="modal-backdrop"
@@ -638,15 +651,22 @@ export function HelpDialog({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="help" role="dialog" aria-label={translateUi("Central de ajuda")}>
-        <nav className="help-nav">
+      <div className={reading ? "help reading" : "help"} role="dialog" aria-label={translateUi("Central de ajuda")}>
+        <button
+          className="help-close"
+          aria-label={translateUi("Fechar ajuda")}
+          onClick={onClose}
+        >
+          <X size={18} />
+        </button>
+        <nav className="help-nav" ref={nav}>
           <h2>
             <BookOpen size={17} />{" "}{translateUi("Central de ajuda")}{" "}</h2>
           {TOPICS.map((t) => (
             <button
               key={t.id}
               className={t.id === item.id ? "active" : ""}
-              onClick={() => setCurrent(t.id)}
+              onClick={() => { setCurrent(t.id); setReading(true); }}
             >
               {translateUi(t.title)}
               <ChevronRight size={13} />
@@ -654,12 +674,8 @@ export function HelpDialog({
           ))}
         </nav>
         <article className="help-body">
-          <button
-            className="help-close"
-            aria-label={translateUi("Fechar ajuda")}
-            onClick={onClose}
-          >
-            <X size={18} />
+          <button className="help-back" onClick={() => setReading(false)}>
+            <ChevronLeft size={16} />{translateUi("Todos os tópicos")}
           </button>
           {item.art}
           <h3>{translateUi(item.title)}</h3>

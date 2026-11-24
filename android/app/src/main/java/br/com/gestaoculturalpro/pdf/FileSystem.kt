@@ -87,6 +87,12 @@ class FileSystem(private val context: Context) {
 
     fun treePath(tree: Uri) = "/safdir/" + Uri.encode(tree.toString())
 
+    /** The path names the document itself (its own name, or that name with an extension the app added). */
+    private fun sameDocument(target: Document): Boolean {
+        val actual = displayName(target.uri)?.replace('/', '_') ?: return true
+        return target.name.isEmpty() || target.name == actual || target.name.startsWith(actual) || actual.startsWith(target.name.substringBeforeLast('.'))
+    }
+
     fun displayName(uri: Uri): String? = query(uri, OpenableColumns.DISPLAY_NAME) { it.getString(0) }
 
     private fun <T> query(uri: Uri, column: String, read: (Cursor) -> T?): T? = try {
@@ -123,6 +129,8 @@ class FileSystem(private val context: Context) {
                 result.put("exists", true).put("isFile", true).put("isDirectory", false).put("size", size).put("mtimeMs", 0)
             }
             is Document -> {
+                // Another name under a document's address is not that document (it has no siblings).
+                if (!sameDocument(target)) return result.put("exists", false)
                 val size = query(target.uri, OpenableColumns.SIZE) { it.getLong(0) }
                 val exists = size != null || try { resolver.openInputStream(target.uri)?.close(); true } catch (_: Exception) { false }
                 if (!exists) return result.put("exists", false)
@@ -215,7 +223,10 @@ class FileSystem(private val context: Context) {
                 file.parentFile?.let { if (!it.isDirectory) throw FileNotFoundException("ENOENT: ${it.path}") }
                 stream = java.io.FileOutputStream(file, flag == "a")
             }
-            is Document -> stream = resolver.openOutputStream(target.uri, if (flag == "a") "wa" else "wt") ?: throw IOException("EACCES: $path")
+            is Document -> {
+                if (!sameDocument(target)) throw IOException("EACCES: escolha onde salvar o novo arquivo")
+                stream = resolver.openOutputStream(target.uri, if (flag == "a") "wa" else "wt") ?: throw IOException("EACCES: $path")
+            }
             is TreeChild -> {
                 val existing = findChild(target.tree, target.name)
                 if (existing != null && flag == "wx") throw IOException("EEXIST: $path")

@@ -11,7 +11,7 @@ export type Tool =
   | { kind: "sign-area" }
   | { kind: "note" }
   /** Positioning a certificate signature: a ghost of the real stamp follows the pointer; a click signs there. */
-  | { kind: "sign-place"; width: number; height: number; lines: string[]; image?: string };
+  | { kind: "sign-place"; width: number; height: number; lines: string[]; image?: string; layout?: import("../shared/signature-stamp").StampLayout };
 export interface Style {
   stroke: string;
   fill: string | null;

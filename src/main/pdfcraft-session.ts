@@ -33,6 +33,18 @@ export function draftFits(source: {height: number; lines: number; size: number},
  const added = Math.max(0, draft.lines - source.lines);
  return draft.height <= source.height + Math.max(2, source.height * .4) + added * source.size * 1.5;
 }
+/** When rewritten text would not fit its original space, the gentlest adjustment that makes it fit, as a
+ * typesetter would: a slightly smaller size (never below 90 %), measured with the engine's own metrics for
+ * each try. Null when nothing fits. */
+export async function autoFit(measure: (extra: {size?: number; scale?: number}) => Promise<{height: number} | null>, source: {height: number; lines: number; size: number}, lines: number, current: {size: number; scale: number}): Promise<{size?: number; scale?: number} | null> {
+ // The engine's layout measures size and width (not horizontal scale): only sizes it can verify are tried.
+ const tries: {size?: number; scale?: number}[] = [{}, {size: Math.round(current.size * 0.95 * 10) / 10}, {size: Math.round(current.size * 0.9 * 10) / 10}];
+ for (const extra of tries) {
+  const draft = await measure(extra);
+  if (draft && draftFits(source, {height: draft.height, lines})) return extra;
+ }
+ return null;
+}
 const lineCount = (text: unknown) => (typeof text === 'string' ? text.replace(/\n+$/, '').split('\n').length : 1);
 export class PdfCraftSession {
  private child?: ChildProcessWithoutNullStreams;
@@ -164,11 +176,17 @@ export class PdfCraftSession {
       return args;
      });
      for(const args of planned)if(args.text!==undefined||args.width!==undefined||args.size!==undefined){
-      const layout=await call('text_edit_layout',{doc,page:page+1,paragraph:args.paragraph,...(args.text!==undefined?{text:args.text}:{}),...(args.width!==undefined?{width:args.width}:{}),...(args.size!==undefined?{size:args.size}:{})});
-      const a=layout.source_rect,b=layout.draft_rect;
-      if(!Array.isArray(a)||!Array.isArray(b)||a.length!==4||b.length!==4||![...a,...b].every(Number.isFinite))throw new Error('Não foi possível conferir o espaço do texto. O PDF foi preservado.');
       const expected=original.paragraphs?.find((p:any)=>Number(p.paragraph)===args.paragraph);
-      if(!draftFits({height:Math.abs(a[3]-a[1]),lines:lineCount(expected?.editor_text??expected?.text),size:Number(expected?.size)||12},{height:Math.abs(b[3]-b[1]),lines:args.text!==undefined?lineCount(args.text):lineCount(expected?.editor_text??expected?.text)}))throw new Error('O texto ultrapassaria o espaço original dentro do bloco. Ajuste o texto ou a largura. O PDF foi preservado.');
+      const measure=async(extra:{size?:number;scale?:number})=>{
+       const layout=await call('text_edit_layout',{doc,page:page+1,paragraph:args.paragraph,...(args.text!==undefined?{text:args.text}:{}),...(args.width!==undefined?{width:args.width}:{}),...(extra.size!==undefined||args.size!==undefined?{size:extra.size??args.size}:{}),...(extra.scale!==undefined?{scale:extra.scale}:{})});
+       const a=layout.source_rect,b=layout.draft_rect;
+       if(!Array.isArray(a)||!Array.isArray(b)||a.length!==4||b.length!==4||![...a,...b].every(Number.isFinite))throw new Error('Não foi possível conferir o espaço do texto. O PDF foi preservado.');
+       sourceHeight=Math.abs(a[3]-a[1]);return {height:Math.abs(b[3]-b[1])};
+      };
+      let sourceHeight=0;await measure({});
+      const fit=await autoFit(measure,{height:sourceHeight,lines:lineCount(expected?.editor_text??expected?.text),size:Number(expected?.size)||12},args.text!==undefined?lineCount(args.text):lineCount(expected?.editor_text??expected?.text),{size:Number(args.size??expected?.size)||12,scale:Number(args.scale)||100});
+      if(!fit)throw new Error('O texto ultrapassaria o espaço original dentro do bloco, mesmo com a letra um pouco menor. Aumente a largura pela alça lateral ou reduza o texto. O PDF foi preservado.');
+      Object.assign(args,fit);
      }
      for(const args of planned.reverse())if(Object.keys(args).length>3)await call('text_edit',args);
      await call('doc_save',{doc,path:output});
@@ -190,11 +208,19 @@ export class PdfCraftSession {
    // Measure with the engine's font metrics before mutation. Refuse accidental reflow into
    // neighbouring content instead of committing a taller paragraph and losing the user's layout.
    if (edit.text !== undefined && edit.font === undefined) {
-    const layout = await this.call('text_edit_layout', {doc: entry.doc, page: page + 1, paragraph: edit.paragraph + 1, text: edit.text, ...(edit.width !== undefined ? {width: edit.width} : {}), ...(edit.size !== undefined ? {size: edit.size} : {})});
-    const source=layout?.source_rect,draft=layout?.draft_rect;
-    if(Array.isArray(source)&&source.length===4&&Array.isArray(draft)&&draft.length===4&&[...source,...draft].every(Number.isFinite)){
-     const listed=await this.call('text_paragraphs',{doc:entry.doc,page:page+1}).catch(()=>undefined),current=listed?.paragraphs?.find((p:any)=>Number(p.paragraph)===edit.paragraph+1);
-     if(!draftFits({height:Math.abs(source[3]-source[1]),lines:lineCount(current?.editor_text??current?.text),size:Number(current?.size)||12},{height:Math.abs(draft[3]-draft[1]),lines:lineCount(edit.text)}))throw new Error('O texto criaria novas linhas fora da caixa original. Aumente a largura pela alça lateral ou reduza o texto antes de aplicar. O PDF foi preservado.');
+    const listed=await this.call('text_paragraphs',{doc:entry.doc,page:page+1}).catch(()=>undefined),current=listed?.paragraphs?.find((p:any)=>Number(p.paragraph)===edit.paragraph+1);
+    let sourceHeight:number|null=null;
+    const measure=async(extra:{size?:number;scale?:number})=>{
+     const layout = await this.call('text_edit_layout', {doc: entry.doc, page: page + 1, paragraph: edit.paragraph + 1, text: edit.text, ...(edit.width !== undefined ? {width: edit.width} : {}), ...(extra.size !== undefined || edit.size !== undefined ? {size: extra.size ?? edit.size} : {}), ...(extra.scale !== undefined ? {scale: extra.scale} : args.scale !== undefined ? {scale: args.scale} : {})});
+     const source=layout?.source_rect,draft=layout?.draft_rect;
+     if(!(Array.isArray(source)&&source.length===4&&Array.isArray(draft)&&draft.length===4&&[...source,...draft].every(Number.isFinite)))return null;
+     sourceHeight=Math.abs(source[3]-source[1]);return {height:Math.abs(draft[3]-draft[1])};
+    };
+    const first=await measure({});
+    if(first&&sourceHeight!==null){
+     const fit=await autoFit(async extra=>Object.keys(extra).length?measure(extra):first,{height:sourceHeight,lines:lineCount(current?.editor_text??current?.text),size:Number(current?.size)||12},lineCount(edit.text),{size:Number(edit.size??current?.size)||12,scale:Number(args.scale)||100});
+     if(!fit)throw new Error('O texto criaria novas linhas fora da caixa original, mesmo com a letra um pouco menor. Aumente a largura pela alça lateral ou reduza o texto. O PDF foi preservado.');
+     Object.assign(args,fit);
     }
    }
    try { await this.call('text_edit', args); }

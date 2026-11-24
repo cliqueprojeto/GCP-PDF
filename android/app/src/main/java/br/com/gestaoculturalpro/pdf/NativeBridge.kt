@@ -299,8 +299,9 @@ class NativeBridge(private val activity: MainActivity) {
                 override fun onPageFinished(view: WebView, url: String) {
                     val attributes = PrintAttributes.Builder().setMinMargins(PrintAttributes.Margins.NO_MARGINS)
                         .setColorMode(if (input.optBoolean("color", true)) PrintAttributes.COLOR_MODE_COLOR else PrintAttributes.COLOR_MODE_MONOCHROME).build()
-                    manager.print(name, view.createPrintDocumentAdapter(name), attributes)
-                    resolve(id, true)
+                    // Resolved when the system dialog is done with the document: the caller removes the
+                    // temporary files only then (the print service reads them after the dialog opens).
+                    manager.print(name, FinishingAdapter(view.createPrintDocumentAdapter(name)) { printView = null; resolve(id, true) }, attributes)
                 }
             }
             view.loadUrl(assetUrl(path))
@@ -320,8 +321,17 @@ class NativeBridge(private val activity: MainActivity) {
                     } catch (e: Exception) { callback.onWriteFailed(e.message) }
                 }
             }
+            // The file must exist until the print service has read it: answer only when the dialog is done.
+            override fun onFinish() { resolve(id, true) }
         }, null)
-        resolve(id, true)
+    }
+
+    /** Passes everything to the WebView's adapter and reports when the system print dialog has finished with it. */
+    private class FinishingAdapter(private val inner: PrintDocumentAdapter, private val finished: () -> Unit) : PrintDocumentAdapter() {
+        override fun onStart() = inner.onStart()
+        override fun onLayout(old: PrintAttributes?, new: PrintAttributes, cancel: android.os.CancellationSignal?, callback: LayoutResultCallback, extras: android.os.Bundle?) = inner.onLayout(old, new, cancel, callback, extras)
+        override fun onWrite(pages: Array<out android.print.PageRange>, destination: android.os.ParcelFileDescriptor, cancel: android.os.CancellationSignal?, callback: WriteResultCallback) = inner.onWrite(pages, destination, cancel, callback)
+        override fun onFinish() { inner.onFinish(); finished() }
     }
 
     // ---------- network (AI providers and update checks, without browser CORS limits, like the desktop) ----------

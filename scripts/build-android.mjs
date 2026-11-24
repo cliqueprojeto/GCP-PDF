@@ -41,7 +41,7 @@ await writeFile(index, (await readFile(index, 'utf8')).replace('<head>', `<head>
 // 2. What the engine reads from the desktop assets folder (same paths: /android_asset/app/assets/…).
 await rm(appAssets, {recursive: true, force: true});
 await mkdir(join(appAssets, 'assets'), {recursive: true});
-for (const item of ['dictionaries', 'tessdata', 'novidades.json', 'icon.png', 'Inter-Regular.ttf', 'OFL-Inter.txt']) await cp(join('assets', item), join(appAssets, 'assets', item), {recursive: true});
+for (const item of ['dictionaries', 'tessdata', 'icp-brasil', 'novidades.json', 'icon.png', 'Inter-Regular.ttf', 'OFL-Inter.txt']) await cp(join('assets', item), join(appAssets, 'assets', item), {recursive: true});
 await mkdir(join(appAssets, 'assets/pdfcraft'), {recursive: true});
 for (const name of await readdir('assets/pdfcraft')) if (/^(LICENSE|NOTICE|OFL)/.test(name)) await copyFile(join('assets/pdfcraft', name), join(appAssets, 'assets/pdfcraft', name));
 await copyFile('THIRD_PARTY_NOTICES.md', join(appAssets, 'THIRD_PARTY_NOTICES.md'));

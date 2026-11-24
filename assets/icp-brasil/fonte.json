@@ -1,0 +1,9 @@
+{
+  "fonte": "http://acraiz.icpbrasil.gov.br/credenciadas/CertificadosAC-ICP-Brasil/ACcompactado.zip",
+  "fonteGovBr": "http://repo.iti.br/docs/Cadeia_GovBr-der.p7b",
+  "sha256GovBr": "dbf22f7c15ace9c37e6b4141271695a17dc445b5a04c003ced94322ad905879f",
+  "obtido": "2026-11-24",
+  "sha256Zip": "391420ce15fa59ce9d78b7a077f6622510505de877fe6ff234a2cdf53c561b03",
+  "certificados": 186,
+  "observacao": "Certificados públicos das autoridades certificadoras da ICP-Brasil, publicados pelo ITI. Atualize ao surgirem novas ACs ou raízes."
+}

@@ -1,4 +1,5 @@
 import {t as translateUi} from "./i18n";
+import { stampLayout, type StampLayout } from "../shared/signature-stamp";
 import React, { useEffect, useState } from "react";
 import { Eye, EyeOff, LoaderCircle, Lock, ShieldCheck, BadgeCheck, ExternalLink, FileSignature, AlertTriangle, CheckCircle2, XCircle, HelpCircle } from "lucide-react";
 import type { Certificate, FieldProps, ProtectOptions, Rect, Signature } from "../shared/types";
@@ -62,9 +63,7 @@ export function ProtectDialog({ docId, name, onClose, onSaved, onError }: { docI
 }
 
 /** PAdES signing with a system identity or a user-selected A1 PKCS#12 file. */
-export interface PlacedSignature { options: Omit<import("../shared/types").SignOptions, "page" | "rect">; width: number; height: number; lines: string[]; image?: string }
-/** Lines the visible stamp shows, in the order the engine draws them. */
-export function stampLines(name: string, reason: string, location: string) { const now = new Date(); return ["Assinado digitalmente por", name, `Data: ${now.toLocaleDateString("pt-BR")} ${now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`, ...(reason ? [`Motivo: ${reason}`] : []), ...(location ? [`Local: ${location}`] : [])]; }
+export interface PlacedSignature { options: Omit<import("../shared/types").SignOptions, "page" | "rect">; width: number; height: number; lines: string[]; image?: string; layout?: StampLayout }
 const STAMP_SIZES = { small: 0.75, medium: 1, large: 1.35 } as const;
 export function CertificateDialog({ docId, area, visible = false, signatures, onClose, onSigned, onPlace, onError }: { docId: string; area: { page: string; rect: Rect } | null; visible?: boolean; signatures: Signature[]; onClose: () => void; onSigned: (path: string) => void; onPlace?: (placed: PlacedSignature) => void; onError: (e: unknown) => void }) {
   const [size, setSize] = useState<keyof typeof STAMP_SIZES>("medium");
@@ -72,6 +71,8 @@ export function CertificateDialog({ docId, area, visible = false, signatures, on
   const [password,setPassword]=useState("");
   const fromFile=chosen.startsWith('file:');
   const signerName=fromFile?'Titular do certificado':list?.find(c=>c.id===chosen)?.name.split(':')[0]??'';
+  // The same layout the PDF receives; the A1 holder's name and the document hash are filled in when signing.
+  const stamp=stampLayout({name:signerName||'Titular do certificado',issuer:fromFile?undefined:list?.find(c=>c.id===chosen)?.issuer,date:new Date(),reason,location,image:!!image,scale:STAMP_SIZES[size]});
   async function chooseFile(){
     try{const certificate=await window.gcp.chooseCertificate();if(!certificate)return;setList(items=>[...(items??[]).filter(c=>!c.id.startsWith('file:')),certificate]);setChosen(certificate.id);setPassword('');}
     catch(error){onError(error);}
@@ -116,14 +117,15 @@ export function CertificateDialog({ docId, area, visible = false, signatures, on
         <div className="stamp-size">
           <span>{translateUi("Tamanho do carimbo")}</span>
           <div className="segmented small">{(["small", "medium", "large"] as const).map((k) => <button key={k} className={size === k ? "selected" : ""} onClick={() => setSize(k)}>{{ small: "Pequeno", medium: "Médio", large: "Grande" }[k]}</button>)}</div>
-          <SignaturePreview lines={stampLines(signerName, reason, location)} image={image || undefined} scale={STAMP_SIZES[size]} />
+          <SignaturePreview layout={stamp} image={image || undefined} px={1.333} />
+          <small className="stamp-measure">{translateUi("Tamanho na página")}: {(stamp.width * 25.4 / 72).toFixed(0)} × {(stamp.height * 25.4 / 72).toFixed(0)} mm</small>
         </div>
       )}
       <p className="compress-note"><ShieldCheck size={13} />{" "}{translateUi("Padrão PAdES (SHA-256). A1 em arquivo funciona no Windows, Linux e macOS. Certificados do sistema podem pedir autorização ou PIN. Depois de assinar, qualquer alteração invalida a assinatura: assine por último. Você pode conferir a validade no")}{" "}<button className="text-button" onClick={() => void window.gcp.openExternal(ITI)}>{translateUi("validador do ITI")}{" "}<ExternalLink size={11} /></button>.</p>
       <div className="modal-footer">
         <button className="button secondary" onClick={onClose}>{translateUi("Cancelar")}</button>
         {visible && onPlace ? (
-          <button className="button primary" disabled={!chosen} onClick={() => { const lines = stampLines(signerName, reason, location), k = STAMP_SIZES[size]; onPlace({ options: { certificate: chosen, ...(fromFile?{password}:{}), reason, location, showName: true, signatureImage: image || undefined }, width: Math.round((image ? 250 : 190) * k), height: Math.round((26 + lines.length * 11) * k), lines, image: image || undefined }); }}><FileSignature size={15} />{" "}{translateUi("Posicionar na página")}</button>
+          <button className="button primary" disabled={!chosen} onClick={() => { onPlace({ options: { certificate: chosen, ...(fromFile?{password}:{}), reason, location, showName: true, signatureImage: image || undefined }, width: stamp.width, height: stamp.height, lines: stamp.lines.map((l) => l.text), image: image || undefined, layout: stamp }); }}><FileSignature size={15} />{" "}{translateUi("Posicionar na página")}</button>
         ) : <button className="button primary" disabled={!chosen || busy} onClick={() => void sign()}>{busy ? <LoaderCircle size={15} className="spin" /> : <FileSignature size={15} />}{" "}{translateUi("Assinar e salvar…")}</button>}
       </div>
     </Modal>
@@ -131,11 +133,13 @@ export function CertificateDialog({ docId, area, visible = false, signatures, on
 }
 
 /** What the visible signature will look like (name/date block, optional handwritten image on the left). */
-export function SignaturePreview({ lines, image, scale = 1, width, height }: { lines: string[]; image?: string; scale?: number; width?: number; height?: number }) {
+/** The stamp exactly as it will be written into the PDF (shared layout with src/main/signature-stamp-pdf.ts);
+ * `px` is the size of one PDF point on screen. */
+export function SignaturePreview({ layout, image, px = 1 }: { layout: StampLayout; image?: string; px?: number }) {
   return (
-    <div className="signature-stamp" style={{ width: width ?? (image ? 250 : 190) * scale, height: height ?? (26 + lines.length * 11) * scale, fontSize: 8.5 * scale }}>
-      {image && <img src={image} alt="" />}
-      <div>{lines.map((l, i) => <span key={i} className={i === 1 ? "strong" : ""}>{l}</span>)}</div>
+    <div className="signature-stamp exact" style={{ width: layout.width * px, height: layout.height * px, borderColor: layout.border }}>
+      {image && layout.image && <img src={image} alt="" style={{ left: layout.image.x * px, top: layout.image.y * px, width: layout.image.width * px, height: layout.image.height * px }} />}
+      {layout.lines.map((l, i) => <span key={i} className={l.mono ? "mono" : ""} style={{ left: l.x * px, top: l.y * px, fontSize: l.size * px, fontWeight: l.bold ? 700 : 400, color: l.color }}>{l.text}</span>)}
     </div>
   );
 }

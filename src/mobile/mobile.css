@@ -18,6 +18,7 @@
 :root.mobile body { position: fixed; inset: 0; overflow: hidden; user-select: none; -webkit-user-select: none; }
 :root.mobile input, :root.mobile textarea, :root.mobile [contenteditable="true"], :root.mobile .textLayer, :root.mobile .book-content { user-select: text; -webkit-user-select: text; }
 :root.mobile input, :root.mobile select, :root.mobile textarea { font-size: max(16px, 1em); }
+:root.mobile :is(.field, .modal, .m-sheet, .sidebar, .ai-panel) :is(select, input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"])) { height: auto; min-height: 44px; padding-block: 9px; line-height: 1.3; }
 :root.mobile ::-webkit-scrollbar { width: 0; height: 0; }
 
 /* Before the interface: brand loading state painted by the WebView itself. */
@@ -267,3 +268,105 @@
 /* Readers' top bar: every control reachable on narrow screens (it scrolls sideways). */
 .compact .book-bar { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; flex-wrap: nowrap; gap: 2px; }
 .compact .book-bar > * { flex: none; }
+
+/* Touch: with Select or Edit, one finger scrolls the pages and two zoom (the app's pinch). Drawing tools keep
+ * the page to themselves; objects and edit boxes still take their own drags. */
+.mobile .page-sheet.tool-select, .mobile .page-sheet.tool-edit { touch-action: pan-x pan-y; }
+.mobile .page-sheet [data-object-id], .mobile .page-sheet .source-box, .mobile .page-sheet .source-editor, .mobile .page-sheet [data-grip] { touch-action: none; }
+.mobile .canvas-scroll .page-column { will-change: auto; }
+
+/* Text selection bar: floats above the tools, leaves the page and the selection handles free. */
+.m-selection-bar {
+  position: fixed; left: 10px; right: 10px; bottom: calc(var(--m-bottom) + 10px); z-index: 50;
+  display: flex; gap: 2px; justify-content: space-around; padding: 6px; border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 96%, transparent); border: 1px solid var(--border);
+  box-shadow: 0 14px 40px -12px #1a0f3c55; backdrop-filter: blur(12px); animation: m-rise .2s var(--m-ease);
+}
+.m-selection-bar button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 2px; border-radius: 12px; font-size: 11px; color: var(--text); min-width: 0; }
+.m-selection-bar button svg { color: var(--purple); }
+.m-selection-bar button:active { background: var(--purple-soft); }
+
+/* Categories as a bottom navigation: icon over the name; the active one sits in a soft pill. */
+.compact { --m-tabs: 62px; }
+.compact .menu-row { padding: 0 4px; }
+.compact .ribbon-tabs { gap: 0; padding: 0; }
+.compact .ribbon-tabs > button {
+  height: 56px; min-height: 56px; min-width: 68px; padding: 4px 6px 2px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  font-size: 11px; font-weight: 500; color: var(--muted); background: transparent; box-shadow: none;
+}
+.compact .ribbon-tabs > button .m-tab-icon { display: grid; place-items: center; width: 52px; height: 30px; border-radius: 15px; transition: background .2s ease, color .2s ease; }
+.compact .ribbon-tabs > button.active { background: transparent; color: var(--purple); box-shadow: none; font-weight: 600; }
+.compact .ribbon-tabs > button.active .m-tab-icon { background: var(--purple-soft); color: var(--purple); }
+@media (max-height: 599px) {
+  .compact { --m-tabs: 48px; }
+  .compact .ribbon-tabs > button { height: 44px; min-height: 44px; flex-direction: row; gap: 6px; padding: 0 10px; }
+  .compact .ribbon-tabs > button .m-tab-icon { width: 30px; height: 28px; }
+}
+
+/* Properties: an extended button that says what it formats (replaces the bare purple square). */
+.compact .rail-right { display: none !important; }
+.m-fab {
+  position: fixed; right: calc(14px + var(--safe-right)); bottom: calc(var(--m-bottom) + 14px); z-index: 45;
+  display: flex; align-items: center; gap: 10px; padding: 10px 16px 10px 14px; border-radius: 18px;
+  background: var(--purple); color: #fff; box-shadow: 0 12px 28px -8px var(--purple); animation: m-rise .2s var(--m-ease);
+}
+.m-fab span { display: flex; flex-direction: column; align-items: flex-start; font-size: 13px; font-weight: 600; line-height: 1.15; }
+.m-fab small { font-size: 10px; font-weight: 500; opacity: .85; }
+.m-selection-bar ~ .m-fab { display: none; }
+
+/* A comment opens as a card above the tools, never as a floating box over another sheet. */
+.compact .note-bubble { left: 10px !important; right: 10px !important; width: auto !important; top: auto !important; bottom: calc(var(--m-bottom) + 10px) !important; max-height: 55dvh; border-radius: 18px; z-index: 65; }
+.compact .note-bubble-grip { display: none; }
+
+/* Reading and copying parts of answers, comments, dialogs and panels (the page chrome stays unselectable). */
+.mobile :is(.ai-panel, .sidebar, .modal, .note-bubble, .m-sheet, .lookup-dialog, .book-reader) { user-select: text; -webkit-user-select: text; }
+.mobile :is(.ai-panel, .sidebar, .modal, .note-bubble, .m-sheet) :is(button, [role="button"], .tool-button) { user-select: none; -webkit-user-select: none; }
+
+/* Combine / convert on a phone: header, the file list as cards, then name, folder and the action. */
+.m-quick .quick-app { height: 100%; }
+.m-quick .quick-header { flex-wrap: wrap; padding: 16px 60px 12px 16px; gap: 10px 12px; }
+.m-quick .quick-header > div:not(.quick-icon) { flex: 1 1 200px; min-width: 0; }
+.m-quick .quick-header h1 { font-size: 17px; }
+.m-quick .quick-header p { font-size: 12px; }
+.m-quick .quick-header .button { margin-left: 0; flex: 1 1 100%; justify-content: center; min-height: 46px; }
+.m-quick .quick-body { flex-direction: column; overflow: auto; }
+.m-quick .quick-table { flex: none; overflow: visible; padding: 10px 12px; }
+.m-quick .quick-row.head { display: none; }
+.m-quick .quick-row, .m-quick .quick-table.combine .quick-row {
+  grid-template-columns: 30px minmax(0, 1fr) auto; grid-template-areas: "n name actions" "n pages range"; row-gap: 6px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 10px 12px; margin-bottom: 8px;
+}
+.m-quick .quick-row > :nth-child(1) { grid-area: n; align-self: start; padding-top: 2px; color: var(--muted); }
+.m-quick .quick-row > :nth-child(2) { grid-area: name; white-space: normal; }
+.m-quick .quick-row > :nth-child(3) { grid-area: pages; font-size: 12px; color: var(--muted); }
+.m-quick .quick-table.combine .quick-row > :nth-child(4) { grid-area: range; }
+.m-quick .quick-row > .quick-actions { grid-area: actions; }
+.m-quick .quick-row input { font-size: 14px; padding: 8px 10px; width: 100%; }
+.m-quick .quick-actions > button { padding: 9px; }
+.m-quick .quick-empty { padding: 28px 16px; font-size: 14px; }
+.m-quick .quick-side { width: auto; border-left: 0; border-top: 1px solid var(--border); padding: 16px 16px calc(16px + var(--safe-bottom)); gap: 14px; }
+.m-quick .quick-side .button { min-height: 50px; justify-content: center; }
+.m-quick .quick-side input { font-size: 16px; }
+
+/* Editing a PDF text block on a phone. */
+.m-text-sheet { max-height: 80dvh; }
+.m-text-hint { margin: 0 20px 8px; font-size: 12px; color: var(--muted); line-height: 1.45; }
+.m-text-fields { overflow: auto; padding: 4px 16px; display: flex; flex-direction: column; gap: 10px; }
+.m-text-fields textarea { width: 100%; font-size: 16px; line-height: 1.45; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border); background: var(--field); color: var(--text); resize: vertical; }
+.m-text-fields textarea:focus { outline: 2px solid var(--purple); border-color: transparent; }
+.m-text-actions { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; padding: 14px 16px 6px; }
+.m-text-actions .button { min-height: 50px; justify-content: center; }
+.keyboard-open .m-sheet { max-height: 100dvh; }
+.m-quick .quick-header .button { width: 100%; }
+
+/* Help center on phones: the topic list, then the chosen article (with a way back) — one column. */
+.help-back { display: none; }
+.compact .help { width: 100vw; height: 100dvh; max-height: none; border-radius: 0; flex-direction: column; padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); }
+.compact .help-nav { width: auto; flex: 1; border-right: 0; padding: 18px 14px; }
+.compact .help-nav h2 { font-size: 18px; margin-right: 52px; }
+.compact .help-nav button { min-height: 48px; font-size: 15px; }
+.compact .help:not(.reading) .help-body, .compact .help.reading .help-nav { display: none; }
+.compact .help-body { padding: 18px 20px 28px; }
+.compact .help-back { display: inline-flex; align-items: center; gap: 4px; min-height: 40px; margin: 0 0 10px -6px; padding: 0 8px; color: var(--purple); font-weight: 600; font-size: 14px; }
+.compact .help-close { top: calc(12px + var(--safe-top)); width: 40px; height: 40px; }
+.compact .help-art { width: min(240px, 70%); }

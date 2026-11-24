@@ -1,5 +1,5 @@
 import type { PDFPageProxy } from 'pdfjs-dist/types/src/display/api';
-import { pageRuns, spacesIn, vectorShapes, type FontContext, type Run, type VectorShape } from './word-layout';
+import { pageRuns, reconcileOcr, spacesIn, vectorShapes, type FontContext, type Run, type VectorShape } from './word-layout';
 import {strokes} from './table-geometry';
 
 /** A page read as a grid, the way desktop converters rebuild tables: the edges of filled cells and
@@ -73,7 +73,9 @@ export function cellText(runs: Run[], box: { x: number; y: number; width: number
 /** Reads the grid of a page; null when the page has no ruled or filled structure to build on. */
 export async function pageGrid(page: PDFPageProxy, fonts?: FontContext): Promise<PageGrid | null> {
   const viewport = page.getViewport({ scale: 1 }), width = viewport.width, height = viewport.height, area = width * height;
-  const [{ shapes }, runs] = await Promise.all([vectorShapes(page), pageRuns(page, fonts)]);
+  const [vector, runs] = await Promise.all([vectorShapes(page), pageRuns(page, fonts)]);
+  // Letters drawn as outlines under OCR text are text, not filled cells.
+  const { shapes } = reconcileOcr(vector, runs).vector;
   const parsed=strokes(shapes);
   const fills=parsed.shades.map(s=>({...s,page:s.box.width*s.box.height>area*.9}));
   // A path may contain every border of a row. Parse its subpaths once, as Word and the editor do,

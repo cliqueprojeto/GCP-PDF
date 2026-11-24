@@ -121,21 +121,58 @@ function touchTextSelection() {
     if ((event.target as HTMLElement).closest?.('.textLayer')) event.stopPropagation();
   }, true);
   document.addEventListener('selectionchange', schedule);
+  // Small text (a whole page fitted to a phone's width) is below what Chrome's own long press can hit: the app
+  // selects the word under the finger itself, and dragging without lifting extends the selection.
+  let press: {x: number; y: number; timer: number} | null = null, anchor: {node: Node; offset: number} | null = null;
+  const caret = (x: number, y: number) => {
+    const range = document.caretRangeFromPoint?.(x, y);
+    return range && range.startContainer.nodeType === Node.TEXT_NODE && (range.startContainer.parentElement?.closest('.textLayer')) ? range : null;
+  };
+  addEventListener('touchstart', e => {
+    clearTimeout(press?.timer); press = null; anchor = null;
+    if (e.touches.length !== 1 || !(e.target as HTMLElement).closest?.('.page-sheet.tool-select .textLayer, .page-sheet.tool-markup .textLayer')) return;
+    const {clientX: x, clientY: y} = e.touches[0]!;
+    press = {x, y, timer: window.setTimeout(() => {
+      // Chrome did select (a touchcancel came, or a selection exists): nothing to add.
+      const selection = getSelection();
+      if (!press || (selection && !selection.isCollapsed)) return;
+      const range = caret(press.x, press.y);
+      if (!range) return;
+      const node = range.startContainer as Text, text = node.data;
+      let start = range.startOffset, end = range.startOffset;
+      while (start > 0 && /[\p{L}\p{N}@._/-]/u.test(text[start - 1]!)) start--;
+      while (end < text.length && /[\p{L}\p{N}@._/-]/u.test(text[end]!)) end++;
+      if (start === end) end = Math.min(text.length, end + 1);
+      selection?.setBaseAndExtent(node, start, node, end);
+      anchor = {node, offset: start};
+      navigator.vibrate?.(12);
+    }, 520)};
+  }, {passive: true, capture: true});
+  addEventListener('touchmove', e => {
+    if (anchor && e.touches.length === 1) {
+      e.preventDefault();
+      const range = caret(e.touches[0]!.clientX, e.touches[0]!.clientY);
+      if (range) getSelection()?.setBaseAndExtent(anchor.node, anchor.offset, range.startContainer, range.startOffset);
+      return;
+    }
+    if (press && Math.hypot(e.touches[0]!.clientX - press.x, e.touches[0]!.clientY - press.y) > 10) { clearTimeout(press.timer); press = null; }
+  }, {passive: false, capture: true});
+  for (const type of ['touchend', 'touchcancel']) addEventListener(type, () => { clearTimeout(press?.timer); press = null; anchor = null; }, {passive: true, capture: true});
   function schedule() {
     clearTimeout(timer);
     timer = window.setTimeout(() => {
       if (touching) { schedule(); return; }
       const selection = getSelection();
-      if (!selection || selection.isCollapsed || !selection.rangeCount) return;
+      if (!selection || selection.isCollapsed || !selection.rangeCount) { window.dispatchEvent(new Event('gcp-selection-cleared')); return; }
       const layer = (selection.anchorNode instanceof Element ? selection.anchorNode : selection.anchorNode?.parentElement)?.closest('.textLayer');
       if (!layer || !selection.toString().trim()) return;
       const box = selection.getRangeAt(0).getBoundingClientRect();
       const event = new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: box.left + box.width / 2, clientY: box.bottom});
       synthetic.add(event);
-      layer.dispatchEvent(event);
-      // The menu keeps the passage (its words and line boxes): the native selection toolbar would sit over the sheet.
-      requestAnimationFrame(() => { if (document.querySelector('.context-menu')) getSelection()?.removeAllRanges(); });
-    }, 550);
+      // The page shows its compact selection bar (not the full menu) for a selection made by touch.
+      (window as unknown as {__gcpTouchSelection?: boolean}).__gcpTouchSelection = true;
+      try { layer.dispatchEvent(event); } finally { (window as unknown as {__gcpTouchSelection?: boolean}).__gcpTouchSelection = false; }
+    }, 350);
   }
 }
 

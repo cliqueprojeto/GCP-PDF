@@ -13,7 +13,7 @@ import {tmpdir} from 'node:os';
 import {existsSync} from 'node:fs';
 import {execFile} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {DocumentStore} from './store';
 import {Settings,atomicWrite} from './settings';
 import {convertPdf,extractDocumentText,pagesWithoutText,renderPdfPage,renderPdfPages} from './conversion';
@@ -39,6 +39,9 @@ import {registerWindowsContextMenu,readInputPdf,readInputDocument,isPdfInput,INP
 import type {HtmlPdfOptions} from './office';
 import {toPage,fromPage} from '../shared/geometry';
 import {faceBytes,faceFor,faceForPostscript,fontFamilies} from './fonts';
+import {drawSignatureStamp} from './signature-stamp-pdf';
+import {PDFDocument} from 'pdf-lib';
+import {stampLayout} from '../shared/signature-stamp';
 import {displayedRect,isEncryptedPdf,markCount,nothingMatched,planDocumentTool,reportLines} from './document-tools';
 import type {DocumentTool,PdfAResult,AiConfig,UpdatePreferences,UpdateStatus,Bookmark,BookmarkEdit,FieldProps,Certificate,FieldType,ProtectOptions,SignOptions,CompressOptions,WorkspaceState,PdfOperation,ExportOptions,ParagraphEdit,SourceObjects,QuickState,Rect,EpubOptions} from '../shared/types';
 app.setName('GCP-PDF');
@@ -507,13 +510,21 @@ function registerIpc(){
    const doc=own(view,id);
    if(!['pdf','image-pdf','docx','xlsx','pptx','png','txt'].includes(options?.format))throw new Error('Formato de exportação inválido.');
    const extension=options.format==='image-pdf'?'pdf':options.format;
+   // Pages without text (scans, or letters drawn as outlines) are recognized only when the user wants editable
+   // text: kept as they are, they convert exactly as they look. Asked before choosing where to save.
+   const bytes=await store.materialize(id);
+   const found=['docx','xlsx','pptx','txt'].includes(options.format)?await pagesWithoutText(bytes):[];
+   let scanned=found;
+   if(found.length&&options.format!=='txt'){
+    const whole=found.length===store.info(id).pageCount;
+    const answer=await ask(view,{title:'Reconhecer o texto (OCR)?',message:whole?'O documento não tem texto: é imagem ou desenho das letras.':'Algumas páginas não têm texto: são imagem ou desenho das letras.',detail:'Reconhecer o texto deixa as palavras editáveis no arquivo convertido; confira o resultado, porque o OCR pode errar letras. Manter como imagem preserva a aparência exata, sem texto editável nessas páginas.',items:whole?undefined:found.map(page=>localize('Página {page}',languages().locale,{page:page+1})),buttons:['Reconhecer o texto','Manter como imagem','Cancelar'],defaultId:0,cancelId:2,tone:'question'});
+    if(answer===2)return null;
+    if(answer===1)scanned=[];
+   }
    const result=await saveDialog(view.window,{title:'Exportar documento',defaultPath:basename(doc.name,extname(doc.name))+(options.format==='image-pdf'?' (imagem)':'')+'.'+extension,filters:[{name:extension.toUpperCase(),extensions:[extension]}]});
    if(result.canceled||!result.filePath)return null;
    action(view,'progress:Preparando a exportação local…');
    try{
-    const bytes=await store.materialize(id);
-    // Scanned pages have no text of their own: they are recognized locally first, as desktop converters do.
-    const scanned=['docx','xlsx','pptx','txt'].includes(options.format)?await pagesWithoutText(bytes):[];
     const ocr=scanned.length?await recognizePages(view,bytes,scanned):null;
     const input=ocr?await addOcrTextLayer(bytes,ocr.layers):bytes;
     const output=options.format==='pdf'?{bytes,extension:'pdf',warnings:[] as string[]}:await convertPdf(input,options,message=>action(view,'progress:'+message),ocr?.runs);
@@ -733,19 +744,31 @@ function registerIpc(){
    action(view,'progress:Assinando com o certificado digital… o sistema pode pedir autorização.');
    let graphic:string|undefined;
    try{
-    const bytes=await store.materialize(id);
-    await trustWindowsRoots();
+    let bytes=await store.materialize(id);
+    await trustRoots();
+    // The app draws its own compact stamp (signer, date, reason, place, issuer and the document's SHA-256), the
+    // same layout as the preview, and the signature field goes over it. A document that already carries
+    // signatures keeps the engine's incremental appearance: rewriting it would break the earlier ones.
+    let ownStamp=false;
+    if(options.page&&options.rect&&!store.signed(id)){
+     const index=doc.model.pages.findIndex(p=>p.id===options.page);if(index<0)throw new Error('A página escolhida não existe mais.');
+     const ref=doc.model.pages[index]!,info=store.baseInfo(ref.base).pages[ref.src]!,rotation=(info.rotation+ref.rotate)%360;
+     const signer=await signerOf(view,certificate,options.password);
+     const hash=createHash('sha256').update(bytes).digest('hex'),image=options.signatureImage&&/^data:image\/(png|jpe?g);base64,/i.test(options.signatureImage)?options.signatureImage:undefined;
+     const layout=stampLayout({name:signer.name,issuer:signer.issuer,date:new Date(),reason:options.reason,location:options.location,hash,image:!!image});
+     bytes=await drawSignatureStamp(bytes,index,options.rect,rotation,layout,image);ownStamp=true;
+    }
     const out=await engine.onCopy(bytes,async({doc:copy,output,call})=>{
      const before=await call('sign_list',{doc:copy});
      const args:Record<string,unknown>={doc:copy,id:certificate,out:output,reason:options.reason||undefined,location:options.location||undefined};
      if(options.page&&options.rect){
       args.labels={signed_by:'Assinado digitalmente por',date:'Data: ',reason:'Motivo: ',location:'Local: ',distinguished_name:'DN: '};
-      args.appearance={name:options.showName!==false,date:true,labels:true,reason:!!options.reason,location:!!options.location};
+      args.appearance=ownStamp?{name:false,date:false,labels:false,reason:false,location:false,distinguished_name:false}:{name:options.showName!==false,date:true,labels:true,reason:!!options.reason,location:!!options.location};
       const index=doc.model.pages.findIndex(p=>p.id===options.page);if(index<0)throw new Error('A página escolhida não existe mais.');
       const ref=doc.model.pages[index]!,info=store.baseInfo(ref.base).pages[ref.src]!,rotation=(info.rotation+ref.rotate)%360;
       const a=fromPage(options.rect.x,options.rect.y,info,rotation,1),b=fromPage(options.rect.x+options.rect.width,options.rect.y+options.rect.height,info,rotation,1);
       args.page=index+1;args.rect=[Math.min(a.x,b.x),Math.min(a.y,b.y),Math.max(a.x,b.x),Math.max(a.y,b.y)];
-      if(options.signatureImage&&/^data:image\/(png|jpe?g);base64,/i.test(options.signatureImage)){graphic=join(engineRoot(),`assinatura-${Date.now()}.png`);await writeFile(graphic,Buffer.from(options.signatureImage.split(',')[1]!,'base64'),{mode:0o600});args.graphic={image:basename(graphic)};}
+      if(!ownStamp&&options.signatureImage&&/^data:image\/(png|jpe?g);base64,/i.test(options.signatureImage)){graphic=join(engineRoot(),`assinatura-${Date.now()}.png`);await writeFile(graphic,Buffer.from(options.signatureImage.split(',')[1]!,'base64'),{mode:0o600});args.graphic={image:basename(graphic)};}
      }
      const sign=async(file?:string)=>call('sign_document',{...args,...(file?{id:file,password:options.password??''}:{})});
      const produced=fromFile?await certificateFiles.use(view.window.webContents.id,certificate,engineRoot(),sign):await sign();
@@ -761,7 +784,7 @@ function registerIpc(){
   },
   checkSignatures:async(view,id)=>{
    own(view,id);
-   await trustWindowsRoots();
+   await trustRoots();
    // Verify the displayed revision; unchanged materialization returns the exact signed bytes.
    const doc=store.get(id),modified=doc.revision!==doc.savedRevision&&(doc.revision>0||!store.unchanged(id));
    const out=await engine.onCopy(await store.materialize(id),async({doc:copy,call})=>call('sign_list',{doc:copy}));
@@ -936,6 +959,8 @@ function registerIpc(){
    const known=new Set(quick.state.files.map(file=>file.path));
    if(!Array.isArray(input?.files)||!input.files.length||input.files.some(file=>!known.has(file.path)))throw new Error('Adicione pelo menos um arquivo.');
    const progress=(text:string)=>action(quick,'progress:'+text);
+   // Android files have no folder of their own to write next to: the destination folder is chosen once.
+   if(!input.folder&&process.platform==='android'){const chosen=await openDialog(quick.window,{title:'Pasta de destino',properties:['openDirectory','createDirectory']});if(chosen.canceled||!chosen.filePaths[0])return [];input={...input,folder:chosen.filePaths[0]};}
    try{
     if(quick.state.action==='combine'){
      if(input.files.length<2)throw new Error('Escolha pelo menos dois arquivos para combinar.');
@@ -962,8 +987,23 @@ const FIELD_FORMATS:Record<string,unknown>={none:'none',date:{type:'date',patter
 /** The engine validates against its own trust list; like Acrobat with "Windows integration" and the ITI
  * validator, signatures are checked against the authorities this Windows trusts (ICP-Brasil roots included).
  * Done once per engine process; failure leaves validation as before (shown as "emissor não confiável"). */
-let windowsRoots:Promise<Buffer|null>|null=null;
-async function trustWindowsRoots(){
+/** Who signs, for the stamp: certificates of the system store come with their names; an A1 file is read by
+ * signing a blank page in the engine's private folder (nothing is kept), which also checks the password. */
+async function signerOf(view:View,certificate:string,password?:string):Promise<{name:string;issuer:string}>{
+ const short=(issuer:string)=>/CN=([^,]+)/.exec(issuer)?.[1]?.trim()??issuer;
+ if(!certificate.startsWith('file:')){const found=(await engine.certificates())?.ids?.find((item:any)=>String(item.id)===certificate)?.certificate??{};return {name:String(found.name??found.subject??'Titular do certificado'),issuer:short(String(found.issuer??''))};}
+ const blank=await PDFDocument.create();blank.addPage([200,200]);
+ const out=await engine.onCopy(await blank.save(),async({doc,output,call})=>certificateFiles.use(view.window.webContents.id,certificate,engineRoot(),file=>call('sign_document',{doc,id:file,password:password??'',out:output})));
+ const c=(out.result as any)?.signature?.certificate??{};
+ return {name:String(c.name??c.subject??'Titular do certificado'),issuer:short(String(c.issuer??''))};
+}
+let windowsRoots:Promise<Buffer|null>|null=null,icpBrasil:Promise<Uint8Array|null>|null=null;
+/** Authorities the signature check trusts, handed to the engine before each signing or verification (it may
+ * have restarted): the ICP-Brasil hierarchy published by the ITI on every system (assets/icp-brasil, see
+ * scripts/prepare-icp-brasil.mjs), plus, on Windows, the roots that Windows itself trusts. */
+async function trustRoots(){
+ icpBrasil??=readFile(join(assets(),'icp-brasil','icp-brasil.pem')).then(bytes=>new Uint8Array(bytes)).catch(()=>{icpBrasil=null;return null;});
+ const icp=await icpBrasil;if(icp)await engine.trustBundle(icp).catch(error=>console.error('Cadeia ICP-Brasil:',error));
  if(process.platform!=='win32')return;
  // Exported once per run; handed to the engine on every check (it may have restarted). The engine only reads
  // files inside its own folder, so the bundle is written there.

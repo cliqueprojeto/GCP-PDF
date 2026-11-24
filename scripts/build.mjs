@@ -4,6 +4,7 @@ await prepareOcr();
 import {build as bundle} from 'esbuild';
 import {build as viteBuild} from 'vite';
 import react from '@vitejs/plugin-react';
+import {hoverMedia} from './hover-media.mjs';
 import {mkdir,readFile,writeFile,copyFile,cp} from 'node:fs/promises';
 import {createCanvas,loadImage} from '@napi-rs/canvas';
 import {svgToIco,contextIcons,installerArt} from './icons.mjs';
@@ -13,7 +14,7 @@ for(const size of [512,256]){const canvas=createCanvas(size,size);canvas.getCont
 await svgToIco('assets/icon.svg','assets/icon.ico',undefined,'assets/icon-small.svg');await contextIcons();await installerArt();
 await bundle({entryPoints:['src/main/index.ts'],outfile:'dist/main/index.cjs',platform:'node',format:'cjs',packages:'external',bundle:true,sourcemap:true,target:'node24'});
 await bundle({entryPoints:['src/main/preload.ts'],outfile:'dist/main/preload.cjs',platform:'node',format:'cjs',external:['electron'],bundle:true,target:'node24'});
-await viteBuild({root:'.',base:'./',plugins:[react()],build:{outDir:'dist/renderer',emptyOutDir:true},logLevel:'info'});
+await viteBuild({root:'.',base:'./',plugins:[react()],css:{postcss:{plugins:[hoverMedia()]}},build:{outDir:'dist/renderer',emptyOutDir:true},logLevel:'info'});
 await copyFile('assets/icon.svg','dist/renderer/icon.svg');
 console.log('GCP-PDF compilado.');
 

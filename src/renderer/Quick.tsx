@@ -62,7 +62,7 @@ export default function Quick() {
         <aside className="quick-side">
           {combine && <label className="field">{translateUi("Nome do arquivo")}<input value={name} onChange={(e) => setName(e.target.value)} /></label>}
           <label className="field">{translateUi("Pasta de destino")}{" "}<div className="folder-picker">
-              <span title={folder ?? undefined}>{folder ?? "Mesma pasta dos arquivos"}</span>
+              <span title={folder ?? undefined}>{folder ?? translateUi(document.documentElement.classList.contains("mobile") ? "Escolhida ao concluir" : "Mesma pasta dos arquivos")}</span>
               <button className="text-button" onClick={() => void window.gcp.quickChooseFolder().then((f) => f && setFolder(f))}><FolderOpen size={14} />{" "}{translateUi("Escolher")}</button>
               {folder && <button className="text-button" onClick={() => setFolder(null)}><X size={14} /></button>}
             </div>

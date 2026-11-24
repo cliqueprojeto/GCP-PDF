@@ -1443,10 +1443,10 @@ export function Ribbon(props: Props) {
           <Big
             icon={<BadgeCheck size={18} />}
             label={translateUi("Certificado digital")}
-            active={is("sign-area")}
+            active={is("sign-area") || is("sign-place")}
             disabled={none}
-            onClick={() => setTool({ kind: "sign-area" })}
-            title={translateUi("Desenhe a área do carimbo e assine com seu certificado ICP-Brasil (A1/A3)")}
+            onClick={() => actions.certificate(true)}
+            title={translateUi("Escolha o certificado ICP-Brasil (A1/A3) ou gov.br, veja a prévia do carimbo e posicione-o na página")}
           />
           <Big
             icon={<FileSignature size={18} />}

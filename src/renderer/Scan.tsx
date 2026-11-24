@@ -4,15 +4,16 @@ import {Modal} from './Dialogs';
 import {PAPER_SIZES,type BlankOptions,type ScannerDevice,type ScannerCapabilities,type ScanOptions,type ScanPage} from '../shared/scanner';
 import type {DocumentInfo} from '../shared/types';
 import './Scan.css';
+import {t} from './i18n';
 const message=(e:unknown)=>e instanceof Error?e.message:String(e);
 export function NewPdfDialog({onClose}:{onClose:()=>void}){
  const [o,set]=useState<BlankOptions>({paper:'A4',landscape:false,pages:1}),[busy,setBusy]=useState(false),[error,setError]=useState('');
- return <Modal className="new-pdf-modal" title="Criar um PDF" description="Comece com páginas em branco. Você poderá adicionar mais páginas em Organizar." onClose={()=>!busy&&onClose()}>
-  <div className="scan-fields"><label className="field">Papel<select value={o.paper} onChange={e=>set({...o,paper:e.target.value as BlankOptions['paper']})}>{Object.entries(PAPER_SIZES).map(([key,size])=><option key={key} value={key}>{key} · {size.join(' × ')} mm</option>)}</select></label>
-  <label className="field">Orientação<select value={String(o.landscape)} onChange={e=>set({...o,landscape:e.target.value==='true'})}><option value="false">Retrato</option><option value="true">Paisagem</option></select></label>
-  <label className="field">Páginas<input type="number" min={1} max={500} value={o.pages} onChange={e=>set({...o,pages:Number(e.target.value)})}/></label></div>
+ return <Modal className="new-pdf-modal" title={t("Criar um PDF")} description={t("Comece com páginas em branco. Você poderá adicionar mais páginas em Organizar.")} onClose={()=>!busy&&onClose()}>
+  <div className="scan-fields"><label className="field">{t("Papel")}<select value={o.paper} onChange={e=>set({...o,paper:e.target.value as BlankOptions['paper']})}>{Object.entries(PAPER_SIZES).map(([key,size])=><option key={key} value={key}>{key} · {size.join(' × ')} mm</option>)}</select></label>
+  <label className="field">{t("Orientação")}<select value={String(o.landscape)} onChange={e=>set({...o,landscape:e.target.value==='true'})}><option value="false">{t("Retrato")}</option><option value="true">{t("Paisagem")}</option></select></label>
+  <label className="field">{t("Páginas")}<input type="number" min={1} max={500} value={o.pages} onChange={e=>set({...o,pages:Number(e.target.value)})}/></label></div>
   {error&&<p role="alert" className="scan-error">{error}</p>}
-  <div className="modal-footer"><button className="button secondary" disabled={busy} onClick={onClose}>Cancelar</button><button className="button primary" disabled={busy||!Number.isInteger(o.pages)||o.pages<1||o.pages>500} onClick={async()=>{setBusy(true);try{await window.gcp.newDocument(o);onClose();}catch(e){setError(message(e));}finally{setBusy(false);}}}><FilePlus2 size={16}/> Criar PDF</button></div>
+  <div className="modal-footer"><button className="button secondary" disabled={busy} onClick={onClose}>{t("Cancelar")}</button><button className="button primary" disabled={busy||!Number.isInteger(o.pages)||o.pages<1||o.pages>500} onClick={async()=>{setBusy(true);try{await window.gcp.newDocument(o);onClose();}catch(e){setError(message(e));}finally{setBusy(false);}}}><FilePlus2 size={16}/> {t("Criar PDF")}</button></div>
  </Modal>;
 }
 type Preview=ScanPage&{rotation:number};

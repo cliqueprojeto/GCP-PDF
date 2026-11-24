@@ -553,16 +553,61 @@ async function artwork(page: PDFPageProxy, dpi: number, erase: Run[] = [], omit:
   for (let i = 0; i < data.length && !ink; i += 4) if (transparent?data[i+3]!>0:data[i]! < 248 || data[i + 1]! < 248 || data[i + 2]! < 248) ink = true;
   return ink ? transparent?canvas.toBuffer('image/png'):canvas.toBuffer('image/jpeg', 88) : null;
 }
+/**
+ * Pages whose letters are drawn as outlines (no text in the PDF, as "Microsoft Print to PDF" makes them) get
+ * their words from OCR. Word and outlines are reconciled so nothing shows twice:
+ * - a recognized word over letter outlines replaces them, in their exact colour;
+ * - lettering spread wide (logos) and words over no outlines keep their drawing, without text on top;
+ * - a path drawing a whole line is dropped once the line's words are text.
+ * Pages without outlined letters (photographed or scanned) are left as they are.
+ */
+export function reconcileOcr<V extends { shapes: VectorShape[] }>(vector: V, runs: readonly Run[] | undefined): { vector: V; runs: Run[] | undefined; outlined: boolean } {
+  if (!runs?.length) return { vector, runs: runs as Run[] | undefined, outlined: false };
+  type Box = { x: number; y: number; width: number; height: number };
+  const wordBox = (r: Run): Box => ({ x: r.x - r.size * 0.15, y: r.baseline - r.size * 1.1, width: r.width + r.size * 0.3, height: r.size * 1.5 });
+  const overlap = (a: Box, b: Box) => Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+  const area = (b: Box) => Math.max(1, b.width * b.height);
+  // Recognized lines: words on one baseline, close together, as one box (a path often draws a whole line).
+  const lines = (words: readonly Run[]) => {
+    const out: (Box & { size: number; baseline: number })[] = [];
+    for (const run of [...words].sort((a, b) => a.baseline - b.baseline || a.x - b.x)) {
+      const b = wordBox(run), line = out.find((l) => Math.abs(l.baseline - run.baseline) < run.size * 0.35 && b.x <= l.x + l.width + run.size * 2.5 && b.x + b.width >= l.x - run.size * 2.5);
+      if (line) { const x0 = Math.min(line.x, b.x), x1 = Math.max(line.x + line.width, b.x + b.width), y0 = Math.min(line.y, b.y), y1 = Math.max(line.y + line.height, b.y + b.height); Object.assign(line, { x: x0, width: x1 - x0, y: y0, height: y1 - y0, size: Math.max(line.size, run.size) }); }
+      else out.push({ ...b, size: run.size, baseline: run.baseline });
+    }
+    return out;
+  };
+  // Cell fills and bars are plain boxes; letters have curves or many corners.
+  const plainBox = (v: VectorShape) => v.segments.length <= 6 && !v.segments.some((g) => g.op === 'C');
+  const lettering = (shapes: VectorShape[], words: readonly Run[]) => { const boxes = lines(words); return shapes.filter((v) => v.fill && !plainBox(v) && boxes.some((l) => v.box.height <= l.size * 1.8 && overlap(v.box, l) >= area(v.box) * 0.75)); };
+  const letters = lettering(vector.shapes, runs);
+  const under = runs.map((r) => letters.filter((g) => overlap(g.box, wordBox(r)) >= Math.min(area(g.box), area(wordBox(r))) * 0.3));
+  // Photographed or scanned pages have no outlined letters: nothing to reconcile.
+  if (under.filter((g) => g.length).length < runs.length * 0.5) return { vector, runs: [...runs], outlined: false };
+  // Logos space their letters far apart; text keeps them close.
+  const spread = (glyphs: VectorShape[], size: number) => {
+    const xs = [...glyphs].sort((a, b) => a.box.x - b.box.x), gaps = xs.slice(1).map((g, i) => g.box.x - (xs[i]!.box.x + xs[i]!.box.width)).filter((g) => g > 0);
+    return gaps.length >= 3 && gaps.reduce((a, b) => a + b, 0) / gaps.length > size * 0.45;
+  };
+  const keep = runs.map((r, i) => under[i]!.length > 0 && !spread(under[i]!, r.size));
+  const kept = runs.filter((_, i) => keep[i]);
+  const drop = new Set(lettering(letters, kept));
+  const colour = (glyphs: VectorShape[]) => { const count = new Map<string, number>(); for (const g of glyphs) count.set(g.fill!.color, (count.get(g.fill!.color) ?? 0) + area(g.box)); return [...count].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '#000000'; };
+  return { vector: { ...vector, shapes: vector.shapes.filter((v) => !drop.has(v)) }, runs: runs.flatMap((r, i) => (keep[i] ? [{ ...r, color: colour(under[i]!) }] : [])), outlined: true };
+}
 /** Text recognized by OCR on scanned pages (by page index), used where the PDF has no text of its own. */
 export type OcrRuns = Map<number, Run[]>;
 export async function toDocxLayout(bytes: Uint8Array, dpi: number, warnings: string[], onProgress?: (message: string) => void, ocr: OcrRuns = new Map()) {
+  ocr = new Map(ocr); // reconciled per page with the letter outlines below
+  // Pages whose letters were outlines: their photos and artwork are real, unlike a scan's single picture.
+  const outlined = new Set<number>();
   onProgress?.('Preparando as formas e o fundo das páginas…');
   const [source, fonts] = await Promise.all([loadPdf(bytes), FontContext.of(bytes, true)]), missing = fonts.missing;
   // As in PowerPoint: vector art becomes native, editable Word shapes on every page where it can be
   // reproduced; photos are their own pictures; a bitmap remains only for what has no shape equivalent
   // (gradients, patterns, soft masks).
   const vectors: Awaited<ReturnType<typeof vectorShapes>>[] = [];
-  for (let i = 1; i <= source.numPages; i++) { const page = await source.getPage(i); vectors.push(await vectorShapes(page).catch(() => ({ supported: false, shapes: [], painted: [] }))); page.cleanup(); }
+  for (let i = 1; i <= source.numPages; i++) { const page = await source.getPage(i); { const reconciled = reconcileOcr(await vectorShapes(page).catch(() => ({ supported: false, shapes: [], painted: [] })), ocr.get(i - 1)); vectors.push(reconciled.vector); if (reconciled.runs) ocr.set(i - 1, reconciled.runs); if (reconciled.outlined) outlined.add(i - 1); }; page.cleanup(); }
   const editable = new Set(vectors.flatMap((v, i) => (v.supported && v.shapes.length ? [i] : [])));
   const [art, pictures] = await Promise.all([artworkOnly(bytes, false, editable).then(loadPdf), artworkOnly(bytes, true).then(loadPdf)]);
   const shapeRuns = new Map<number, string>();
@@ -605,7 +650,7 @@ export async function toDocxLayout(bytes: Uint8Array, dpi: number, warnings: str
       const partial = !editable.has(i - 1) && !scanned ? await vectorShapes(artPage) : undefined;
       const promoted = partial && partial.reason !== 'formas demais' ? partial.shapes.filter((v) => v.operation !== undefined && (v.operation < (partial.firstRaster ?? Infinity) || v.operation > (partial.lastRaster ?? -1))) : [];
       const omit = new Set(promoted.map((v) => v.operation!));
-      const [allRuns, background, images, grid] = await Promise.all([scanned ?? pageRuns(page, fonts), artwork(artPage, dpi, scanned, omit, !!partial, turned), scanned ? { images: [] } : inspectPage(page, true), scanned ? null : pageGrid(page, fonts).catch(() => null)]);
+      const [allRuns, background, images, grid] = await Promise.all([scanned ?? pageRuns(page, fonts), artwork(artPage, dpi, outlined.has(i - 1) ? [] : scanned, omit, !!partial, turned), scanned && !outlined.has(i - 1) ? { images: [] } : inspectPage(page, true), scanned ? null : pageGrid(page, fonts).catch(() => null)]);
       // A real table (cells separated by rules or fills, side by side) becomes a Word table at its place,
       // rows at their exact heights; its text and cell graphics are not repeated. Forms whose sections are
       // only separated by horizontal rules stay as positioned text over editable shapes.
@@ -759,12 +804,15 @@ function addVector(pptx: any, slide: any, shape: VectorShape, sx: number, sy: nu
 /** PowerPoint that looks like the PDF: artwork as the slide background, every photo/picture as its own
  * movable image and every text block as an editable text box with its font, size, colour and weight. */
 export async function toPptxLayout(bytes: Uint8Array, dpi: number, warnings: string[], onProgress?: (message: string) => void, ocr: OcrRuns = new Map()) {
+  ocr = new Map(ocr); // reconciled per page with the letter outlines below
+  // Pages whose letters were outlines: their photos and artwork are real, unlike a scan's single picture.
+  const outlined = new Set<number>();
   onProgress?.('Preparando os slides…');
   const PptxGenJS = (await import('pptxgenjs')).default;
   const source = await loadPdf(bytes);
   // Vector art (bars, lines, boxes, icons) becomes native shapes on every page where it can be reproduced.
   const vectors: Awaited<ReturnType<typeof vectorShapes>>[] = [];
-  for (let i = 1; i <= source.numPages; i++) { onProgress?.(`Lendo formas vetoriais ${i} de ${source.numPages}…`); const page = await source.getPage(i); vectors.push(await vectorShapes(page).catch(() => ({ supported: false, shapes: [], painted: [] }))); page.cleanup(); }
+  for (let i = 1; i <= source.numPages; i++) { onProgress?.(`Lendo formas vetoriais ${i} de ${source.numPages}…`); const page = await source.getPage(i); { const reconciled = reconcileOcr(await vectorShapes(page).catch(() => ({ supported: false, shapes: [], painted: [] })), ocr.get(i - 1)); vectors.push(reconciled.vector); if (reconciled.runs) ocr.set(i - 1, reconciled.runs); if (reconciled.outlined) outlined.add(i - 1); }; page.cleanup(); }
   const editable = new Set(vectors.flatMap((v, i) => (v.supported && v.shapes.length ? [i] : [])));
   const [art, pictures] = await Promise.all([artworkOnly(bytes, false, editable).then(loadPdf), artworkOnly(bytes, true).then(loadPdf)]);
   let shapeCount = 0;
@@ -785,7 +833,7 @@ export async function toPptxLayout(bytes: Uint8Array, dpi: number, warnings: str
       const partial=!editable.has(i-1)&&!scanned?await vectorShapes(artPage):undefined;
       const promoted=partial&&partial.reason!=='formas demais'?partial.shapes.filter(s=>s.operation!==undefined&&(s.operation<(partial.firstRaster??Infinity)||s.operation>(partial.lastRaster??-1))):[];
       const omit=new Set(promoted.map(s=>s.operation!));
-      const [allRuns, background, images, grid] = await Promise.all([scanned ?? pageRuns(page, fonts), artwork(artPage, dpi, scanned,omit,!!partial), scanned ? { images: [] } : inspectPage(page, true), scanned||partial ? null : pageGrid(page, fonts).catch(() => null)]);
+      const [allRuns, background, images, grid] = await Promise.all([scanned ?? pageRuns(page, fonts), artwork(artPage, dpi, outlined.has(i - 1) ? [] : scanned,omit,!!partial), scanned && !outlined.has(i - 1) ? { images: [] } : inspectPage(page, true), scanned||partial ? null : pageGrid(page, fonts).catch(() => null)]);
       // A ruled/filled table becomes a native PowerPoint table; its cell shapes and text are not repeated.
       const table = grid ? tableOf(grid) : null;
       const runs = table ? allRuns.filter((r) => !insideTable(table, { x: r.x, y: r.baseline - r.size * 0.7, width: Math.min(r.width, 1), height: r.size * 0.6 })) : allRuns;

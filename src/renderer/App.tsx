@@ -8,7 +8,7 @@ import {
   Search, Check, Sparkles, Send, Heart, Layers3, Files, LoaderCircle, GripVertical, MoveUpRight, Signature as SignatureIcon,
   MessageSquare, ShieldCheck, SplitSquareHorizontal, PenLine, ArrowUpRight, Copy, Maximize2, Minimize2, FilePlus2, HelpCircle, ZoomIn, ZoomOut, Scissors, ClipboardPaste, FileOutput, Replace,
   CopyPlus, BookA, Languages, ArrowDownRight, Lightbulb, Bookmark as BookmarkIcon, Pin, ChevronsUp, ChevronsDown, EyeOff, SlidersHorizontal, PanelRightClose,
-  Highlighter, Underline, Strikethrough, Waves, MessageSquarePlus, BookmarkPlus, TextSelect } from "lucide-react";
+  Highlighter, Underline, Strikethrough, Waves, MessageSquarePlus, BookmarkPlus, TextSelect, MoreHorizontal } from "lucide-react";
 import type { AppPrompt, MarkupStyle, PageObject, PdfOperation, Signature, WorkspaceState, ExportFormat, ExportOptions } from "../shared/types";
 import { ExportDialog, Modal, PromptDialog, SettingsDialog, SignatureDialog, SupportDialog, SITE } from "./Dialogs";
 import { Viewer, PageThumb, type ViewerHandle } from "./Viewer";
@@ -39,7 +39,7 @@ import { commitPendingParagraph, pendingParagraphEdit, paragraphSpacing, type Pa
 import { cloneObjects, copyable } from "../shared/object-clipboard";
 import { objectBounds, translateObject } from "../shared/geometry";
 import { Home, useRecentFiles, fileKey } from "./Home";
-import { useCompact, isMobileDevice, MobileTopBar, MobileMenu, usePinchZoom, mobileShell, MOBILE_ICONS as MI, type MobileMenuItem } from "./MobileChrome";
+import { useCompact, isMobileDevice, MobileTopBar, MobileMenu, usePinchZoom, mobileShell, MOBILE_ICONS as MI, TAB_ICONS, PROPERTIES_ICON, type MobileMenuItem } from "./MobileChrome";
 
 type Panel = "comments" | "pages" | "bookmarks" | "search" | "signatures" | "ai";
 const initial: WorkspaceState = { windowId: 0, documents: [], theme: "light", quickActions: true };
@@ -306,6 +306,8 @@ export default function App() {
     if (!active || !menu.rects?.length) return;
     void perform(async () => { await window.gcp.applyDocumentTool(active.id, { kind: "redact", areas: [{ page: menu.page, rects: menu.rects! }] }); window.getSelection()?.removeAllRanges(); notify("Trecho ocultado. Use Desfazer para voltar atrás; depois de salvar, a remoção é definitiva."); }, "Ocultando o trecho…");
   }
+  // On touch, a text selection first shows a compact bar (the selection handles stay free); ⋯ opens the full menu.
+  const [selectionBar, setSelectionBar] = useState(false);
   const [pageContext, setPageContext] = useState<PageMenu | null>(null), [lookup, setLookup] = useState<{ text: string; mode: "synonyms" | "translate" } | null>(null);
   // Actions of the right-click menu on selected page text: they act on exactly the selected words.
   function markPassage(menu: PageMenu, kind: MarkupStyle) {
@@ -372,7 +374,8 @@ export default function App() {
     void perform(async () => { await window.gcp.applyOperation(active.id, { type: "add-objects", objects: copies } as PdfOperation, active.revision); setSelectedObjects(new Set(copies.map((o) => o.id))); });
     return true;
   }
-  function showPanel(next: Panel) { if (active) setHome(false); setPanel(next); setSideOpen(true); }
+  // On phones the panel covers the page: a comment balloon left open would float over its own entry in the list.
+  function showPanel(next: Panel) { if (active) setHome(false); if (compact) setOpenNote(null); setPanel(next); setSideOpen(true); }
   async function exportDocument(options: ExportOptions) {
     if (!active) return;
     const beforeNotice = noticeSequence.current;
@@ -766,6 +769,8 @@ export default function App() {
     { id: "support", group: "Aplicativo", label: "Apoie o projeto", icon: <MI.Heart size={20} />, run: () => setModal("support") },
   ];
   usePinchZoom(viewerHost, zoom, setZoom, isMobileDevice() && !!doc);
+  // On a phone the comment card and the comments sheet never show together (the same thread twice).
+  useEffect(() => { if (compact && openNote) setSideOpen(false); }, [compact, openNote]);
   // A tool that acts on the page (a signature to place, a stamp, a field) needs the page: the sheet steps aside.
   useEffect(() => { if (compact && tool.kind !== "select" && tool.kind !== "edit") setSideOpen(false); }, [compact, tool.kind]);
   // Android Back: a tool, then a sheet, then the document; the shell closes dialogs before asking here.
@@ -782,6 +787,11 @@ export default function App() {
     return false;
   };
   useEffect(() => { (window as unknown as { __gcpMobileBack?: () => boolean }).__gcpMobileBack = () => backRef.current(); }, []);
+  useEffect(() => {
+    const cleared = () => { setSelectionBar((bar) => { if (bar) setPageContext(null); return false; }); };
+    window.addEventListener("gcp-selection-cleared", cleared);
+    return () => window.removeEventListener("gcp-selection-cleared", cleared);
+  }, []);
   return (
     <div
       className={`application ${compact ? "compact" : ""} ${showHome ? "at-home" : ""} ${resizing ? "resizing" : ""} ${reading ? "reading" : ""} ribbon-${ribbonMode}`}
@@ -808,6 +818,11 @@ export default function App() {
           onSearch={() => showPanel("search")} onMenu={() => setMobileMenu(true)} onTitle={() => showPanel("pages")}
         />
       )}
+      {compact && !showHome && propertiesAvailable && !propertiesOpen && (() => {
+        // What the properties are about: the selected object or text, or the tool about to draw.
+        const kind = sourceSelection ? "Texto do PDF" : selectionObjects.length > 1 ? "Objetos" : selectionObjects[0] ? ({ text: "Caixa de texto", image: "Imagem", shape: "Forma", ink: "Desenho", note: "Comentário", markup: "Marcação" } as Record<string, string>)[selectionObjects[0].kind] ?? "Objeto" : ({ text: "Texto", ink: "Desenho", shape: "Forma", markup: "Marcação" } as Record<string, string>)[tool.kind] ?? "Ferramenta";
+        return <button className="m-fab" onClick={() => setPropertiesOpen(true)}>{PROPERTIES_ICON}<span><small>{translateUi("Propriedades")}</small>{translateUi(kind)}</span></button>;
+      })()}
       {compact && mobileMenu && <MobileMenu title={showHome || !active ? "GCP-PDF" : active.name} items={mobileItems} onClose={() => setMobileMenu(false)} />}
       {compact && !showHome && (sideOpen || (propertiesOpen && propertiesAvailable)) && <div className="m-backdrop" onClick={() => { setSideOpen(false); setPropertiesOpen(false); }} />}
       {reading && active && (
@@ -877,7 +892,7 @@ export default function App() {
         <div className="ribbon-tabs">
           {TABS.map((label) => (
             <button className={tab === label ? "active" : ""} key={translateUi(label)} onDoubleClick={() => setRibbon(ribbonMode === "pinned" ? "collapsed" : "pinned")} onClick={() => { openTab(label); if (ribbonMode !== "pinned") setPeek(true); if (!compact) { if (label === "Comentário") showPanel("comments"); if (label === "Assinar") showPanel("signatures"); if (label === "Organizar") showPanel("pages"); } if (label === "IA") showPanel("ai"); }}>
-              {label === "IA" && <Sparkles size={14} />} {translateUi(label)}
+              {compact ? <span className="m-tab-icon" aria-hidden="true">{TAB_ICONS[label]}</span> : label === "IA" && <Sparkles size={14} />} <span className="m-tab-label">{translateUi(label)}</span>
             </button>
           ))}
         </div>
@@ -919,7 +934,7 @@ export default function App() {
       {tool.kind === "stamp" && (
         <div className="tool-hint"><span className="pulse-dot" />{" "}{translateUi("Clique na página para aplicar “")}{tool.name}{translateUi("” ou arraste para definir o tamanho.")}{" "}<button className="text-button" onClick={() => setTool({ kind: "select" })}>{translateUi("Concluir")}{" "}<Check size={14} /></button></div>
       )}
-      {tool.kind === "sign-place" && <div className="tool-hint"><span className="pulse-dot" />{" "}{translateUi("Mova o carimbo até o local desejado e clique para assinar. Esc cancela.")}{" "}<button className="text-button" onClick={() => { setPlaced(null); setTool({ kind: "select" }); }}>{translateUi("Cancelar")}</button></div>}
+      {tool.kind === "sign-place" && <div className="tool-hint"><span className="pulse-dot" />{" "}{translateUi(compact ? "Toque na página para ver o carimbo no lugar; toque nele para assinar." : "Mova o carimbo até o local desejado e clique para assinar. Esc cancela.")}{" "}<button className="text-button" onClick={() => { setPlaced(null); setTool({ kind: "select" }); }}>{translateUi("Cancelar")}</button></div>}
       {(tool.kind === "field" || tool.kind === "sign-area") && <div className="tool-hint"><span className="pulse-dot" /> {tool.kind === "field" ? translateUi("Clique ou arraste na página para criar o campo.") : translateUi("Arraste na página a área onde o carimbo da assinatura digital vai aparecer.")} <button className="text-button" onClick={() => { setHelpTopic(tool.kind === "field" ? "formularios" : "assinatura"); setModal("help"); }}><HelpCircle size={13} />{" "}{translateUi("Como usar")}</button><button className="text-button" onClick={() => setTool({ kind: "select" })}>{translateUi("Concluir")}{" "}<Check size={14} /></button></div>}
       {tool.kind === "markup" && <div className="tool-hint"><span className="pulse-dot" />{" "}{translateUi("Selecione o texto com o mouse para")}{" "}{tool.style === "highlight" ? translateUi("destacar") : tool.style === "underline" ? translateUi("sublinhar") : translateUi("tachar")}{translateUi(". Em áreas sem texto, arraste um retângulo.")}{" "}<button className="text-button" onClick={() => setTool({ kind: "select" })}>{translateUi("Concluir")}{" "}<Check size={14} /></button></div>}
       {tool.kind === "edit" && !sourceSelection && <div className="tool-hint"><span className="pulse-dot" />{" "}{translateUi("Clique em um bloco de texto para editá-lo na página. Arraste imagens para movê-las.")}{" "}<button className="text-button" onClick={() => { setHelpTopic("editar"); setModal("help"); }}><HelpCircle size={13} />{" "}{translateUi("Como usar")}</button><button className="text-button" onClick={() => setTool({ kind: "select" })}>{translateUi("Concluir")}{" "}<Check size={14} /></button></div>}
@@ -1064,7 +1079,7 @@ export default function App() {
                     </div>
                     <div className="ai-suggestions">
                       {["Resuma os principais pontos deste documento.", "Quais são os prazos e as obrigações mencionados?", "Explique este documento em linguagem simples."].map((s) => (
-                        <button key={s} disabled={!active} onClick={() => setQuestion(s)}>{s}<ArrowUpRight size={13} /></button>
+                        <button key={s} disabled={!active} onClick={() => setQuestion(translateUi(s))}>{translateUi(s)}<ArrowUpRight size={13} /></button>
                       ))}
                     </div>
                   </>
@@ -1129,7 +1144,7 @@ export default function App() {
                 onFields={(values) => void operation({ type: "set-fields", values })}
                 searchFocus={focus}
                 onFieldMenu={(page, name, type) => setFieldProps({ page, name, type })}
-                onPageMenu={setPageContext}
+                onPageMenu={(menu) => { setSelectionBar(compact && !!menu.text && !!(window as unknown as { __gcpTouchSelection?: boolean }).__gcpTouchSelection); setPageContext(menu); }}
                 onFormButton={(pageId, action) => {
                   if (action.image) { void perform(() => window.gcp.setFieldImage(active.id, pageId, action.field), "Colocando a imagem no campo…"); return; }
                   if (action.url) { void perform(() => window.gcp.openFormLink(action.url!)); return; }
@@ -1200,7 +1215,17 @@ export default function App() {
       {comicToken && <ComicReader key={comicToken} token={comicToken} onClose={() => setComicToken(null)} onError={onError} />}
       {lookup && <LookupDialog text={lookup.text} mode={lookup.mode} onClose={() => setLookup(null)} onError={onError} onCopy={(text) => window.gcp.copyText(text)} />}
       {/* On touch, a long press where there is nothing to act on shows no empty menu. */}
-      {pageContext && active && !(isMobileDevice() && !pageContext.text && !selectionObjects.length && !objectClipboard) && (
+      {pageContext && active && selectionBar && pageContext.text && (
+        <div className="m-selection-bar" role="toolbar" aria-label={translateUi("Texto selecionado")} onPointerDown={(e) => e.preventDefault()}>
+          <button onClick={() => { void window.gcp.copyText(pageContext.text!); setPageContext(null); setSelectionBar(false); window.getSelection()?.removeAllRanges(); notify("Texto copiado."); }}><Copy size={18} /><span>{translateUi("Copiar")}</span></button>
+          {pageContext.rects && <button onClick={() => { const menu = pageContext; setPageContext(null); setSelectionBar(false); markPassage(menu, "highlight"); }}><Highlighter size={18} color={style.highlight} /><span>{translateUi("Destacar")}</span></button>}
+          {pageContext.rects && <button onClick={() => { const menu = pageContext; setPageContext(null); setSelectionBar(false); markPassage(menu, "underline"); }}><Underline size={18} /><span>{translateUi("Sublinhar")}</span></button>}
+          {pageContext.rects && <button onClick={() => { const menu = pageContext; setPageContext(null); setSelectionBar(false); commentPassage(menu); }}><MessageSquarePlus size={18} /><span>{translateUi("Comentar")}</span></button>}
+          <button onClick={() => { const text = pageContext.text!; setPageContext(null); setSelectionBar(false); setLookup({ text, mode: "translate" }); }}><Languages size={18} /><span>{translateUi("Traduzir")}</span></button>
+          <button aria-label={translateUi("Mais ações")} onClick={() => { setSelectionBar(false); window.getSelection()?.removeAllRanges(); }}><MoreHorizontal size={18} /><span>{translateUi("Mais")}</span></button>
+        </div>
+      )}
+      {pageContext && active && !selectionBar && !(isMobileDevice() && !pageContext.text && !selectionObjects.length && !objectClipboard) && (
         <div className="context-backdrop" onMouseDown={() => setPageContext(null)} onContextMenu={(e) => { e.preventDefault(); setPageContext(null); }}>
           <div className="context-menu" style={{ left: Math.min(pageContext.x, window.innerWidth - 250), top: Math.max(8, Math.min(pageContext.y, window.innerHeight - (pageContext.rects ? 470 : 300))), maxHeight: "calc(100vh - 16px)", overflowY: "auto" }} onMouseDown={(e) => e.stopPropagation()} onClick={() => setPageContext(null)}>
             {pageContext.text && <>
@@ -1268,7 +1293,7 @@ export default function App() {
       {modal === "palette" && <CommandPalette commands={commands.map((c) => ({ ...c, run: () => { if ((TABS as readonly string[]).includes(c.group) && c.group !== tab) setTab(c.group as Tab); c.run(); } }))} onClose={() => setModal(null)} onHelp={(topic) => { setHelpTopic(topic); setModal("help"); }} />}
       {modal === "help" && <HelpDialog topic={helpTopic} onClose={() => setModal(null)} />}
       {modal === "protect" && active && <ProtectDialog docId={active.id} name={active.name} onClose={() => setModal(null)} onSaved={() => notify("Cópia protegida salva.")} onError={onError} />}
-      {modal === "certificate" && active && <CertificateDialog docId={active.id} area={signArea} visible={signVisible && !signArea} onPlace={(p) => { setModal(null); setPlaced(p); setToolState({ kind: "sign-place", width: p.width, height: p.height, lines: p.lines, image: p.image }); }} signatures={signatures} onClose={() => setModal(null)} onSigned={(path) => { notify("Documento assinado digitalmente."); void window.gcp.openFiles([path]); }} onError={onError} />}
+      {modal === "certificate" && active && <CertificateDialog docId={active.id} area={signArea} visible={signVisible && !signArea} onPlace={(p) => { setModal(null); setPlaced(p); setToolState({ kind: "sign-place", width: p.width, height: p.height, lines: p.lines, image: p.image, layout: p.layout }); }} signatures={signatures} onClose={() => setModal(null)} onSigned={(path) => { notify("Documento assinado digitalmente."); void window.gcp.openFiles([path]); }} onError={onError} />}
       {modal === "signatures-check" && active && <SignaturesDialog docId={active.id} onClose={() => setModal(null)} />}
       {modal === "field-options" && active && pendingField && <FieldOptionsDialog kind={pendingField.type} onClose={() => { setModal(null); setPendingField(null); }} onConfirm={(options, name) => { const field = pendingField; setModal(null); setPendingField(null); setToolState({ kind: "select" }); void perform(async () => { const created = await window.gcp.addFormField(active.id, field.page, { type: field.type, rect: field.rect, options, name: name || undefined }); if (created) setFieldProps({ page: field.page, name: created, type: field.type }); }); }} />}
       {modal === "compare" && active && <CompareView documents={workspace.documents} first={compareFirst ?? active.id} onClose={() => { setModal(null); setCompareFirst(null); }} onOpen={() => perform(() => window.gcp.openFiles())} />}

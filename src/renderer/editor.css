@@ -320,13 +320,13 @@
 .palette-group { font-size: 10.5px; color: var(--muted); }
 .palette-empty { padding: 30px; text-align: center; color: var(--muted); font-size: 12px; }
 .palette-footer { display: flex; justify-content: space-between; align-items: center; padding: 8px 14px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); }
-.help { width: min(940px, 94vw); height: min(620px, 88vh); display: flex; background: var(--surface); border-radius: 16px; overflow: hidden; box-shadow: 0 30px 80px #1b122b55; }
+.help { position: relative; width: min(940px, 94vw); height: min(620px, 88vh); display: flex; background: var(--surface); border-radius: 16px; overflow: hidden; box-shadow: 0 30px 80px #1b122b55; }
 .help-nav { width: 290px; flex-shrink: 0; padding: 18px 12px; background: var(--surface-2); border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 2px; overflow: auto; }
 .help-nav h2 { display: flex; align-items: center; gap: 8px; font-size: 15px; margin: 0 8px 12px; color: var(--purple); }
 .help-nav button { display: flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left; padding: 9px 10px; border-radius: 8px; font-size: 12.5px; }
 .help-nav button.active, .help-nav button:hover { background: var(--purple-soft); color: var(--purple); }
 .help-body { position: relative; flex: 1; padding: 28px 36px; overflow: auto; }
-.help-close { position: absolute; top: 14px; right: 14px; color: var(--muted); }
+.help-close { position: absolute; top: 14px; right: 14px; z-index: 1; color: var(--muted); }
 .help-art { width: 240px; height: auto; display: block; margin: 0 0 12px; background: var(--purple-soft); border-radius: 14px; padding: 10px; }
 .help-body h3 { font-size: 19px; margin: 6px 0 6px; }
 .help-summary { font-size: 13px; color: var(--muted); margin: 0 0 16px; line-height: 1.6; }
@@ -547,6 +547,11 @@
 .form-layer .buttonWidgetAnnotation.checkBox input:hover, .form-layer .buttonWidgetAnnotation.radioButton input:hover, .form-layer .buttonWidgetAnnotation.checkBox input:focus-visible, .form-layer .buttonWidgetAnnotation.radioButton input:focus-visible { box-shadow: 0 0 0 2px #6d35d566 !important; }
 .form-layer .buttonWidgetAnnotation.radioButton input { border-radius: 50% !important; }
 .form-layer .buttonWidgetAnnotation.checkBox input::before, .form-layer .buttonWidgetAnnotation.checkBox input::after, .form-layer .buttonWidgetAnnotation.radioButton input::before, .form-layer .buttonWidgetAnnotation.radioButton input::after { content: none !important; display: none !important; }
+.signature-stamp.exact { position: relative; display: block; padding: 0; gap: 0; background: #fff; border: .7px solid #6d35d5; font-family: Helvetica, Arial, "Liberation Sans", sans-serif; overflow: hidden; }
+.signature-stamp.exact span, .signature-stamp.exact img { position: absolute; line-height: 1; white-space: nowrap; }
+.signature-stamp.exact span.mono { font-family: "Courier New", "Liberation Mono", Courier, monospace; }
+.signature-stamp.exact img { object-fit: contain; max-width: none; }
+.stamp-measure { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
 .signature-stamp { display: flex; align-items: center; gap: 6px; box-sizing: border-box; padding: 4px 6px; border: 1px solid #6d35d5; background: #ffffffe6; color: #111; font-family: Helvetica, Arial, sans-serif; line-height: 1.25; overflow: hidden; }
 .signature-stamp img { height: 90%; max-width: 45%; object-fit: contain; }
 .signature-stamp > div { display: flex; flex-direction: column; min-width: 0; }

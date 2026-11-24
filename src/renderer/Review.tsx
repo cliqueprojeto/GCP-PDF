@@ -13,7 +13,7 @@ const PAPERS: [string, number, number][] = [["A4", 210, 297], ["A3", 297, 420], 
 function paper(width: number, height: number) {
   const mm = (pt: number) => Math.round((pt / 72) * 25.4), w = mm(width), h = mm(height), [a, b] = [Math.min(w, h), Math.max(w, h)];
   const name = PAPERS.find(([, x, y]) => Math.abs(x - a) <= 2 && Math.abs(y - b) <= 2)?.[0];
-  return `${w} × ${h} mm${name ? ` (${name}${w > h ? ", paisagem" : ""})` : ""}`;
+  return `${w} × ${h} mm${name ? ` (${name}${w > h ? `, ${translateUi("paisagem")}` : ""})` : ""}`;
 }
 
 /** Revisar > Propriedades: the PDF's description (title, author…) editable, plus file facts. */
@@ -21,7 +21,7 @@ export function PropertiesDialog({ doc, onClose, onError, onSaved }: { doc: Docu
   const [info, setInfo] = useState<Awaited<ReturnType<typeof window.gcp.getProperties>> | null>(null), [form, setForm] = useState<Partial<DocumentMetadata>>({});
   useEffect(() => { void window.gcp.getProperties(doc.id).then((value) => { setInfo(value); setForm({ title: value.title, author: value.author, subject: value.subject, keywords: value.keywords, creator: value.creator, producer: value.producer }); }).catch(onError); }, [doc.id]);
   const date = (iso?: string) => (iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "long", timeStyle: "short" }) : "—");
-  const field = (key: keyof DocumentMetadata, label: string, placeholder = "") => <label className="field">{translateUi(label)}<input value={(form[key] as string) ?? ""} placeholder={placeholder} onChange={(e) => setForm({ ...form, [key]: e.target.value })} /></label>;
+  const field = (key: keyof DocumentMetadata, label: string, placeholder = "") => <label className="field">{translateUi(label)}<input value={(form[key] as string) ?? ""} placeholder={placeholder && translateUi(placeholder)} onChange={(e) => setForm({ ...form, [key]: e.target.value })} /></label>;
   return (
     <Modal title={translateUi("Propriedades do documento")} description={doc.name} onClose={onClose} wide>
       {!info ? <div className="cert-loading"><LoaderCircle className="spin" size={18} />{" "}{translateUi("Lendo propriedades…")}</div> : (
@@ -37,7 +37,7 @@ export function PropertiesDialog({ doc, onClose, onError, onSaved }: { doc: Docu
           <section className="props-facts">
             <h3>{translateUi("Arquivo")}</h3>
             <dl>
-              <dt>{translateUi("Local")}</dt><dd title={info.path}>{info.path ?? "Ainda não salvo"}</dd>
+              <dt>{translateUi("Local")}</dt><dd title={info.path}>{info.path ?? translateUi("Ainda não salvo")}</dd>
               <dt>{translateUi("Tamanho")}</dt><dd>{info.fileSize ? bytes(info.fileSize) : "—"}</dd>
               <dt>{translateUi("Páginas")}</dt><dd>{number(info.pageCount)}</dd>
               <dt>{translateUi("Tamanho da página")}</dt><dd>{paper(info.pageSize.width, info.pageSize.height)}</dd>

@@ -1,5 +1,6 @@
 import {defineConfig} from 'vite';
 import react from '@vitejs/plugin-react';
+import {hoverMedia} from './scripts/hover-media.mjs';
 import {fileURLToPath} from 'node:url';
 
 /** The Android app's web layer: the desktop interface and main process in one page, with Node and Electron
@@ -11,6 +12,7 @@ export default defineConfig({
   base: './',
   publicDir: false,
   plugins: [react()],
+  css: {postcss: {plugins: [hoverMedia()]}},
   define: {
     __dirname: JSON.stringify('/android_asset/app/dist/main'),
     'process.env.NODE_ENV': JSON.stringify('production'),

@@ -76,5 +76,3 @@ Em emulador Android 17 (API 37, x86_64, WebView 145), GPU do computador:
 - Build de distribuição (R8) instalado e aberto; fluxo abrir pelo seletor → Editar tudo.
 
 Também verificados no emulador: pinça e arraste com dois dedos, seleção por toque longo em texto pequeno, edição de texto do PDF pela folha inferior, carimbo de certificado com prévia e assinatura reconhecida (cadeia ICP-Brasil/gov.br embutida), comentários sem balões duplicados, diálogo de impressão do sistema com as páginas do PDF e cores dos seis temas em retrato.
-
-Não verificado ainda: aparelho físico (ARM), Android 8–11 reais, impressão em impressora real, assinatura com certificado A1/A3 real no celular, "Abrir com"/"Compartilhar" vindos de outros apps e chamadas de IA com chave válida.

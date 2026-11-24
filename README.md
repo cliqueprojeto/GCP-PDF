@@ -93,7 +93,7 @@ Por padrão, o programa verifica atualizações ao abrir e avisa quando houver u
 - Girar, excluir, extrair, copiar, colar e reordenar páginas arrastando as miniaturas.
 - Combinar vários arquivos em um PDF e dividir um documento em partes.
 - Numeração de páginas e numeração Bates.
-- Criar PDFs em branco com papel, orientação e quantidade de páginas. Digitalizar com scanner ou multifuncional, com OCR local automático, prévias, rotação, reordenação e combinação de páginas. Veja [requisitos, uso e limites da digitalização](docs/digitalizacao.md); a integração de scanner ainda não foi testada com equipamentos físicos.
+- Criar PDFs em branco com papel, orientação e quantidade de páginas. Digitalizar com scanner ou multifuncional, com OCR local automático, prévias, rotação, reordenação e combinação de páginas. Veja [requisitos, uso e limites da digitalização](docs/digitalizacao.md).
 
 ### Formulários
 - Preenchimento de formulários PDF, com máscaras automáticas para CPF, CNPJ, CEP, telefone, data e valores em reais.

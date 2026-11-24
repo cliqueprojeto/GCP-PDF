@@ -15,12 +15,15 @@ import { bodyStyle, flowPage, flowSection, type FlowPage } from './docx-flow';
  * text and placed behind the page, and every text block is rebuilt on top as real, editable Word
  * text with its own font, size, weight, colour and alignment. */
 
-export interface Run { text: string; x: number; baseline: number; width: number; size: number; font: string; bold: boolean; italic: boolean; color: string; space: boolean; /** Letter spacing in points. */ tracking?: number; /** Horizontal text scale (1 = none). */ scale?: number; /** Raised or lowered small text; `size` is then the size of the text it belongs to. */ script?: 'super' | 'sub'; /** Web or e-mail address the text links to. */ link?: string; underline?: boolean; strike?: boolean }
+export interface Run { /** Area of the printed word to erase from a scan, when it differs from the text box. */ erase?: { top: number; height: number }; text: string; x: number; baseline: number; width: number; size: number; font: string; bold: boolean; italic: boolean; color: string; space: boolean; /** Letter spacing in points. */ tracking?: number; /** Horizontal text scale (1 = none). */ scale?: number; /** Raised or lowered small text; `size` is then the size of the text it belongs to. */ script?: 'super' | 'sub'; /** Web or e-mail address the text links to. */ link?: string; underline?: boolean; strike?: boolean }
 export interface Line { runs: Run[]; x: number; right: number; baseline: number; size: number }
 export interface Block { lines: Line[]; x: number; right: number; size: number; align: 'left' | 'center' | 'right' | 'justify'; flow: boolean }
 
 /** A painted path in top-left page points, ready to become a native PowerPoint shape. */
-export interface VectorShape { segments: Segment[]; box: { x: number; y: number; width: number; height: number }; fill?: { color: string; alpha: number }; stroke?: { color: string; alpha: number; width: number; dash: boolean }; operation?:number }
+export interface VectorShape { segments: Segment[]; box: { x: number; y: number; width: number; height: number }; fill?: { color: string; alpha: number }; stroke?: { color: string; alpha: number; width: number; dash: boolean }; operation?:number;
+  /** Which path of the page this is (n-th path drawn). Unlike `operation`, the same in every operator list
+   * PDF.js builds for the page: the list it renders also carries font loading steps the read list lacks. */
+  path?: number }
 type Segment = { op: 'M' | 'L'; x: number; y: number } | { op: 'C'; x1: number; y1: number; x2: number; y2: number; x: number; y: number } | { op: 'Z' };
 type Matrix = [number, number, number, number, number, number];
 const multiply = (c: Matrix, m: number[]): Matrix => [c[0] * m[0]! + c[2] * m[1]!, c[1] * m[0]! + c[3] * m[1]!, c[0] * m[2]! + c[2] * m[3]!, c[1] * m[2]! + c[3] * m[3]!, c[0] * m[4]! + c[2] * m[5]! + c[4], c[1] * m[4]! + c[3] * m[5]! + c[5]];
@@ -48,7 +51,7 @@ export async function vectorShapes(page: PDFPageProxy): Promise<{ supported: boo
   let state: State = { ctm: [...viewport.transform] as Matrix, fill: '#000000', stroke: '#000000', fillAlpha: 1, strokeAlpha: 1, width: 1, dash: false, clip: null, clipComplex:false,pattern: false, masked:false,blended:false };
   const stack: State[] = [], shapes: VectorShape[] = [], painted: Box[] = [];
   let unsupportedReason:string|undefined,firstRaster=Infinity,lastRaster=-1;
-  let pending: { segments: Segment[]; box: VectorShape['box'] } | null = null, clipNext = false;
+  let pending: { segments: Segment[]; box: VectorShape['box'] } | null = null, clipNext = false, paths = 0;
   for (let i = 0; i < list.fnArray.length; i++) {
     const fn = list.fnArray[i]!, args = list.argsArray[i] as any[];
     switch (fn) {
@@ -72,6 +75,7 @@ export async function vectorShapes(page: PDFPageProxy): Promise<{ supported: boo
         break;
       case OP.shadingFill: unsupportedReason ??= 'degradê';firstRaster=Math.min(firstRaster,i);lastRaster=i; painted.push(state.clip ?? { x: 0, y: 0, width: viewport.width, height: viewport.height }); break;
       case OP.constructPath: {
+        const path = paths++;
         const paint = args[0] as number, data = (Array.isArray(args[1]) ? args[1][0] : args[1]) as ArrayLike<number> | undefined;
         const segments: Segment[] = [];
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -106,7 +110,7 @@ export async function vectorShapes(page: PDFPageProxy): Promise<{ supported: boo
           }
           if ([OP.closeStroke, OP.closeFillStroke, OP.closeEOFillStroke].includes(paint)) pending.segments.push({ op: 'Z' });
           const scale = Math.sqrt(Math.abs(state.ctm[0] * state.ctm[3] - state.ctm[1] * state.ctm[2]));
-          shapes.push({ ...pending, operation:i, ...(filled ? { fill: { color: state.fill, alpha: state.fillAlpha } } : {}), ...(stroked ? { stroke: { color: state.stroke, alpha: state.strokeAlpha, width: Math.max(0.25, state.width * scale), dash: state.dash } } : {}) });
+          shapes.push({ ...pending, operation:i, path, ...(filled ? { fill: { color: state.fill, alpha: state.fillAlpha } } : {}), ...(stroked ? { stroke: { color: state.stroke, alpha: state.strokeAlpha, width: Math.max(0.25, state.width * scale), dash: state.dash } } : {}) });
           if (shapes.length > MAX_SHAPES) return { supported: false, shapes: shapes.slice(0,MAX_SHAPES), reason: 'formas demais', painted };
           pending = null;
         }
@@ -417,9 +421,13 @@ export function buildLines(runs: Run[]): Line[] {
     const row = rows.find((r) => Math.abs(r[0]!.baseline - run.baseline) <= Math.max(1.5, Math.min(r[0]!.size, run.size) * 0.3));
     if (row) row.push(run); else rows.push([run]);
   }
+  // Where pieces start in at least three rows after a gap, a column starts (a form's values, a table's
+  // cells): the piece starting there is its own segment even when its gap is as narrow as a long label leaves.
+  const starts = new Map<number, number>();
+  for (const row of rows) { row.sort((a, b) => a.x - b.x); for (let n = 1; n < row.length; n++) if (row[n]!.x - (row[n - 1]!.x + row[n - 1]!.width) > row[n - 1]!.size * 0.6) { const key = Math.round(row[n]!.x / 2); starts.set(key, (starts.get(key) ?? 0) + 1); } }
+  const column = (x: number) => [-1, 0, 1].reduce((sum, d) => sum + (starts.get(Math.round(x / 2) + d) ?? 0), 0) >= 3;
   const lines: Line[] = [];
   for (const row of rows) {
-    row.sort((a, b) => a.x - b.x);
     // Wide gaps separate columns and table cells: each becomes its own line segment.
     let current: Run[] = [];
     const flush = () => { if (current.length) lines.push({ runs: current, x: current[0]!.x, right: Math.max(...current.map((r) => r.x + r.width)), baseline: Math.max(...current.map((r) => r.baseline)), size: Math.max(...current.map((r) => r.size)) }); current = []; };
@@ -429,7 +437,7 @@ export function buildLines(runs: Run[]): Line[] {
       // A coloured word inside justified prose (a link, a highlight) sits a stretched word gap from its
       // neighbours; only a size change, or a colour change across a wider gap, separates two pieces.
       const resized = last && Math.abs(last.size - run.size) > last.size * 0.15, recoloured = last && last.color !== run.color;
-      if (last && (gap > Math.max(10, last.size * 1.6) || (resized && gap > last.size * 0.45) || (recoloured && gap > last.size * 0.9))) flush();
+      if (last && (gap > Math.max(10, last.size * 1.6) || (resized && gap > last.size * 0.45) || (recoloured && gap > last.size * 0.9) || (gap > last.size * 0.6 && column(run.x)))) flush();
       current.push(run);
     }
     flush();
@@ -443,11 +451,24 @@ export function buildBlocks(lines: Line[]): Block[] {
     const block = blocks.find((b) => {
       const last = b.lines.at(-1)!, gap = line.baseline - last.baseline;
       if (gap <= 0 || gap > Math.max(last.size, line.size) * 1.75 || Math.abs(line.size - last.size) > last.size * 0.12) return false;
+      // A block keeps one line pitch: a line at another distance (the next row of a table, the next field of a
+      // form) starts its own block, or the whole block would be spaced at the wrong pitch.
+      if (b.lines.length > 1) { const pitch = last.baseline - b.lines.at(-2)!.baseline; if (Math.abs(gap - pitch) > Math.max(1, pitch * 0.12)) return false; }
       const sameLeft = Math.abs(line.x - last.x) < 2.5, sameCenter = Math.abs(center - (last.x + last.right) / 2) < 2.5 && b.align !== 'left';
       const overlaps = line.x < b.right + 2 && line.right > b.x - 2;
       return overlaps && (sameLeft || sameCenter);
     });
-    if (!block) { blocks.push({ lines: [line], x: line.x, right: line.right, size: line.size, align: 'left', flow: false }); continue; }
+    if (!block) {
+      // Two lines then a closer one under them: the first was a line of its own (a table row's value), the
+      // second starts the paragraph that continues here.
+      const pair = blocks.find((b) => {
+        if (b.lines.length !== 2 || b.align !== 'left') return false;
+        const [first, second] = b.lines as [Line, Line], gap = line.baseline - second.baseline;
+        return gap > 0 && gap < (second.baseline - first.baseline) * 0.88 && Math.abs(line.x - second.x) < 2.5 && Math.abs(line.size - second.size) <= second.size * 0.12;
+      });
+      if (pair) { const second = pair.lines.pop()!; pair.right = pair.lines[0]!.right; pair.x = pair.lines[0]!.x; blocks.push({ lines: [second, line], x: Math.min(second.x, line.x), right: Math.max(second.right, line.right), size: Math.max(second.size, line.size), align: 'left', flow: false }); continue; }
+      blocks.push({ lines: [line], x: line.x, right: line.right, size: line.size, align: 'left', flow: false }); continue;
+    }
     const last = block.lines.at(-1)!;
     if (block.lines.length === 1 && Math.abs(line.x - last.x) >= 2.5) block.align = 'center';
     block.lines.push(line); block.x = Math.min(block.x, line.x); block.right = Math.max(block.right, line.right);
@@ -526,16 +547,27 @@ function blockParagraph(block: Block, pageWidth: number): Paragraph {
     children,
   });
 }
+/** Render filter leaving out the paths numbered in `omit` (their n-th order among the page's paths, see
+ * VectorShape.path): only path operations are ever skipped, never the font and image loading around them. */
+function skipPaths(omit: ReadonlySet<number>) {
+  const ordinal = new Map<number, number>();
+  let scanned = 0, paths = 0;
+  return (index: number, list: { fnArray: ArrayLike<number> }) => {
+    if (list.fnArray[index] !== OP.constructPath) return true;
+    for (; scanned <= index; scanned++) if (list.fnArray[scanned] === OP.constructPath) ordinal.set(scanned, paths++);
+    return !omit.has(ordinal.get(index)!);
+  };
+}
 /** Renders the artwork-only page; returns null when it is blank white. On a scanned page the words are
  * part of the picture: `erase` covers each recognized word with the paper colour around it, so only the
  * editable text shows. */
 async function artwork(page: PDFPageProxy, dpi: number, erase: Run[] = [], omit:ReadonlySet<number>=new Set(),transparent=false, turned: TurnedText[] = []): Promise<Buffer | null> {
   const viewport = page.getViewport({ scale: dpi / 72 }), canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height)), context = canvas.getContext('2d');
-  await page.render({ canvas: canvas as never, canvasContext: context as never, viewport, background: transparent?'rgba(0,0,0,0)':'white',operationsFilter:index=>!omit.has(index) }).promise;
+  await page.render({ canvas: canvas as never, canvasContext: context as never, viewport, background: transparent?'rgba(0,0,0,0)':'white',operationsFilter:omit.size?skipPaths(omit):undefined }).promise;
   const k = dpi / 72;
   for (const run of erase) {
-    const x = Math.max(0, Math.floor((run.x - 1) * k)), y = Math.max(0, Math.floor((run.baseline - run.size * 0.95) * k));
-    const w = Math.min(canvas.width - x, Math.ceil((run.width + 2) * k)), h = Math.min(canvas.height - y, Math.ceil(run.size * 1.25 * k));
+    const top = run.erase?.top ?? run.baseline - run.size * 0.95, x = Math.max(0, Math.floor((run.x - 1) * k)), y = Math.max(0, Math.floor(top * k));
+    const w = Math.min(canvas.width - x, Math.ceil((run.width + 2) * k)), h = Math.min(canvas.height - y, Math.ceil((run.erase?.height ?? run.size * 1.25) * k));
     if (w <= 0 || h <= 0) continue;
     // The brightest pixels on the box border are the paper; ink is darker.
     const ring = [context.getImageData(x, Math.max(0, y - 2), w, 1).data, context.getImageData(x, Math.min(canvas.height - 1, y + h + 1), w, 1).data];
@@ -596,6 +628,36 @@ export function reconcileOcr<V extends { shapes: VectorShape[] }>(vector: V, run
   return { vector: { ...vector, shapes: vector.shapes.filter((v) => !drop.has(v)) }, runs: runs.flatMap((r, i) => (keep[i] ? [{ ...r, color: colour(under[i]!) }] : [])), outlined: true };
 }
 /** Text recognized by OCR on scanned pages (by page index), used where the PDF has no text of its own. */
+/**
+ * A scan already recognized by another program (or an earlier OCR): a picture of the page with all its text
+ * drawn invisible on top. Converted like a scan just recognized here — that text becomes the editable text
+ * and its words are erased from the picture — instead of laying the text over the same printed words.
+ */
+/** An invisible OCR layer sizes its words by the line height and stretches them to the printed width; in the
+ * substitute font the same size runs longer. Each run gets the size at which it spans its printed width. */
+function fitWidths(runs: Run[]): Run[] {
+  const context = createCanvas(4, 4).getContext('2d');
+  return runs.map((run) => {
+    context.font = `${run.italic ? 'italic ' : ''}${run.bold ? 'bold ' : ''}100px "${run.font}"`;
+    const natural = context.measureText(run.text).width / 100 * run.size;
+    return natural > run.width * 1.02 && run.width > 0 ? { ...run, size: Math.max(4, run.size * run.width / natural), scale: undefined, tracking: undefined, erase: { top: run.baseline - run.size * 0.95, height: run.size * 1.25 } } : run;
+  });
+}
+async function hiddenTextLayer(page: PDFPageProxy): Promise<boolean> {
+  const { OPS } = await pdfjs(), list = await page.getOperatorList();
+  const images = new Set<number>([OPS.paintImageXObject, OPS.paintInlineImageXObject, OPS.paintImageXObjectRepeat]);
+  let mode = 0, hidden = 0, visible = 0, picture = false;
+  const stack: number[] = [];
+  for (let i = 0; i < list.fnArray.length; i++) {
+    const fn = list.fnArray[i]!;
+    if (fn === OPS.save) stack.push(mode);
+    else if (fn === OPS.restore) mode = stack.pop() ?? mode;
+    else if (fn === OPS.setTextRenderingMode) mode = Number((list.argsArray[i] as number[])[0]) || 0;
+    else if (fn === OPS.showText || fn === OPS.showSpacedText) { if (mode === 3 || mode === 7) hidden++; else visible++; }
+    else if (images.has(fn)) picture = true;
+  }
+  return picture && hidden > 0 && visible === 0;
+}
 export type OcrRuns = Map<number, Run[]>;
 export async function toDocxLayout(bytes: Uint8Array, dpi: number, warnings: string[], onProgress?: (message: string) => void, ocr: OcrRuns = new Map()) {
   ocr = new Map(ocr); // reconciled per page with the letter outlines below
@@ -607,7 +669,7 @@ export async function toDocxLayout(bytes: Uint8Array, dpi: number, warnings: str
   // reproduced; photos are their own pictures; a bitmap remains only for what has no shape equivalent
   // (gradients, patterns, soft masks).
   const vectors: Awaited<ReturnType<typeof vectorShapes>>[] = [];
-  for (let i = 1; i <= source.numPages; i++) { const page = await source.getPage(i); { const reconciled = reconcileOcr(await vectorShapes(page).catch(() => ({ supported: false, shapes: [], painted: [] })), ocr.get(i - 1)); vectors.push(reconciled.vector); if (reconciled.runs) ocr.set(i - 1, reconciled.runs); if (reconciled.outlined) outlined.add(i - 1); }; page.cleanup(); }
+  for (let i = 1; i <= source.numPages; i++) { const page = await source.getPage(i); { if (!ocr.has(i - 1) && await hiddenTextLayer(page)) ocr.set(i - 1, fitWidths(await pageRuns(page, fonts))); const reconciled = reconcileOcr(await vectorShapes(page).catch(() => ({ supported: false, shapes: [], painted: [] })), ocr.get(i - 1)); vectors.push(reconciled.vector); if (reconciled.runs) ocr.set(i - 1, reconciled.runs); if (reconciled.outlined) outlined.add(i - 1); }; page.cleanup(); }
   const editable = new Set(vectors.flatMap((v, i) => (v.supported && v.shapes.length ? [i] : [])));
   const [art, pictures] = await Promise.all([artworkOnly(bytes, false, editable).then(loadPdf), artworkOnly(bytes, true).then(loadPdf)]);
   const shapeRuns = new Map<number, string>();
@@ -642,14 +704,15 @@ export async function toDocxLayout(bytes: Uint8Array, dpi: number, warnings: str
         }
       }
       closeFlow(); laidOut++;
-      const artPage = await art.getPage(i);
+      // A scan's picture is its page: drawn behind the recognized text, with those words erased from it.
+      const artPage = await (scanned && !outlined.has(i - 1) ? pictures : art).getPage(i);
       const turned = scanned ? [] : await turnedText(page).catch(() => []);
       if (turned.length) warnings.push('Textos girados ou verticais foram mantidos na imagem de fundo da página, na posição original; no Word com layout preservado eles não são editáveis.');
       // Mixed pages keep the complex middle (gradients, masks) as a transparent bitmap; vectors drawn before
       // and after it become shapes and are left out of that bitmap.
       const partial = !editable.has(i - 1) && !scanned ? await vectorShapes(artPage) : undefined;
       const promoted = partial && partial.reason !== 'formas demais' ? partial.shapes.filter((v) => v.operation !== undefined && (v.operation < (partial.firstRaster ?? Infinity) || v.operation > (partial.lastRaster ?? -1))) : [];
-      const omit = new Set(promoted.map((v) => v.operation!));
+      const omit = new Set(promoted.map((v) => v.path!));
       const [allRuns, background, images, grid] = await Promise.all([scanned ?? pageRuns(page, fonts), artwork(artPage, dpi, outlined.has(i - 1) ? [] : scanned, omit, !!partial, turned), scanned && !outlined.has(i - 1) ? { images: [] } : inspectPage(page, true), scanned ? null : pageGrid(page, fonts).catch(() => null)]);
       // A real table (cells separated by rules or fills, side by side) becomes a Word table at its place,
       // rows at their exact heights; its text and cell graphics are not repeated. Forms whose sections are
@@ -809,14 +872,13 @@ export async function toPptxLayout(bytes: Uint8Array, dpi: number, warnings: str
   const outlined = new Set<number>();
   onProgress?.('Preparando os slides…');
   const PptxGenJS = (await import('pptxgenjs')).default;
-  const source = await loadPdf(bytes);
+  const source = await loadPdf(bytes), fonts = await FontContext.of(bytes, false), missing = fonts.missing;
   // Vector art (bars, lines, boxes, icons) becomes native shapes on every page where it can be reproduced.
   const vectors: Awaited<ReturnType<typeof vectorShapes>>[] = [];
-  for (let i = 1; i <= source.numPages; i++) { onProgress?.(`Lendo formas vetoriais ${i} de ${source.numPages}…`); const page = await source.getPage(i); { const reconciled = reconcileOcr(await vectorShapes(page).catch(() => ({ supported: false, shapes: [], painted: [] })), ocr.get(i - 1)); vectors.push(reconciled.vector); if (reconciled.runs) ocr.set(i - 1, reconciled.runs); if (reconciled.outlined) outlined.add(i - 1); }; page.cleanup(); }
+  for (let i = 1; i <= source.numPages; i++) { onProgress?.(`Lendo formas vetoriais ${i} de ${source.numPages}…`); const page = await source.getPage(i); { if (!ocr.has(i - 1) && await hiddenTextLayer(page)) ocr.set(i - 1, fitWidths(await pageRuns(page, fonts))); const reconciled = reconcileOcr(await vectorShapes(page).catch(() => ({ supported: false, shapes: [], painted: [] })), ocr.get(i - 1)); vectors.push(reconciled.vector); if (reconciled.runs) ocr.set(i - 1, reconciled.runs); if (reconciled.outlined) outlined.add(i - 1); }; page.cleanup(); }
   const editable = new Set(vectors.flatMap((v, i) => (v.supported && v.shapes.length ? [i] : [])));
   const [art, pictures] = await Promise.all([artworkOnly(bytes, false, editable).then(loadPdf), artworkOnly(bytes, true).then(loadPdf)]);
   let shapeCount = 0;
-  const fonts = await FontContext.of(bytes, false), missing = fonts.missing;
   try {
     const first = (await source.getPage(1)).getViewport({ scale: 1 }), pptx = new PptxGenJS();
     pptx.defineLayout({ name: 'PDF', width: first.width / 72, height: first.height / 72 });
@@ -824,7 +886,7 @@ export async function toPptxLayout(bytes: Uint8Array, dpi: number, warnings: str
     const inch = (pt: number) => pt / 72;
     for (let i = 1; i <= source.numPages; i++) {
       onProgress?.(`Convertendo slide ${i} de ${source.numPages}…`);
-      const page = await source.getPage(i), viewport = page.getViewport({ scale: 1 }), artPage = await art.getPage(i), slide = pptx.addSlide();
+      const page = await source.getPage(i), viewport = page.getViewport({ scale: 1 }), artPage = await (ocr.has(i - 1) && !outlined.has(i - 1) ? pictures : art).getPage(i), slide = pptx.addSlide();
       const sx = first.width / viewport.width, sy = first.height / viewport.height;
       const scanned = ocr.get(i - 1);
       // On mixed pages, retain the complex middle composite as a transparent bitmap and promote
@@ -832,7 +894,7 @@ export async function toPptxLayout(bytes: Uint8Array, dpi: number, warnings: str
       // paths are removed from the bitmap and remain truly removable/editable in PowerPoint.
       const partial=!editable.has(i-1)&&!scanned?await vectorShapes(artPage):undefined;
       const promoted=partial&&partial.reason!=='formas demais'?partial.shapes.filter(s=>s.operation!==undefined&&(s.operation<(partial.firstRaster??Infinity)||s.operation>(partial.lastRaster??-1))):[];
-      const omit=new Set(promoted.map(s=>s.operation!));
+      const omit=new Set(promoted.map(s=>s.path!));
       const [allRuns, background, images, grid] = await Promise.all([scanned ?? pageRuns(page, fonts), artwork(artPage, dpi, outlined.has(i - 1) ? [] : scanned,omit,!!partial), scanned && !outlined.has(i - 1) ? { images: [] } : inspectPage(page, true), scanned||partial ? null : pageGrid(page, fonts).catch(() => null)]);
       // A ruled/filled table becomes a native PowerPoint table; its cell shapes and text are not repeated.
       const table = grid ? tableOf(grid) : null;
@@ -868,7 +930,7 @@ export async function toPptxLayout(bytes: Uint8Array, dpi: number, warnings: str
         // Underlines and strikethroughs are drawn lines on the slide: text they mark keeps its line breaks,
         // or rewrapping would leave the lines under other words.
         if (block.flow && vector.some((v) => v.box.height < 1.5 && v.box.width > 2 && v.box.x >= block.x - 2 && v.box.x + v.box.width <= block.right + 2 && v.box.y > block.lines[0]!.baseline - block.size && v.box.y < block.lines.at(-1)!.baseline + block.size * 0.4)) block.flow = false;
-        const top = block.lines[0]!.baseline - block.size * 0.95, width = block.right - block.x + block.size * (block.flow ? 0.6 : 1.4), height = pitch * (block.lines.length - 1) + block.size * 1.35;
+        const top = block.lines[0]!.baseline - (block.lines.length > 1 ? Math.max(pitch, block.size * 1.2) * 0.8 : block.size * 0.95), width = block.right - block.x + block.size * (block.flow ? 0.6 : 1.4), height = pitch * (block.lines.length - 1) + block.size * 1.35;
         const text = block.lines.flatMap((line, index) => line.runs.map((run, r) => {
           const previous = line.runs[r - 1], gap = previous ? run.x - (previous.x + previous.width) : 0, space = (r > 0 && run.space) || (gap > run.size * 0.15 && !/^\s/.test(run.text)) || (r === 0 && index > 0 && block.flow);
           return { text: (space ? ' ' : '') + run.text, options: { fontFace: run.font, fontSize: Math.max(1, run.size * sy), color: run.color.replace('#', '').toUpperCase(), bold: run.bold, italic: run.italic, ...(run.tracking ? { charSpacing: run.tracking * sx } : {}), ...slideMarks(run), breakLine: !block.flow && r === line.runs.length - 1 && index < block.lines.length - 1 } };

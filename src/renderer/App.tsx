@@ -630,19 +630,21 @@ export default function App() {
   useEffect(() => window.gcp?.onAction((action) => menuAction.current(action)), []);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      const typing = (event.target as HTMLElement)?.closest('input,textarea,select,[contenteditable="true"]');
+      // Keys sent to the window or document (Android's back button arrives as Escape there) have no element.
+      const target = event.target instanceof Element ? event.target : null;
+      const typing = target?.closest('input,textarea,select,[contenteditable="true"]');
       if (event.key === "Escape" && !typing) { dragEndInside.current = true; setReading(false);void window.gcp.setFullscreen(false);setTool({ kind: "select" }); return; }
-      if ((event.key === "Delete" || event.key === "Backspace") && !typing && !(event.target as HTMLElement)?.closest(".thumbnails-scroll,.organize-grid") && selectedObjectsRef.current.size) { event.preventDefault(); deleteRef.current(); return; }
+      if ((event.key === "Delete" || event.key === "Backspace") && !typing && !target?.closest(".thumbnails-scroll,.organize-grid") && selectedObjectsRef.current.size) { event.preventDefault(); deleteRef.current(); return; }
       if (event.key === "F11" && !typing) { event.preventDefault(); void window.gcp.setFullscreen(); return; }
 
       if(event.defaultPrevented)return;
       // With objects selected (and no text selected), Ctrl+C/X/D act on them, as in drawing programs.
-      if ((event.ctrlKey || event.metaKey) && !event.altKey && !typing && selectedObjectsRef.current.size && !(event.target as HTMLElement)?.closest(".thumbnails-scroll,.organize-grid") && !window.getSelection()?.toString().trim()) {
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && !typing && selectedObjectsRef.current.size && !target?.closest(".thumbnails-scroll,.organize-grid") && !window.getSelection()?.toString().trim()) {
         const key = event.key.toLowerCase();
         if (["c", "x", "d"].includes(key) && objectKeyRef.current(key)) { event.preventDefault(); return; }
       }
       const mapped=resolveShortcut(event,readShortcuts());
-      if(mapped&&(!typing||['save','save-as','open','find'].includes(mapped))){if(mapped==='delete-pages'&&!(event.target as HTMLElement)?.closest('.thumbnails-scroll,.organize-grid'))return;event.preventDefault();shortcutAction.current(mapped);return;}
+      if(mapped&&(!typing||['save','save-as','open','find'].includes(mapped))){if(mapped==='delete-pages'&&!target?.closest('.thumbnails-scroll,.organize-grid'))return;event.preventDefault();shortcutAction.current(mapped);return;}
       if (event.key === "F1" && event.ctrlKey) { event.preventDefault(); ribbonKey.current(); return; }
 
 

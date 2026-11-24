@@ -232,7 +232,9 @@
 .compact .tool-group[hidden] { display: none; }
 
 /* Organize: page grid on the whole screen, its commands as a scrolling row of chips above it. */
-.compact .organize { flex-direction: column; }
+.compact .organize { flex-direction: column; min-height: 0; }
+.compact .organize-main { min-height: 0; }
+.compact .organize-grid { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; }
 .compact .organize-tools { width: 100%; flex-direction: row; align-items: center; gap: 8px; padding: 10px 12px; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--border); flex-wrap: nowrap; }
 .compact .organize-tools > * { flex: none; }
 .compact .organize-tools > p, .compact .organize-tools > h3, .compact .organize-help { display: none; }
@@ -370,3 +372,4 @@
 .compact .help-back { display: inline-flex; align-items: center; gap: 4px; min-height: 40px; margin: 0 0 10px -6px; padding: 0 8px; color: var(--purple); font-weight: 600; font-size: 14px; }
 .compact .help-close { top: calc(12px + var(--safe-top)); width: 40px; height: 40px; }
 .compact .help-art { width: min(240px, 70%); }
+.m-text-fields textarea { field-sizing: content; min-height: 4.5lh; max-height: 42dvh; }

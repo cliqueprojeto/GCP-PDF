@@ -151,11 +151,15 @@ export function usePinchZoom(_host: React.RefObject<HTMLElement | null>, zoom: n
  * group or table cell of the block). Applying rewrites the original text in place with the same engine and
  * fonts as the desktop's on-page editor.
  */
+const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 export function MobileTextSheet({ texts, busy, onCancel, onApply }: { texts: string[]; busy: boolean; onCancel: () => void; onApply: (texts: string[]) => void }) {
   const [values, setValues] = useState(texts);
   const changed = values.some((v, i) => v !== texts[i]);
   return (
-    <div className="m-sheet-backdrop" onPointerDown={(e) => { if (e.target === e.currentTarget && !busy) onCancel(); }}>
+    // Rendered in a portal from the page: React would still bubble its taps and keys to the page, whose
+    // "tap outside the block" handling would close this editor while the user places the caret.
+    <div className="m-sheet-backdrop" onPointerDown={(e) => { e.stopPropagation(); if (e.target === e.currentTarget && !busy) onCancel(); }}
+      onPointerUp={stop} onPointerMove={stop} onClick={stop} onDoubleClick={stop} onMouseDown={stop} onMouseUp={stop} onTouchStart={stop} onTouchEnd={stop} onContextMenu={stop} onKeyDown={stop} onKeyUp={stop}>
       <div className="m-sheet m-text-sheet open" role="dialog" aria-label={translateUi("Editar texto do PDF")}>
         <div className="m-sheet-handle" />
         <div className="m-sheet-title"><strong>{translateUi("Editar texto do PDF")}</strong><button className="m-icon" aria-label={translateUi("Fechar")} disabled={busy} onClick={onCancel}><X size={20} /></button></div>

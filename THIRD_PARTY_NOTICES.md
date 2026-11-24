@@ -7,7 +7,7 @@ A identidade visual, o ícone e a interface do GCP-PDF são próprios. Nenhum í
 
 ## Componentes incluídos
 
-- **Módulo Android** — Kotlin, AndroidX/Jetpack Compose e PDFBox Android 2.0.27.0 (Tom Roush e colaboradores / Apache PDFBox), sob Apache-2.0. PDFBox Android inclui Bouncy Castle 1.72, sob a licença Bouncy Castle. A interface usa vetores próprios, fonte Inter (OFL-1.1) e banco SQLite do sistema Android. Esse módulo não inclui os executáveis PdfCraft nem o runtime Electron do computador. Detalhes de paridade e validação em `android/README.md`.
+- **Aplicativo Android** — o mesmo código da versão de computador (interface e motores) executado no WebView do sistema Android (Chromium, BSD), com uma camada nativa em Kotlin e AndroidX (Apache-2.0). Inclui o motor de edição PdfCraft CLI 0.15.0 compilado a partir do código-fonte oficial para ARM64, ARMv7 e x86_64 (`scripts/build-android-engine.sh`), e as fontes métricas Carlito (The Carlito Project Authors, OFL-1.1), Caladea (The Caladea Project Authors, OFL-1.1) e Liberation Sans/Serif/Mono 2 (Google e Red Hat, OFL-1.1), usadas no lugar de Calibri, Cambria, Arial, Times New Roman e Courier New para que as conversões de Word, Excel e PowerPoint mantenham o mesmo layout do computador. As licenças acompanham o APK em `assets/app/licenses` e `assets/app/assets/pdfcraft`.
 
 - **Motor de edição de PDF** — baseado no PdfCraft CLI (ArtCraft Team e colaboradores do PdfCraft), sob MIT OU Apache-2.0. As licenças e o NOTICE originais estão em `assets/pdfcraft`. Este crédito não substitui os créditos dos autores do motor.
 - **Fonte Inter** — SIL Open Font License 1.1 (`assets/OFL-Inter.txt`); a interface também usa o pacote `@fontsource/inter`, sob OFL.

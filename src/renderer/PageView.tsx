@@ -202,7 +202,10 @@ export function PageView(props: Props) {
       const page = await loadPage(pageRef);
       if (dead || !canvas.current) return;
       const viewport = page.getViewport({ scale, rotation });
-      const dpr = Math.min(window.devicePixelRatio || 1, 3), c = canvas.current;
+      // The raster is capped in total pixels (as PDF.js' viewer does), so deep zoom never allocates hundreds of
+      // megabytes of graphics memory; phones and tablets get a lower cap than computers.
+      const budget = document.documentElement.classList.contains("mobile") ? 8_000_000 : 32_000_000;
+      const dpr = Math.max(0.5, Math.min(window.devicePixelRatio || 1, 3, Math.sqrt(budget / Math.max(1, viewport.width * viewport.height)))), c = canvas.current;
       const next = document.createElement("canvas");
       next.width = Math.ceil(viewport.width * dpr);
       next.height = Math.ceil(viewport.height * dpr);

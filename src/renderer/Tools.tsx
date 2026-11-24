@@ -28,7 +28,8 @@ export interface OrganizeActions {
 const PAGE_MIME = "application/x-gcp-pages";
 /** Visual page organizer: a grid of large pages with per-page actions and drag-and-drop ordering. */
 export function OrganizeView({ doc, selection, setSelection, actions, onContextMenu }: { doc: DocumentInfo; selection: Set<number>; setSelection: (s: Set<number>) => void; actions: OrganizeActions; onContextMenu: (e: React.MouseEvent, index: number) => void }) {
-  const [size, setSize] = useState(170), [drop, setDrop] = useState<number | null>(null), [insertAt, setInsertAt] = useState<number | null>(null), [extractOpen, setExtractOpen] = useState(false);
+  // Phones start with two pages per row.
+  const [size, setSize] = useState(() => document.documentElement.classList.contains("mobile") && innerWidth < 600 ? Math.max(110, Math.floor((innerWidth - 96) / 2)) : 170), [drop, setDrop] = useState<number | null>(null), [insertAt, setInsertAt] = useState<number | null>(null), [extractOpen, setExtractOpen] = useState(false);
   const chosen = [...selection].sort((a, b) => a - b), none = !chosen.length;
   const toggle = (index: number, e: React.MouseEvent) => {
     if (e.shiftKey && chosen.length) { const from = Math.min(chosen[0]!, index), to = Math.max(chosen.at(-1)!, index); setSelection(new Set(Array.from({ length: to - from + 1 }, (_, i) => from + i))); return; }

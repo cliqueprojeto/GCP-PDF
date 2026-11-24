@@ -16,7 +16,7 @@ O GCP-PDF reúne num só programa o que normalmente exige vários: ler, comentar
 
 Desenvolvido por **Bruno Albertini | [Gestão Cultural Pro](https://gestaoculturalpro.com.br/)**.
 
-**Android (prévia de desenvolvimento):** módulo nativo em Kotlin/Jetpack Compose para celular e tablet, em retrato e paisagem, com APK assinado localmente para instalação direta. Inclui biblioteca de assinaturas com remoção de fundo e IA via API. Ainda não possui todas as funções desktop; consulte os recursos, pendências e comandos em [android/README.md](android/README.md).
+**Android (celular e tablet):** o mesmo GCP-PDF do computador, adaptado ao toque — barra superior, ferramentas por categoria na parte de baixo, painéis deslizantes, pinça para zoom, seleção de texto por toque longo, digitalização com a câmera e "Abrir com"/"Compartilhar" do Android. As conversões de Word, Excel, PowerPoint, EPUB e OCR usam os mesmos motores da versão de computador e saem com o mesmo layout. Instale o arquivo `GCP-PDF-x.y.z-android-arm64-v8a.apk` (a maioria dos celulares), `-armeabi-v7a.apk` (aparelhos mais simples) ou o universal `GCP-PDF-x.y.z-android.apk`. Detalhes e compilação em [android/README.md](android/README.md).
 
 ![Página inicial do GCP-PDF](docs/screenshots/01-inicio.png)
 

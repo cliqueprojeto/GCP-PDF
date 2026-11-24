@@ -534,7 +534,7 @@ export function SettingsDialog({
             <ThemeOptions theme={theme} onTheme={onTheme} />
           </section>
           {onLabels && (
-            <section className="form-section">
+            <section className="form-section desktop-only">
               <h3>{translateUi("Rótulos da barra de ferramentas")}</h3>
               <div className="segmented">
                 {(
@@ -555,7 +555,7 @@ export function SettingsDialog({
               </div>
             </section>
           )}
-          <section className="form-section">
+          <section className="form-section desktop-only">
             <h3>{translateUi("Ações rápidas nos arquivos")}</h3>
             <p className="muted">{" "}{translateUi("“Converter para PDF” e “Combinar em um PDF” (PDF, imagens, Word, Excel, PowerPoint…) no menu de contexto. Windows 11: “Mostrar mais opções”. Linux: menu GCP-PDF ou “Scripts › GCP-PDF”, conforme o gerenciador de arquivos. macOS: Finder › Ações Rápidas ou Serviços. Pode ser necessário reabrir o gerenciador de arquivos.")}{" "}</p>
             <label className="switch-row">

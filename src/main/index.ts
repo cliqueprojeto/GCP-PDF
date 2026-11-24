@@ -1045,7 +1045,8 @@ else{
   if(!process.env.VITE_DEV_SERVER_URL)session.defaultSession.webRequest.onBeforeRequest((details,callback)=>{callback({cancel:!['file:','data:','blob:','devtools:'].some(protocol=>details.url.startsWith(protocol))});});
   // Quick actions are installed automatically (idempotent) so they also follow the app after an update or move.
   // Test profiles never change the real desktop or the Windows registry.
-  if(app.isPackaged&&process.env.GCP_PDF_TEST_MODE!=='1')void installQuickActions(settings.quickActions).catch(error=>action(mainView(),'notice:Não foi possível configurar as ações rápidas: '+String(error.message||error)));
+  // Android has no file-manager context menus to install.
+  if(app.isPackaged&&process.env.GCP_PDF_TEST_MODE!=='1'&&process.platform!=='android')void installQuickActions(settings.quickActions).catch(error=>action(mainView(),'notice:Não foi possível configurar as ações rápidas: '+String(error.message||error)));
   setTimeout(()=>void backgroundUpdateCheck(),8000);
   ready=true;handleLaunch(process.argv);for(const {args,cwd} of early.splice(0))handleLaunch(args,cwd);
   if(process.env.GCP_PDF_TEST_MODE==='1')(globalThis as any).__gcpTest={scanner,store,views,quicks,createWindow,createQuickWindow,notify,settings,engine};

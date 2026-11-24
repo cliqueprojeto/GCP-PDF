@@ -16,6 +16,8 @@ export function fontFolders(platform: NodeJS.Platform = process.platform, env: N
     const local = env.LOCALAPPDATA ?? join(home, 'AppData', 'Local');
     return [join(env.WINDIR ?? 'C:\\Windows', 'Fonts'), join(local, 'Microsoft', 'Windows', 'Fonts'), join(local, 'Microsoft', 'FontCache', '4', 'CloudFonts')];
   }
+  // Android: the metric-compatible fonts shipped with the app (Carlito, Caladea, Liberation…) and the system's.
+  if ((platform as string) === 'android') return ['/android_asset/app/fonts', '/system/fonts', '/product/fonts'];
   if (platform === 'darwin') return ['/System/Library/Fonts', '/Library/Fonts', '/Network/Library/Fonts', join(home, 'Library', 'Fonts'),
     ...['Microsoft Word', 'Microsoft Excel', 'Microsoft PowerPoint'].map((app) => `/Applications/${app}.app/Contents/Resources/DFonts`),
     '/System/Library/AssetsV2/com_apple_MobileAsset_Font7', '/System/Library/AssetsV2/com_apple_MobileAsset_Font8'];

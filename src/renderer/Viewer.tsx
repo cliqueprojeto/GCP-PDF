@@ -4,6 +4,8 @@ import { PageView, type SourceSelection } from "./PageView";
 import { loadPage, totalRotation, usePageGeometry, displaySize } from "./pdf";
 import type { Style, Tool } from "./editor";
 
+/** Side margins kept around the page when fitting it: phones give the page almost the whole width. */
+const margin = () => document.documentElement.classList.contains("mobile") && (innerWidth < 900 || innerHeight < 600) ? 16 : 64;
 export interface ViewerHandle { scrollToPage: (index: number, top?: number | null) => void; readingTop: () => number; fitWidth: () => number | null; fitPage: () => number | null }
 interface Props {
   onDeleteAnnotation:(a:import("../shared/types").PdfAnnotation)=>void;
@@ -40,6 +42,9 @@ interface Props {
 }
 export const Viewer = forwardRef<ViewerHandle, Props>(function Viewer(props, handle) {
   const { doc, scale } = props, spread = props.layout === "double" || props.layout === "cover", scroller = useRef<HTMLDivElement>(null), geometry = usePageGeometry(doc.pages), current = useRef(0);
+  // Another document: the page used to fit the zoom is its own first page, not the previous document's index.
+  const shownDoc = useRef(doc.id);
+  if (shownDoc.current !== doc.id) { shownDoc.current = doc.id; current.current = 0; }
   const byPage = useMemo(() => {
     const map = new Map<string, PageObject[]>();
     for (const o of doc.objects) map.set(o.page, [...(map.get(o.page) ?? []), o]);
@@ -59,13 +64,13 @@ export const Viewer = forwardRef<ViewerHandle, Props>(function Viewer(props, han
       const ref = doc.pages[current.current] ?? doc.pages[0];
       if (!ref || !scroller.current) return null;
       const g = geometry(ref), size = displaySize(g, totalRotation(ref, g), 1);
-      return Math.max(0.1, Math.min(4, Math.min((scroller.current.clientWidth - 64 - (spread ? 24 : 0)) / (size.width * (spread ? 2 : 1)), (scroller.current.clientHeight - 48) / size.height)));
+      return Math.max(0.1, Math.min(4, Math.min((scroller.current.clientWidth - margin() - (spread ? 24 : 0)) / (size.width * (spread ? 2 : 1)), (scroller.current.clientHeight - 48) / size.height)));
     },
     fitWidth() {
       const ref = doc.pages[current.current] ?? doc.pages[0];
       if (!ref || !scroller.current) return null;
       const g = geometry(ref), size = displaySize(g, totalRotation(ref, g), 1);
-      return Math.max(0.25, Math.min(4, (scroller.current.clientWidth - 64 - (spread ? 24 : 0)) / (size.width * (spread ? 2 : 1))));
+      return Math.max(0.25, Math.min(4, (scroller.current.clientWidth - margin() - (spread ? 24 : 0)) / (size.width * (spread ? 2 : 1))));
     },
   }));
   useEffect(() => {

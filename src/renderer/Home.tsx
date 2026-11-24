@@ -143,7 +143,26 @@ export function useRecentFiles(documents: DocumentInfo[], activeId?: string) {
   }, []);
   return { items, remove, clear };
 }
+/** Android documents are reached through the system's providers: name the place as the Files app does. */
+function androidPlace(path: string): string | null {
+  const saf = /^\/saf(?:dir)?\/([^/]+)/.exec(path);
+  if (!saf) return /^\/data\/(user\/\d+|data)\//.test(path) ? translateUi("Neste aparelho") : null;
+  let uri: URL;
+  try { uri = new URL(decodeURIComponent(saf[1]!)); } catch { return translateUi("Arquivo do aparelho"); }
+  const id = decodeURIComponent(uri.pathname.split("/").pop() ?? "");
+  if (uri.host === "com.android.externalstorage.documents") {
+    const [volume, rest = ""] = id.split(":"), folder = rest.includes("/") ? rest.slice(0, rest.lastIndexOf("/")) : "";
+    return [volume === "primary" ? translateUi("Armazenamento interno") : translateUi("Cartão de memória"), ...folder.split("/").filter(Boolean)].join(" › ");
+  }
+  if (uri.host.includes("downloads")) return translateUi("Downloads");
+  if (uri.host.includes("google.android.apps.docs")) return "Google Drive";
+  if (uri.host.includes("media")) return translateUi("Fotos e mídia");
+  if (uri.host.includes("whatsapp")) return "WhatsApp";
+  return uri.host.replace(/^com\.|\.documents$|\.provider$|\.fileprovider$/g, "");
+}
 function folderName(path: string) {
+  const place = androidPlace(path);
+  if (place) return place;
   const slash = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   return slash > 0 ? path.slice(0, slash) : path;
 }

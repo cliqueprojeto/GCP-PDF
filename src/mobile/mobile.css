@@ -1,0 +1,269 @@
+/* GCP-PDF on phones and tablets.
+ * html.mobile   : any Android device (touch sizing, safe areas, no hover-only affordances)
+ * .compact      : phone layout (narrow window): top app bar, tools at the bottom, panels as sheets.
+ * Desktop styles stay the base; everything here only adapts them. */
+
+:root.mobile {
+  --safe-top: 0px; --safe-bottom: 0px; --safe-left: 0px; --safe-right: 0px;
+  --m-topbar: 56px;
+  --m-tabs: 54px;
+  --m-tools: 76px;
+  --m-bottom: calc(var(--m-tabs) + var(--m-tools) + var(--safe-bottom));
+  --m-radius: 22px;
+  --m-ease: cubic-bezier(.2, .8, .2, 1);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+}
+:root.mobile body { position: fixed; inset: 0; overflow: hidden; user-select: none; -webkit-user-select: none; }
+:root.mobile input, :root.mobile textarea, :root.mobile [contenteditable="true"], :root.mobile .textLayer, :root.mobile .book-content { user-select: text; -webkit-user-select: text; }
+:root.mobile input, :root.mobile select, :root.mobile textarea { font-size: max(16px, 1em); }
+:root.mobile ::-webkit-scrollbar { width: 0; height: 0; }
+
+/* Before the interface: brand loading state painted by the WebView itself. */
+#boot { position: fixed; inset: 0; display: grid; place-items: center; background: var(--bg, #f7f6fa); z-index: 1000; pointer-events: none; transition: opacity .3s ease; }
+#boot::before { content: ""; width: 76px; height: 76px; border-radius: 22px; background: linear-gradient(135deg, #a47bff, #7140e6 45%, #3a1689); box-shadow: 0 18px 50px #7140e655; animation: m-breathe 1.4s ease-in-out infinite; }
+#root:not(:empty) ~ #boot { opacity: 0; }
+@keyframes m-breathe { 50% { transform: scale(.92); box-shadow: 0 10px 30px #7140e633; } }
+.webview-update { max-width: 520px; margin: 0 auto; padding: calc(40px + var(--safe-top)) 24px 24px; font-family: Inter, sans-serif; color: #302d3b; line-height: 1.55; }
+.webview-update h1 { font-size: 24px; letter-spacing: -.5px; }
+.webview-update pre { white-space: pre-wrap; font-size: 11px; background: #f0eaff; padding: 12px; border-radius: 10px; }
+
+/* ---------------------------------------------------------------- every Android device */
+
+.mobile .application { min-width: 0; width: 100vw; height: 100dvh; padding-top: var(--safe-top); padding-left: var(--safe-left); padding-right: var(--safe-right); }
+.mobile .application:not(.compact) { padding-bottom: var(--safe-bottom); }
+.mobile .icon-button, .mobile .tool-button, .mobile .ribbon-tabs > button { min-height: 40px; }
+.mobile .icon-button { min-width: 40px; }
+.mobile .button { min-height: 44px; }
+.mobile .publisher-link, .mobile .tab-detach, .mobile .chrome-hotzone, .mobile .ribbon-mode, .mobile .row-arrow, .mobile kbd, .mobile .tool-finder kbd { display: none !important; }
+.mobile .thumbnail-hover-actions { opacity: 1; }
+.mobile .context-menu button { min-height: 44px; }
+.mobile .toast { max-width: calc(100vw - 32px); }
+.mobile .canvas-scroll { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.mobile .canvas-scroll .page-column { will-change: transform; transform-origin: 0 0; }
+
+/* ---------------------------------------------------------------- phone layout */
+
+.compact { --m-sheet-bottom: var(--safe-bottom); }
+.compact.application { position: relative; padding-bottom: 0; }
+
+/* Top app bar */
+.m-topbar {
+  height: var(--m-topbar); min-height: var(--m-topbar);
+  display: flex; align-items: center; gap: 2px; padding: 0 6px 0 4px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: saturate(1.6) blur(14px);
+  border-bottom: 1px solid var(--border);
+  position: relative; z-index: 40;
+}
+.m-icon { width: 44px; height: 44px; min-width: 44px; display: grid; place-items: center; border-radius: 14px; color: var(--text); transition: background .15s ease, transform .15s ease; }
+.m-icon:active:not(:disabled) { background: var(--purple-soft); transform: scale(.94); }
+.m-icon:disabled { opacity: .32; }
+.m-spacer { flex: 1; }
+.m-brand { display: flex; align-items: center; gap: 10px; padding-left: 10px; font-size: 18px; letter-spacing: -.4px; }
+.m-brand strong span { color: var(--purple); opacity: .55; margin: 0 2px; }
+.m-brand-mark { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; font-size: 9px; font-weight: 800; letter-spacing: .5px; color: #fff; background: linear-gradient(135deg, #a47bff, #7140e6 45%, #3a1689); box-shadow: 0 6px 16px #7140e640; }
+.m-title { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; flex: 1 1 auto; padding: 4px 6px; border-radius: 12px; text-align: left; }
+.m-title strong { font-size: 15px; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: -.2px; }
+.m-title small { font-size: 11.5px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+.m-dirty { color: var(--danger); font-weight: 600; }
+.m-dirty::after { content: "·"; margin-left: 6px; color: var(--muted); }
+
+/* The desktop title bar, tab strip and status bar give way to the app bar and the bottom tools. */
+.compact .titlebar, .compact .document-tabs-row, .compact .statusbar, .compact .rail:not(.rail-right), .compact .toolbar-spacer { display: none !important; }
+.compact .workbench { flex: 1; min-height: 0; }
+.compact .document-area { min-width: 0; }
+
+/* Bottom tools: the category bar at the very bottom, the category's tools just above it. */
+.compact .chrome { order: 10; display: flex; flex-direction: column-reverse; position: relative; z-index: 35; background: var(--surface); border-top: 1px solid var(--border); padding-bottom: var(--safe-bottom); box-shadow: 0 -10px 30px -22px #2a1a5a55; transition: transform .25s var(--m-ease); }
+.compact .chrome.collapsed-tools .ribbon-panel { display: none; }
+.compact .menu-row { height: var(--m-tabs); min-height: var(--m-tabs); padding: 0 8px; gap: 0; border-bottom: 0; border-top: 1px solid var(--border); background: var(--surface); }
+.compact .ribbon-tabs { gap: 6px; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; width: 100%; padding: 0 4px; }
+.compact .ribbon-tabs > button {
+  height: 36px; min-height: 36px; padding: 0 14px; border-radius: 999px; font-size: 13px; font-weight: 500; white-space: nowrap;
+  color: var(--muted); background: transparent; scroll-snap-align: center; flex: none; transition: background .2s ease, color .2s ease;
+}
+.compact .ribbon-tabs > button.active { background: var(--purple); color: #fff; box-shadow: 0 6px 16px -6px var(--purple); }
+.compact .ribbon-tabs > button.active::after, .compact .ribbon-tabs > button.active:after { display: none; }
+.compact .ribbon-panel { height: var(--m-tools); min-height: var(--m-tools); }
+.compact .ribbon-panel .scroll-row-host { height: 100%; }
+.compact .toolbar { height: var(--m-tools); min-height: var(--m-tools); padding: 0 8px; gap: 4px; border-bottom: 0; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity; background: transparent; }
+/* File commands live in the app bar and its menu. */
+.compact .toolbar > .tool-group:first-child { display: none; }
+.compact .tool-group { height: 64px; gap: 2px; padding-right: 6px; margin-right: 2px; border-right: 1px solid var(--border); flex: none; }
+.compact .tool-group:last-of-type { border-right: 0; }
+.compact .toolbar .tool-button {
+  flex-direction: column; justify-content: center; gap: 5px; min-width: 66px; height: 62px; padding: 6px 6px 4px; border-radius: 14px;
+  font-size: 11px; line-height: 1.15; white-space: normal; text-align: center; color: var(--text); scroll-snap-align: start;
+}
+.compact .toolbar .tool-button > span { max-width: 74px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.compact .toolbar .tool-button svg { width: 22px; height: 22px; color: var(--purple); }
+.compact .toolbar .tool-button.selected { background: var(--purple-soft); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--purple) 45%, transparent); }
+.compact .toolbar .icon-button { width: 48px; height: 48px; border-radius: 14px; }
+.compact .toolbar .tool-button:active:not(:disabled), .compact .toolbar .icon-button:active:not(:disabled) { transform: scale(.95); }
+.compact .toolbar label, .compact .toolbar select, .compact .toolbar input { flex: none; }
+
+/* Tool hints float over the page instead of taking a row. */
+.compact .tool-hint { position: fixed; left: 12px; right: 12px; top: calc(var(--safe-top) + var(--m-topbar) + 10px); z-index: 30; border-radius: 16px; box-shadow: var(--shadow); font-size: 13px; padding: 10px 12px; }
+
+/* Pages */
+.compact .page-column { padding: 10px 8px 24px; gap: 12px; }
+.compact .page-sheet, .compact .pdf-sheet { box-shadow: 0 2px 14px #281d4522; }
+.compact .reading-bar { left: 8px; right: 8px; top: auto; bottom: calc(12px + var(--safe-bottom)); transform: none; flex-wrap: wrap; justify-content: center; border-radius: 18px; }
+.compact.reading .chrome, .compact.reading .m-topbar { display: none; }
+
+/* Sheets: side panels and properties rise from the bottom over a dimmed page. */
+.m-backdrop, .m-sheet-backdrop { position: fixed; inset: 0; background: #120a2a52; backdrop-filter: blur(2px); z-index: 55; animation: m-fade .2s ease; }
+@keyframes m-fade { from { opacity: 0; } }
+@keyframes m-rise { from { transform: translateY(100%); } }
+.compact .sidebar {
+  position: fixed !important; left: 0; right: 0; bottom: 0; top: auto; z-index: 60;
+  width: 100% !important; max-width: 100%; height: min(78dvh, 760px);
+  border-radius: var(--m-radius) var(--m-radius) 0 0; border: 0; border-top: 1px solid var(--border);
+  box-shadow: 0 -24px 60px -20px #1a0f3c66; padding-bottom: var(--safe-bottom);
+  animation: m-rise .32s var(--m-ease);
+}
+.compact .sidebar::before { content: ""; display: block; width: 42px; height: 5px; border-radius: 3px; background: var(--border); margin: 9px auto 2px; flex: none; }
+.compact .sidebar-resizer { display: none; }
+.compact .sidebar-heading h2 { font-size: 17px; }
+.compact .thumbnails-scroll { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; padding: 12px 16px 24px; align-content: start; }
+.compact .thumbnails-scroll .page-insertion { display: none; }
+.compact .thumbnail-item { margin: 0; }
+.compact .thumb-zoom { display: none; }
+.compact .properties-panel {
+  position: fixed; left: 0; right: 0; top: auto; bottom: 0; width: 100%; max-height: 70dvh; z-index: 60;
+  border-radius: var(--m-radius) var(--m-radius) 0 0; border: 0; border-top: 1px solid var(--border);
+  padding-bottom: var(--safe-bottom); transform: translateY(105%); box-shadow: 0 -24px 60px -20px #1a0f3c66;
+}
+.compact .properties-panel.open { transform: none; }
+.compact .properties-panel .property-bar { gap: 12px 8px; padding: 12px 16px 20px; }
+/* The properties button floats over the page, above the tools. */
+.compact .rail-right { position: fixed; right: calc(14px + var(--safe-right)); bottom: calc(var(--m-bottom) + 14px); width: auto; min-width: 0; padding: 0; gap: 10px; background: none; border: 0; z-index: 45; }
+.compact .rail-right .icon-button { width: 52px; height: 52px; border-radius: 18px; background: var(--purple); color: #fff; box-shadow: 0 12px 28px -8px var(--purple); }
+.compact .rail-right .icon-button:not(.properties-signal):not(.active) { display: none; }
+
+/* App menu (bottom sheet) */
+.m-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 70; background: var(--surface); border-radius: var(--m-radius) var(--m-radius) 0 0; padding-bottom: calc(10px + var(--safe-bottom)); box-shadow: 0 -24px 60px -20px #1a0f3c77; animation: m-rise .3s var(--m-ease); max-height: 88dvh; display: flex; flex-direction: column; }
+.m-sheet-handle { width: 42px; height: 5px; border-radius: 3px; background: var(--border); margin: 9px auto 0; }
+.m-sheet-title { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px 4px 20px; }
+.m-sheet-title strong { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-menu-scroll { overflow: auto; padding: 0 12px 8px; }
+.m-menu section h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); margin: 14px 8px 8px; font-weight: 600; }
+.m-menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(98px, 1fr)); gap: 8px; }
+.m-menu-grid button { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 6px; border-radius: 16px; background: var(--surface-2); border: 1px solid var(--border); font-size: 12px; line-height: 1.2; text-align: center; color: var(--text); min-height: 86px; transition: transform .15s ease, background .15s ease; }
+.m-menu-grid button:active:not(:disabled) { transform: scale(.96); background: var(--purple-soft); }
+.m-menu-grid button:disabled { opacity: .4; }
+.m-menu-icon { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; background: var(--purple-soft); color: var(--purple); }
+.m-menu-grid button.danger .m-menu-icon { color: var(--danger); }
+
+/* Dialogs become sheets; long ones fill the screen. */
+.compact .modal-backdrop { padding: 0; align-items: flex-end; }
+.compact .modal, .compact .modal-wide {
+  width: 100% !important; max-width: 100% !important; max-height: calc(100dvh - var(--safe-top) - 12px) !important;
+  border-radius: var(--m-radius) var(--m-radius) 0 0; border: 0; padding: 20px 18px calc(18px + var(--safe-bottom));
+  animation: m-rise .3s var(--m-ease);
+}
+.compact .modal-footer { position: sticky; bottom: calc(-18px - var(--safe-bottom)); background: var(--surface); padding-top: 12px; padding-bottom: 4px; flex-wrap: wrap; }
+.compact .modal-footer .button { flex: 1 1 auto; }
+.compact .modal [style*="grid-template-columns"], .compact .existing-text-editor { grid-template-columns: 1fr !important; }
+
+/* Context menus and pop-up menus: action sheets. */
+.compact .context-backdrop { background: #120a2a52; }
+.compact .context-menu {
+  position: fixed !important; left: 0 !important; right: 0 !important; top: auto !important; bottom: 0 !important;
+  width: 100% !important; max-width: 100% !important; max-height: 72dvh !important; overflow: auto;
+  border-radius: var(--m-radius) var(--m-radius) 0 0 !important; padding: 10px 8px calc(12px + var(--safe-bottom)) !important;
+  animation: m-rise .25s var(--m-ease);
+}
+.compact .context-menu button { font-size: 15px; padding: 12px 14px; border-radius: 12px; }
+.compact .dropdown-menu {
+  position: fixed !important; left: 8px !important; right: 8px !important; top: auto !important;
+  bottom: calc(var(--m-bottom) + 8px) !important; width: auto !important; max-width: none !important; max-height: 56dvh; overflow: auto;
+  border-radius: 20px !important; z-index: 80 !important; animation: m-rise .22s var(--m-ease);
+}
+
+/* Feedback */
+.compact .toast { left: 12px; right: 12px; bottom: calc(var(--m-bottom) + 12px); top: auto; transform: none; max-width: none; border-radius: 16px; }
+.compact .progress-card { left: 12px; right: 12px; top: calc(var(--safe-top) + var(--m-topbar) + 10px); bottom: auto; transform: none; width: auto; border-radius: 18px; }
+
+/* Home: one column, big targets */
+.compact .home-screen { --home-sidebar: 0px; --home-gap: 0px; padding: 18px 16px calc(28px + var(--safe-bottom)); }
+.compact .home-hero { grid-template-columns: 1fr; margin-right: 0; gap: 18px; padding-bottom: 18px; }
+.compact .home-hero h1 { font-size: 28px; letter-spacing: -1px; margin: 10px 0 8px; }
+.compact .home-hero > div > p { font-size: 13.5px; line-height: 1.6; }
+.compact .home-primary-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.compact .home-primary-actions .button { min-height: 54px; border-radius: 16px; justify-content: center; font-size: 14px; }
+.compact .home-primary-actions .button.primary { grid-column: 1 / -1; min-height: 58px; font-size: 15px; box-shadow: 0 14px 30px -14px var(--purple); }
+.compact .home-side-card { display: none; }
+.compact .home-main-grid { display: flex; flex-direction: column; gap: 18px; }
+.compact .home-history, .compact .home-shortcuts { width: 100%; max-width: 100%; margin: 0; border-radius: 20px; }
+.compact .home-recent-row { min-height: 64px; }
+.compact .home-open-tabs { display: flex; overflow-x: auto; gap: 10px; padding-bottom: 4px; }
+.compact .home-open-tabs > * { flex: none; max-width: 78vw; }
+.compact .home-footer { padding-bottom: 8px; text-align: center; }
+
+/* Books and comics: full-bleed readers above everything. */
+.compact .book-reader, .compact .comic-reader { padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); }
+
+/* Quick actions (combine / convert) as a full-screen sheet */
+.m-quick { position: fixed; inset: 0; z-index: 90; background: #120a2a52; display: flex; align-items: flex-end; animation: m-fade .2s ease; }
+.m-quick-frame { position: relative; width: 100%; height: calc(100dvh - var(--safe-top) - 8px); background: var(--bg); border-radius: var(--m-radius) var(--m-radius) 0 0; overflow: hidden; animation: m-rise .3s var(--m-ease); padding-bottom: var(--safe-bottom); }
+.m-quick-frame .quick-app { height: 100%; min-width: 0; }
+.m-quick-close { position: absolute; top: 10px; right: 10px; z-index: 2; width: 40px; height: 40px; border-radius: 12px; font-size: 26px; line-height: 1; color: var(--text); background: var(--surface-2); }
+
+/* Tablets keep the desktop structure with roomier touch targets. */
+.tablet .application:not(.compact) .toolbar { height: 72px; min-height: 72px; }
+.tablet .application:not(.compact) .tool-button { padding: 10px; font-size: 11px; }
+.tablet .application:not(.compact) .menu-row { height: 50px; min-height: 50px; }
+.tablet .application:not(.compact) .document-tabs-row .document-tab { min-height: 40px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .m-sheet, .compact .sidebar, .compact .modal, .compact .context-menu, .compact .dropdown-menu, .m-quick-frame { animation: none; }
+}
+.compact.at-home .chrome { display: none; }
+/* Reading mode: touch has no hover, so its bar stays visible and sits above the gesture area. */
+.mobile .reading-bar { opacity: 1; }
+.compact .reading-bar { position: fixed; top: auto; bottom: calc(12px + var(--safe-bottom)); left: 10px; right: 10px; transform: none; display: grid; grid-template-columns: 1fr auto auto; gap: 6px; padding: 8px 10px; border-radius: 20px; font-size: 13px; background: #1d1b26f0; backdrop-filter: blur(10px); }
+.compact .reading-bar > span { padding-left: 6px; }
+.compact .reading-bar button { min-height: 40px; justify-content: center; background: #ffffff14; }
+.compact .reading-bar button.exit { grid-column: 1 / -1; background: var(--purple); }
+.compact .tool-group[hidden] { display: none; }
+
+/* Organize: page grid on the whole screen, its commands as a scrolling row of chips above it. */
+.compact .organize { flex-direction: column; }
+.compact .organize-tools { width: 100%; flex-direction: row; align-items: center; gap: 8px; padding: 10px 12px; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--border); flex-wrap: nowrap; }
+.compact .organize-tools > * { flex: none; }
+.compact .organize-tools > p, .compact .organize-tools > h3, .compact .organize-help { display: none; }
+.compact .organize-quick { margin: 0; }
+.compact .organize-quick button { width: 44px; height: 44px; flex: none; }
+.compact .organize-tool { width: auto; white-space: nowrap; padding: 10px 14px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); font-size: 13px; }
+.compact .organize-tool-group { display: flex; gap: 8px; flex: none; }
+.compact .organize-submenu { flex-direction: row; margin: 0; border-left: 0; gap: 6px; }
+.compact .organize-submenu button { border-radius: 999px; border: 1px solid var(--border); padding: 9px 12px; white-space: nowrap; }
+.compact .organize-bar { padding: 8px 14px; flex-wrap: wrap; gap: 8px; }
+.compact .organize-grid { padding: 12px 6px 40px; justify-content: center; }
+.compact .home-primary-actions .button { grid-column: 1 / -1; }
+.compact .organize-grid { gap: 10px 0; }
+.mobile .desktop-only { display: none !important; }
+
+/* Phone held sideways: thinner bars, tools as icons with short labels. */
+@media (max-height: 599px) {
+  .compact { --m-topbar: 46px; --m-tabs: 42px; --m-tools: 58px; }
+  .compact .ribbon-tabs > button { height: 30px; min-height: 30px; font-size: 12px; padding: 0 12px; }
+  .compact .tool-group { height: 52px; }
+  .compact .toolbar .tool-button { height: 52px; min-width: 58px; font-size: 10px; gap: 3px; }
+  .compact .toolbar .tool-button svg { width: 19px; height: 19px; }
+  .compact .toolbar .tool-button > span { -webkit-line-clamp: 1; }
+  .compact .sidebar, .compact .properties-panel { height: 86dvh; max-height: 86dvh; }
+  .compact .m-title small { display: none; }
+}
+.compact .chrome.collapsed-tools { --m-tools: 0px; }
+/* PDF.js' end-of-content guard spans the whole page: on touch it would turn a long press into "select all". */
+.mobile .textLayer .endOfContent { display: none !important; }
+.mobile .textLayer ::selection { background: color-mix(in srgb, var(--purple) 32%, transparent); }
+/* Tool hints sit just above the tools, leaving the top of the page (where text usually starts) free. */
+.compact .tool-hint { top: auto; bottom: calc(var(--m-bottom) + 10px); font-size: 12.5px; padding: 8px 12px; }
+/* Readers' top bar: every control reachable on narrow screens (it scrolls sideways). */
+.compact .book-bar { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; flex-wrap: nowrap; gap: 2px; }
+.compact .book-bar > * { flex: none; }

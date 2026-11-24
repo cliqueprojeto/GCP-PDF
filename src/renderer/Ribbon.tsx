@@ -103,6 +103,7 @@ import { SavedColors } from "./ColorLibrary";
 import { readHomeActions, UI_PREFERENCES_EVENT } from "../shared/shortcuts";
 import type { PageObject, ShapeKind, ExportFormat } from "../shared/types";
 import { PALETTE, SHAPES, type Style, type Tool } from "./editor";
+import { isMobileDevice } from "./MobileChrome";
 import type { SourceSelection } from "./PageView";
 
 export const TABS = [
@@ -1028,6 +1029,8 @@ function ScrollRow({
   );
 }
 export function Ribbon(props: Props) {
+  // Windows, the ribbon's own display modes and the docked side panel exist only on the desktop.
+  const desktop = !isMobileDevice();
   const { tab, tool, actions, hasDocument: doc } = props,
     none = !doc;
   // Clicking the active tool again turns it off and returns to Select.
@@ -1566,12 +1569,12 @@ export function Ribbon(props: Props) {
         />
       </div>
       <div className="tool-group">
-        <Big
+        {desktop && <Big
           icon={<SplitSquareHorizontal size={18} />}
           label={translateUi("Comparar em nova janela")}
           disabled={none}
           onClick={actions.compare}
-        />
+        />}
         <Big
           icon={<GitCompareArrows size={18} />}
           label={translateUi("Comparar PDFs")}
@@ -1617,13 +1620,13 @@ export function Ribbon(props: Props) {
             onClick={actions.fullscreen}
             title={translateUi("Tela cheia · F11")}
           />
-          <Big
+          {desktop && <Big
             icon={<PanelLeft size={18} />}
             label={translateUi("Painel lateral")}
             onClick={actions.sidebar}
-          />
+          />}
         </div>
-        <div className="tool-group">
+        <div className="tool-group" hidden={!desktop}>
           <Big
             icon={<Pin size={18} />}
             label={translateUi("Faixa fixa")}

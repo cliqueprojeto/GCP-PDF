@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Gcp" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/gcp_background</item>
+        <item name="android:colorAccent">@color/gcp_accent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+    <style name="Theme.Gcp.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/gcp_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground_splash</item>
+        <item name="postSplashScreenTheme">@style/Theme.Gcp</item>
+    </style>
+</resources>

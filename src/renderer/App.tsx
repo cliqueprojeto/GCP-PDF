@@ -39,6 +39,7 @@ import { commitPendingParagraph, pendingParagraphEdit, paragraphSpacing, type Pa
 import { cloneObjects, copyable } from "../shared/object-clipboard";
 import { objectBounds, translateObject } from "../shared/geometry";
 import { Home, useRecentFiles, fileKey } from "./Home";
+import { useCompact, isMobileDevice, MobileTopBar, MobileMenu, usePinchZoom, mobileShell, MOBILE_ICONS as MI, type MobileMenuItem } from "./MobileChrome";
 
 type Panel = "comments" | "pages" | "bookmarks" | "search" | "signatures" | "ai";
 const initial: WorkspaceState = { windowId: 0, documents: [], theme: "light", quickActions: true };
@@ -113,6 +114,8 @@ let objectClipboard: { token: string; objects: PageObject[]; pastes: number } | 
 
 export default function App() {
   const [workspace, setWorkspace] = useState<WorkspaceState>(initial), [ready, setReady] = useState(false);
+  // Phones: compact layout (top app bar, tools at the bottom, panels as sheets). Tablets keep the desktop layout.
+  const compact = useCompact(), [mobileMenu, setMobileMenu] = useState(false), viewerHost = useRef<HTMLDivElement>(null);
   const [home, setHome] = useState(false);
   const [page, setPage] = useState(0), [selection, setSelection] = useState<Set<number>>(new Set([0])), [zoom, setZoom] = useState(1);
   const [panel, setPanel] = useState<Panel>("pages"), [sideOpen, setSideOpen] = useState(false);
@@ -201,7 +204,10 @@ export default function App() {
     const resume = lastSeen(active?.path), start = resume && active && resume.page < active.pageCount ? resume.page : 0;
     setPage(start); setSelection(new Set([start])); setTool({ kind: "select" }); setMatches([]); setActiveSearch(""); setConversation([]);
     setHome(false);
-    setSideOpen(!!active); if (active) setPanel((p) => (p === "ai" ? p : "pages"));
+    setSideOpen(!!active && !compact); if (active) setPanel((p) => (p === "ai" ? p : "pages"));
+    // On a phone a document opens at the width of the screen.
+    // Page sizes arrive asynchronously (the first guess is A4): fit again as they do, then leave the zoom to the user.
+    if (compact && active) { const timers = [60, 250, 600, 1200, 2000].map((ms) => setTimeout(() => { const fitted = viewer.current?.fitWidth(); if (fitted) setZoom(fitted); }, ms)); return () => timers.forEach(clearTimeout); }
   }, [active?.id]);
   useEffect(() => {
     if (!active || showHome) { restoringReading.current = false; return; }
@@ -436,7 +442,8 @@ export default function App() {
     open: () => void perform(() => openFilesFromHome(), "Abrindo arquivos…"),
     saveAs: () => active && void perform(() => window.gcp.saveDocument(active.id, true), "Salvando cópia…"),
     save: () => active && void perform(() => window.gcp.saveDocument(active.id), "Salvando…"),
-    print: () => active && setModal("print"),
+    // Android prints through the system dialog (printer, pages, copies, colour and duplex are chosen there).
+    print: () => active && (isMobileDevice() ? void perform(() => window.gcp.printDocument(active.id)) : setModal("print")),
     undo: () => active && void perform(() => window.gcp.undo(active.id)),
     redo: () => active && void perform(() => window.gcp.redo(active.id)),
     zoom: zoomBy,
@@ -730,9 +737,54 @@ export default function App() {
     if (mode === "open" || !active) void perform(() => window.gcp.openFiles(paths));
     else void perform(() => window.gcp.insertPaths(active.id, mode === "before" ? page : page + 1, paths, active.revision));
   }
+  const doc = !showHome && active ? active : null;
+  const mobileItems: MobileMenuItem[] = [
+    ...(doc ? [
+      { id: "save", group: "Documento", label: "Salvar", icon: <MI.Save size={20} />, run: actions.save },
+      { id: "save-as", group: "Documento", label: "Salvar como", icon: <MI.FilePen size={20} />, run: actions.saveAs },
+      { id: "share", group: "Documento", label: "Compartilhar", icon: <MI.Share2 size={20} />, disabled: !mobileShell(), run: () => void perform(() => mobileShell()!.share(doc.id, doc.name), "Preparando para compartilhar…") },
+      { id: "print", group: "Documento", label: "Imprimir", icon: <MI.Printer size={20} />, run: actions.print },
+      { id: "export", group: "Documento", label: "Exportar / converter", icon: <MI.FileOutput size={20} />, run: () => actions.exportAs() },
+      { id: "properties", group: "Documento", label: "Propriedades", icon: <MI.Info size={20} />, run: actions.properties },
+      { id: "pages", group: "Painéis", label: "Páginas", icon: <MI.Files size={20} />, run: () => showPanel("pages") },
+      { id: "bookmarks", group: "Painéis", label: "Marcadores", icon: <MI.Bookmark size={20} />, run: () => showPanel("bookmarks") },
+      { id: "comments", group: "Painéis", label: "Comentários", icon: <MI.MessageSquare size={20} />, run: () => showPanel("comments") },
+      { id: "signatures", group: "Painéis", label: "Assinaturas", icon: <MI.Signature size={20} />, run: () => showPanel("signatures") },
+      { id: "ai", group: "Painéis", label: "Assistente de IA", icon: <MI.Sparkles size={20} />, run: () => showPanel("ai") },
+      { id: "reading", group: "Exibição", label: "Modo leitura", icon: <MI.BookOpen size={20} />, run: startReading },
+      { id: "fullscreen", group: "Exibição", label: "Tela cheia", icon: <MI.Maximize2 size={20} />, run: toggleFullscreen },
+    ] : []),
+    { id: "theme", group: "Exibição", label: themeMode(workspace.theme) === "light" ? "Tema escuro" : "Tema claro", icon: themeMode(workspace.theme) === "light" ? <MI.Moon size={20} /> : <MI.Sun size={20} />, run: () => void perform(() => window.gcp.setTheme(themeMode(workspace.theme) === "light" ? "dark" : "light")) },
+    { id: "open", group: "Arquivos", label: "Abrir documentos", icon: <MI.FolderOpen size={20} />, run: actions.open },
+    { id: "new", group: "Arquivos", label: "Novo PDF", icon: <MI.FilePlus2 size={20} />, run: actions.create },
+    { id: "scan", group: "Arquivos", label: "Digitalizar com a câmera", icon: <MI.FileInput size={20} />, run: actions.scan },
+    { id: "combine", group: "Arquivos", label: "Combinar em um PDF", icon: <MI.Layers3 size={20} />, run: () => actions.quick("combine") },
+    { id: "convert", group: "Arquivos", label: "Converter para PDF", icon: <MI.FileOutput size={20} />, run: () => actions.quick("convert") },
+    { id: "book", group: "Arquivos", label: "Abrir livro ou quadrinho", icon: <MI.BookOpen size={20} />, run: actions.openBook },
+    { id: "settings", group: "Aplicativo", label: "Configurações", icon: <MI.Settings size={20} />, run: () => setModal("settings") },
+    { id: "help", group: "Aplicativo", label: "Central de ajuda", icon: <MI.HelpCircle size={20} />, run: () => { setHelpTopic(undefined); setModal("help"); } },
+    { id: "support", group: "Aplicativo", label: "Apoie o projeto", icon: <MI.Heart size={20} />, run: () => setModal("support") },
+  ];
+  usePinchZoom(viewerHost, zoom, setZoom, isMobileDevice() && !!doc);
+  // A tool that acts on the page (a signature to place, a stamp, a field) needs the page: the sheet steps aside.
+  useEffect(() => { if (compact && tool.kind !== "select" && tool.kind !== "edit") setSideOpen(false); }, [compact, tool.kind]);
+  // Android Back: a tool, then a sheet, then the document; the shell closes dialogs before asking here.
+  const backRef = useRef<() => boolean>(() => false);
+  backRef.current = () => {
+    if (mobileMenu) { setMobileMenu(false); return true; }
+    if (pageContext || pageMenu) { setPageContext(null); setPageMenu(null); return true; }
+    if (reading) { setReading(false); return true; }
+    if (tool.kind !== "select" && tool.kind !== "edit") { setTool({ kind: "select" }); return true; }
+    if (selectedObjects.size || sourceSelection) { setSelectedObjects(new Set()); setSourceSelection(null); return true; }
+    if (propertiesOpen && propertiesAvailable) { setPropertiesOpen(false); return true; }
+    if (sideOpen && compact) { setSideOpen(false); return true; }
+    if (!showHome) { void goHome(); return true; }
+    return false;
+  };
+  useEffect(() => { (window as unknown as { __gcpMobileBack?: () => boolean }).__gcpMobileBack = () => backRef.current(); }, []);
   return (
     <div
-      className={`application ${resizing ? "resizing" : ""} ${reading ? "reading" : ""} ribbon-${ribbonMode}`}
+      className={`application ${compact ? "compact" : ""} ${showHome ? "at-home" : ""} ${resizing ? "resizing" : ""} ${reading ? "reading" : ""} ribbon-${ribbonMode}`}
       onDragEnter={(e) => { if (isFileDrag(e)) { fileDragDepth.current++; setFileDrag(true); } }}
       onDragLeave={(e) => { if (isFileDrag(e) && --fileDragDepth.current <= 0) { fileDragDepth.current = 0; setFileDrag(false); } }}
       onDragOver={(e) => {
@@ -748,6 +800,16 @@ export default function App() {
     >
       {tabDetachHint && <div className="tab-detach-hint"><MoveUpRight size={26} /><strong>{translateUi("Solte para abrir em uma nova janela")}</strong><span>{translateUi("Volte para a barra de abas para apenas reorganizar")}</span></div>}
       {busy && <ProgressCard text={busy} />}
+      {compact && (
+        <MobileTopBar
+          home={showHome} title={active?.name ?? ""} dirty={!showHome && docDirty} canUndo={!!active?.canUndo} canRedo={!!active?.canRedo}
+          subtitle={active && !showHome ? translateUi("Página {page} de {total}", { page: page + 1, total: active.pageCount }) : undefined}
+          onBack={() => void (sideOpen ? setSideOpen(false) : goHome())} onUndo={actions.undo} onRedo={actions.redo}
+          onSearch={() => showPanel("search")} onMenu={() => setMobileMenu(true)} onTitle={() => showPanel("pages")}
+        />
+      )}
+      {compact && mobileMenu && <MobileMenu title={showHome || !active ? "GCP-PDF" : active.name} items={mobileItems} onClose={() => setMobileMenu(false)} />}
+      {compact && !showHome && (sideOpen || (propertiesOpen && propertiesAvailable)) && <div className="m-backdrop" onClick={() => { setSideOpen(false); setPropertiesOpen(false); }} />}
       {reading && active && (
         <div className="reading-bar" role="toolbar" aria-label={translateUi("Modo leitura")}>
           <span>{translateUi("Página")}{" "}{page + 1}{" "}{translateUi("de")}{" "}{active.pageCount}</span>
@@ -814,7 +876,7 @@ export default function App() {
       <div className="menu-row">
         <div className="ribbon-tabs">
           {TABS.map((label) => (
-            <button className={tab === label ? "active" : ""} key={translateUi(label)} onDoubleClick={() => setRibbon(ribbonMode === "pinned" ? "collapsed" : "pinned")} onClick={() => { openTab(label); if (ribbonMode !== "pinned") setPeek(true); if (label === "Comentário") showPanel("comments"); if (label === "Assinar") showPanel("signatures"); if (label === "IA") showPanel("ai"); if (label === "Organizar") showPanel("pages"); }}>
+            <button className={tab === label ? "active" : ""} key={translateUi(label)} onDoubleClick={() => setRibbon(ribbonMode === "pinned" ? "collapsed" : "pinned")} onClick={() => { openTab(label); if (ribbonMode !== "pinned") setPeek(true); if (!compact) { if (label === "Comentário") showPanel("comments"); if (label === "Assinar") showPanel("signatures"); if (label === "Organizar") showPanel("pages"); } if (label === "IA") showPanel("ai"); }}>
               {label === "IA" && <Sparkles size={14} />} {translateUi(label)}
             </button>
           ))}
@@ -1045,7 +1107,7 @@ export default function App() {
           {active && tab === "Organizar" ? (
             <OrganizeView doc={active} selection={selection} setSelection={setSelection} actions={organize} onContextMenu={(e, index) => setPageMenu({ x: e.clientX, y: e.clientY, index })} />
           ) : active ? (
-            <div className="viewer-host" onScrollCapture={(event) => { if ((event.target as HTMLElement).classList.contains("canvas-scroll")) scheduleReadingSave(); }} onDragOver={(e) => { if (e.dataTransfer.types.includes(TAB_MIME)) e.preventDefault(); }} onDrop={(e) => { if (dragData(e)?.documentId && !draggingTab.current) void tabDropEvent(e); }}>
+            <div className="viewer-host" ref={viewerHost} onScrollCapture={(event) => { if ((event.target as HTMLElement).classList.contains("canvas-scroll")) scheduleReadingSave(); }} onDragOver={(e) => { if (e.dataTransfer.types.includes(TAB_MIME)) e.preventDefault(); }} onDrop={(e) => { if (dragData(e)?.documentId && !draggingTab.current) void tabDropEvent(e); }}>
               <Viewer
                 layout={layout}
                 filter={readingFilter}
@@ -1137,7 +1199,8 @@ export default function App() {
       {bookToken && <BookReader key={bookToken} token={bookToken} onClose={() => setBookToken(null)} onError={onError} />}
       {comicToken && <ComicReader key={comicToken} token={comicToken} onClose={() => setComicToken(null)} onError={onError} />}
       {lookup && <LookupDialog text={lookup.text} mode={lookup.mode} onClose={() => setLookup(null)} onError={onError} onCopy={(text) => window.gcp.copyText(text)} />}
-      {pageContext && active && (
+      {/* On touch, a long press where there is nothing to act on shows no empty menu. */}
+      {pageContext && active && !(isMobileDevice() && !pageContext.text && !selectionObjects.length && !objectClipboard) && (
         <div className="context-backdrop" onMouseDown={() => setPageContext(null)} onContextMenu={(e) => { e.preventDefault(); setPageContext(null); }}>
           <div className="context-menu" style={{ left: Math.min(pageContext.x, window.innerWidth - 250), top: Math.max(8, Math.min(pageContext.y, window.innerHeight - (pageContext.rects ? 470 : 300))), maxHeight: "calc(100vh - 16px)", overflowY: "auto" }} onMouseDown={(e) => e.stopPropagation()} onClick={() => setPageContext(null)}>
             {pageContext.text && <>

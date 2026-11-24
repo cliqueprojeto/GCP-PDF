@@ -28,7 +28,8 @@ export class Scanner {
  constructor(private assets:string,private platform=process.platform,private execute:Runner=run){}
  private helper(action:string,args:string[],signal?:AbortSignal){
   if(this.platform==='win32')return this.execute('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',join(this.assets,'scanner','wia.ps1'),action,...args],signal);
-  if(this.platform==='darwin')return this.execute(join(this.assets,'scanner','gcp-scanner'),[action,...args],signal);
+  // Android: the app's camera and gallery answer the same helper contract (see src/mobile/shims/child-process.ts).
+  if(this.platform==='darwin'||this.platform==='android')return this.execute(join(this.assets,'scanner','gcp-scanner'),[action,...args],signal);
   throw new Error('Serviço de scanner indisponível.');
  }
  async devices(signal?:AbortSignal):Promise<ScannerDevice[]>{

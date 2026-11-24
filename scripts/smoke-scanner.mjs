@@ -13,6 +13,8 @@ try{
  app=await electron.launch({executablePath:process.argv[2]?resolve(process.argv[2]):require('electron'),args:process.argv[2]?[]:[resolve('.')],env,timeout:90000});
  const page=await app.firstWindow();page.setDefaultTimeout(30000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.waitForSelector('.theme-gallery');await page.keyboard.press('Escape');await page.locator('.theme-gallery').waitFor({state:'detached'});
+ // The names below are the Portuguese interface: runners in another language would translate them.
+ await page.evaluate(()=>window.gcp.setLanguage('pt-BR','pt-BR'));await page.waitForFunction(()=>document.documentElement.lang==='pt-BR');
  await page.getByRole('button',{name:'Criar um PDF em branco',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'Criar um PDF',exact:true});await dialog.locator('select').nth(0).selectOption('Carta');await dialog.locator('select').nth(1).selectOption('true');await dialog.locator('input[type=number]').fill('3');await dialog.getByRole('button',{name:'Criar PDF',exact:true}).click();
  await page.waitForFunction(async()=>{const s=await window.gcp.getWorkspace();return s.documents[0]?.pageCount===3;});
